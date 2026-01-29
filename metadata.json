@@ -1,0 +1,5 @@
+{
+  "name": "CamBus",
+  "description": "A modern bus booking platform allowing users to find routes, check schedules, and book tickets comfortably.",
+  "requestFramePermissions": []
+}
