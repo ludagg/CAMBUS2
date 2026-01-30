@@ -1,34 +1,36 @@
 import React from 'react';
-import { Feature } from '../types';
-
-const featuresData: Feature[] = [
-  {
-    id: 1,
-    icon: 'wifi',
-    title: 'Free 4G Wi-Fi',
-    description: 'Stay connected throughout your journey. Browse, stream, or work comfortably from your seat.'
-  },
-  {
-    id: 2,
-    icon: 'airline_seat_recline_extra',
-    title: 'Extra Legroom',
-    description: 'Our modern fleet features adjustable seats with plenty of space to stretch out and relax.'
-  },
-  {
-    id: 3,
-    icon: 'eco',
-    title: 'Eco-Friendly Travel',
-    description: 'Travel green. Our buses produce a fraction of the CO2 compared to cars or planes.'
-  }
-];
+import { useLanguage } from '../contexts/LanguageContext';
 
 const Features: React.FC = () => {
+  const { t } = useLanguage();
+
+  const featuresData = [
+    {
+      id: 1,
+      icon: 'wifi',
+      title: t('features.wifi.title'),
+      description: t('features.wifi.desc')
+    },
+    {
+      id: 2,
+      icon: 'airline_seat_recline_extra',
+      title: t('features.legroom.title'),
+      description: t('features.legroom.desc')
+    },
+    {
+      id: 3,
+      icon: 'eco',
+      title: t('features.eco.title'),
+      description: t('features.eco.desc')
+    }
+  ];
+
   return (
     <div className="py-16 md:py-24 px-6 md:px-10 max-w-7xl mx-auto">
       <div className="text-center mb-16">
-        <h2 className="text-3xl md:text-4xl font-bold text-text-main dark:text-white mb-4">Why travel with CamBus?</h2>
+        <h2 className="text-3xl md:text-4xl font-bold text-text-main dark:text-white mb-4">{t('features.title')}</h2>
         <p className="text-text-muted dark:text-gray-400 max-w-2xl mx-auto">
-          We're redefining bus travel with a focus on comfort, technology, and sustainability.
+          {t('features.subtitle')}
         </p>
       </div>
 

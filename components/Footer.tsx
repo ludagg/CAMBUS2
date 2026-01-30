@@ -1,6 +1,9 @@
 import React from 'react';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const Footer: React.FC = () => {
+  const { t } = useLanguage();
+
   return (
     <footer className="bg-background-light dark:bg-background-dark border-t border-gray-200 dark:border-gray-800 pt-16 pb-8 px-6 md:px-10">
       <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
@@ -12,7 +15,7 @@ const Footer: React.FC = () => {
             <span className="font-bold text-lg dark:text-white">CamBus</span>
           </div>
           <p className="text-sm text-text-muted dark:text-gray-500 mb-6">
-            Connecting cities, people, and experiences with comfort and care.
+            {t('footer.slogan')}
           </p>
           <div className="flex gap-4">
             <a href="#" className="text-gray-400 hover:text-primary transition-colors"><span className="material-symbols-outlined">public</span></a>
@@ -22,42 +25,42 @@ const Footer: React.FC = () => {
         </div>
         
         <div>
-          <h4 className="font-bold text-text-main dark:text-white mb-4">Plan Your Trip</h4>
+          <h4 className="font-bold text-text-main dark:text-white mb-4">{t('footer.plan')}</h4>
           <ul className="space-y-2 text-sm text-text-muted dark:text-gray-400">
-            <li><a href="#" className="hover:text-primary">Route Map</a></li>
-            <li><a href="#" className="hover:text-primary">Bus Stops</a></li>
-            <li><a href="#" className="hover:text-primary">Manage Booking</a></li>
-            <li><a href="#" className="hover:text-primary">Real-time Info</a></li>
+            <li><a href="#" className="hover:text-primary">{t('footer.link.route_map')}</a></li>
+            <li><a href="#" className="hover:text-primary">{t('footer.link.bus_stops')}</a></li>
+            <li><a href="#" className="hover:text-primary">{t('footer.link.manage_booking')}</a></li>
+            <li><a href="#" className="hover:text-primary">{t('footer.link.real_time')}</a></li>
           </ul>
         </div>
         
         <div>
-          <h4 className="font-bold text-text-main dark:text-white mb-4">Support</h4>
+          <h4 className="font-bold text-text-main dark:text-white mb-4">{t('footer.support')}</h4>
           <ul className="space-y-2 text-sm text-text-muted dark:text-gray-400">
-            <li><a href="#" className="hover:text-primary">Help Center</a></li>
-            <li><a href="#" className="hover:text-primary">Lost & Found</a></li>
-            <li><a href="#" className="hover:text-primary">FAQs</a></li>
-            <li><a href="#" className="hover:text-primary">Contact Us</a></li>
+            <li><a href="#" className="hover:text-primary">{t('footer.link.help_center')}</a></li>
+            <li><a href="#" className="hover:text-primary">{t('footer.link.lost_found')}</a></li>
+            <li><a href="#" className="hover:text-primary">{t('footer.link.faqs')}</a></li>
+            <li><a href="#" className="hover:text-primary">{t('footer.link.contact')}</a></li>
           </ul>
         </div>
         
         <div>
-          <h4 className="font-bold text-text-main dark:text-white mb-4">Company</h4>
+          <h4 className="font-bold text-text-main dark:text-white mb-4">{t('footer.company')}</h4>
           <ul className="space-y-2 text-sm text-text-muted dark:text-gray-400">
-            <li><a href="#" className="hover:text-primary">About Us</a></li>
-            <li><a href="#" className="hover:text-primary">Careers</a></li>
-            <li><a href="#" className="hover:text-primary">Press</a></li>
-            <li><a href="#" className="hover:text-primary">Sustainability</a></li>
+            <li><a href="#" className="hover:text-primary">{t('footer.link.about')}</a></li>
+            <li><a href="#" className="hover:text-primary">{t('footer.link.careers')}</a></li>
+            <li><a href="#" className="hover:text-primary">{t('footer.link.press')}</a></li>
+            <li><a href="#" className="hover:text-primary">{t('footer.link.sustainability')}</a></li>
           </ul>
         </div>
       </div>
       
       <div className="max-w-7xl mx-auto pt-8 border-t border-gray-200 dark:border-gray-800 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-text-muted dark:text-gray-500">
-        <p>&copy; 2024 CamBus Inc. All rights reserved.</p>
+        <p>&copy; 2024 {t('footer.rights')}</p>
         <div className="flex gap-6">
-          <a href="#" className="hover:text-text-main dark:hover:text-white">Privacy Policy</a>
-          <a href="#" className="hover:text-text-main dark:hover:text-white">Terms of Service</a>
-          <a href="#" className="hover:text-text-main dark:hover:text-white">Cookie Settings</a>
+          <a href="#" className="hover:text-text-main dark:hover:text-white">{t('footer.privacy')}</a>
+          <a href="#" className="hover:text-text-main dark:hover:text-white">{t('footer.terms')}</a>
+          <a href="#" className="hover:text-text-main dark:hover:text-white">{t('footer.cookies')}</a>
         </div>
       </div>
     </footer>

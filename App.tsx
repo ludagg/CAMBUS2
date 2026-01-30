@@ -5,19 +5,51 @@ import Features from './components/Features';
 import Destinations from './components/Destinations';
 import CTA from './components/CTA';
 import Footer from './components/Footer';
+import AgenciesPage from './components/AgenciesPage';
+import SearchResultsPage from './components/SearchResultsPage';
+import CheckoutPage from './components/CheckoutPage';
+import { LoginPage, SignupPage } from './components/AuthPages';
+import { LanguageProvider } from './contexts/LanguageContext';
+import { NavigationProvider, useNavigation } from './contexts/NavigationContext';
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
+  const { currentPage } = useNavigation();
+
   return (
     <div className="relative flex flex-col min-h-screen w-full">
       <Header />
       <main className="flex-1">
-        <Hero />
-        <Features />
-        <Destinations />
-        <CTA />
+        {currentPage === 'home' ? (
+          <>
+            <Hero />
+            <Features />
+            <Destinations />
+            <CTA />
+          </>
+        ) : currentPage === 'agencies' ? (
+          <AgenciesPage />
+        ) : currentPage === 'results' ? (
+          <SearchResultsPage />
+        ) : currentPage === 'checkout' ? (
+          <CheckoutPage />
+        ) : currentPage === 'login' ? (
+          <LoginPage />
+        ) : (
+          <SignupPage />
+        )}
       </main>
       <Footer />
     </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <LanguageProvider>
+      <NavigationProvider>
+        <AppContent />
+      </NavigationProvider>
+    </LanguageProvider>
   );
 };
 

@@ -1,7 +1,10 @@
 import React from 'react';
 import SearchWidget from './SearchWidget';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const Hero: React.FC = () => {
+  const { t } = useLanguage();
+
   return (
     <div className="relative w-full bg-surface-light dark:bg-background-dark">
       {/* Hero Background Image */}
@@ -16,10 +19,10 @@ const Hero: React.FC = () => {
         />
         <div className="relative h-full flex flex-col items-center justify-center px-4 text-center z-10">
           <h1 className="text-white text-4xl md:text-6xl font-black leading-tight tracking-tight mb-4 max-w-4xl drop-shadow-lg">
-            Travel comfortably across the country.
+            {t('hero.title')}
           </h1>
           <p className="text-gray-200 text-lg md:text-xl font-medium max-w-2xl drop-shadow-md">
-            Book your bus tickets today with free Wi-Fi, extra legroom, and eco-friendly rides.
+            {t('hero.subtitle')}
           </p>
         </div>
       </div>
