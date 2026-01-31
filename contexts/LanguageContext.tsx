@@ -425,8 +425,7 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const t = (key: string) => {
     // Safety check to avoid crashing if a language or key is missing
-    // @ts-ignore
-    const langMap = translations[language];
+    const langMap = translations[language] as Record<string, string>;
     if (!langMap) return key;
     return langMap[key] || key;
   };
