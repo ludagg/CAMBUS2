@@ -1,6 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
+
+// Leaflet global declaration
+declare const L: any;
 
 interface Trip {
   id: number;
@@ -18,10 +21,21 @@ interface Trip {
   date: string;
 }
 
+// Coordonnées des gares pour la démo
+const stationLocations: Record<string, { lat: number, lng: number, address: string }> = {
+  "Douala - Gare Centrale": { lat: 4.0511, lng: 9.7679, address: "Bd de la Liberté, Douala (Express Voyage)" },
+  "Yaoundé - Mvan": { lat: 3.8480, lng: 11.5021, address: "Mvan, Yaoundé (Express Voyage)" },
+  "Douala - Akwa": { lat: 4.0520, lng: 9.7000, address: "Akwa Nord, Douala (GreenLines)" },
+  "Yaoundé - Biyem-Assi": { lat: 3.8300, lng: 11.4800, address: "Biyem-Assi, Yaoundé (GreenLines)" },
+  "Douala - Bonabéri": { lat: 4.0700, lng: 9.6600, address: "Bonabéri, Douala (Royal Road)" },
+  "Yaoundé - Centre Ville": { lat: 3.8667, lng: 11.5167, address: "Poste Centrale, Yaoundé (Royal Road)" },
+  "Douala - Bali": { lat: 4.0400, lng: 9.6900, address: "Bali, Douala (CityLink)" },
+  "Yaoundé - Nsam": { lat: 3.8200, lng: 11.5000, address: "Nsam, Yaoundé (CityLink)" }
+};
+
 // Generate trips dynamically ensuring station consistency
 const generateTrips = (from: string, to: string, date: string): Trip[] => {
   const getStations = (agency: string) => {
-    // Default configuration assuming Douala <-> Yaoundé route primary context
     switch (agency) {
       case "Express Voyage": return { douala: "Gare Centrale", yaounde: "Mvan" };
       case "GreenLines": return { douala: "Akwa", yaounde: "Biyem-Assi" };
@@ -59,8 +73,6 @@ const generateTrips = (from: string, to: string, date: string): Trip[] => {
 
   agencies.forEach((agency, index) => {
     times.forEach((time, timeIndex) => {
-       // Offset times slightly for different agencies to make it look organic
-       // (Keeping simple for now to ensure matching logic is clear)
        trips.push({
          id: parseInt(`${dateStr}${index}${timeIndex}${idCounter++}`),
          agencyName: agency.name,
@@ -97,6 +109,44 @@ const SearchResultsPage: React.FC = () => {
   const [selectedOutbound, setSelectedOutbound] = useState<Trip | null>(null);
   const [selectedReturn, setSelectedReturn] = useState<Trip | null>(null);
 
+  // Map Modal State
+  const [mapStation, setMapStation] = useState<{name: string, lat: number, lng: number, address: string} | null>(null);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<any>(null);
+
+  // Effect for Map Initialization
+  useEffect(() => {
+    if (mapStation && mapRef.current) {
+        if (typeof L === 'undefined') return;
+
+        // Cleanup existing map
+        if (mapInstanceRef.current) {
+            mapInstanceRef.current.remove();
+            mapInstanceRef.current = null;
+        }
+
+        const map = L.map(mapRef.current).setView([mapStation.lat, mapStation.lng], 15);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        L.marker([mapStation.lat, mapStation.lng])
+            .addTo(map)
+            .bindPopup(`<b>${mapStation.name}</b><br>${mapStation.address}`)
+            .openPopup();
+
+        mapInstanceRef.current = map;
+    }
+
+    return () => {
+        if (mapInstanceRef.current) {
+            mapInstanceRef.current.remove();
+            mapInstanceRef.current = null;
+        }
+    };
+  }, [mapStation]);
+
   if (!searchParams) {
     setTimeout(() => navigateTo('home'), 100);
     return null;
@@ -114,7 +164,7 @@ const SearchResultsPage: React.FC = () => {
     }
   }
 
-  // Determine trips to display based on step
+  // Determine trips to display
   let initialTrips: Trip[] = [];
   let stepTitle = "";
   let routeFrom = "";
@@ -128,18 +178,13 @@ const SearchResultsPage: React.FC = () => {
     routeTo = searchParams.to;
     routeDate = searchParams.date;
   } else if (currentStep === 'return') {
-    // Return step logic
     const returnDateStr = searchParams.returnDate || searchParams.date;
     const allReturnTrips = generateTrips(searchParams.to, searchParams.from, returnDateStr);
 
-    // Filter to match strict requirements (same agency usually required for round trip deals, but here we keep it loose or same agency preferred)
-    // For simplicity, let's show all return trips but filtered by same agency if possible, or just all.
-    // Let's filter to match the outbound agency for a consistent ticket experience
     if (selectedOutbound) {
       initialTrips = allReturnTrips.filter(trip => 
         trip.agencyName === selectedOutbound.agencyName
       );
-      // Fallback if no return trips from same agency (unlikely in this mock)
       if (initialTrips.length === 0) initialTrips = allReturnTrips;
     } else {
       initialTrips = allReturnTrips;
@@ -151,40 +196,30 @@ const SearchResultsPage: React.FC = () => {
     routeDate = returnDateStr;
   }
 
-  // Extract unique filter options from current trip list
+  // Extract unique filter options
   const availableAgencies = useMemo(() => Array.from(new Set(initialTrips.map(t => t.agencyName))), [initialTrips]);
   const availableAmenities = useMemo(() => Array.from(new Set(initialTrips.flatMap(t => t.amenities))), [initialTrips]);
 
   // Filter Logic
   const filteredTrips = useMemo(() => {
     return initialTrips.filter(trip => {
-      // Filter by Agency
-      if (selectedAgencies.length > 0 && !selectedAgencies.includes(trip.agencyName)) {
-        return false;
-      }
-
-      // Filter by Amenities (Must have ALL selected)
+      if (selectedAgencies.length > 0 && !selectedAgencies.includes(trip.agencyName)) return false;
       if (selectedAmenities.length > 0) {
         const hasAllAmenities = selectedAmenities.every(a => trip.amenities.includes(a));
         if (!hasAllAmenities) return false;
       }
-
-      // Filter by Time
       if (selectedTimes.length > 0) {
         const hour = parseInt(trip.departureTime.split(':')[0]);
         let period = '';
         if (hour >= 6 && hour < 12) period = 'morning';
         else if (hour >= 12 && hour < 18) period = 'afternoon';
         else period = 'evening';
-        
         if (!selectedTimes.includes(period)) return false;
       }
-
       return true;
     });
   }, [initialTrips, selectedAgencies, selectedAmenities, selectedTimes]);
 
-  // Sort trips
   const sortedTrips = [...filteredTrips].sort((a, b) => {
     if (sortOption === 'price') return a.price - b.price;
     if (sortOption === 'time') return a.departureTime.localeCompare(b.departureTime);
@@ -194,14 +229,9 @@ const SearchResultsPage: React.FC = () => {
 
   const handleTripSelect = (trip: Trip) => {
     window.scrollTo(0, 0);
-    // Reset filters for next step
     clearFilters();
-    
-    if (currentStep === 'outbound') {
-      setSelectedOutbound(trip);
-    } else if (currentStep === 'return') {
-      setSelectedReturn(trip);
-    }
+    if (currentStep === 'outbound') setSelectedOutbound(trip);
+    else if (currentStep === 'return') setSelectedReturn(trip);
   };
 
   const handleFilterChange = (type: 'time' | 'agency' | 'amenity', value: string) => {
@@ -209,7 +239,6 @@ const SearchResultsPage: React.FC = () => {
       if (prev.includes(value)) return prev.filter(item => item !== value);
       return [...prev, value];
     };
-
     if (type === 'time') setSelectedTimes(prev => updateList(prev));
     if (type === 'agency') setSelectedAgencies(prev => updateList(prev));
     if (type === 'amenity') setSelectedAmenities(prev => updateList(prev));
@@ -223,7 +252,6 @@ const SearchResultsPage: React.FC = () => {
   
   const handleProceedToCheckout = () => {
       if (!selectedOutbound) return;
-      
       const totalPassengers = searchParams.passengers.adults + searchParams.passengers.children;
       const outboundTotal = selectedOutbound.price * totalPassengers;
       const returnTotal = selectedReturn ? selectedReturn.price * totalPassengers : 0;
@@ -238,6 +266,22 @@ const SearchResultsPage: React.FC = () => {
       navigateTo('checkout');
   };
 
+  const openMapForStation = (e: React.MouseEvent, stationName: string) => {
+    e.stopPropagation();
+    const location = stationLocations[stationName];
+    if (location) {
+        setMapStation({
+            name: stationName,
+            lat: location.lat,
+            lng: location.lng,
+            address: location.address
+        });
+    } else {
+        // Fallback or alert if coordinates missing
+        alert("Carte non disponible pour cette gare.");
+    }
+  };
+
   const getAmenityIcon = (type: string) => {
     switch (type) {
       case 'wifi': return 'wifi';
@@ -249,9 +293,7 @@ const SearchResultsPage: React.FC = () => {
     }
   };
 
-  const getAmenityName = (type: string) => {
-    return t(`amenity.${type}`);
-  };
+  const getAmenityName = (type: string) => t(`amenity.${type}`);
 
   const formatDate = (dateString: string) => {
       try {
@@ -278,9 +320,13 @@ const SearchResultsPage: React.FC = () => {
         {/* Middle: Trip Details */}
         <div className="p-4 md:w-1/2 flex flex-col justify-center">
             <div className="flex items-center justify-between gap-4 mb-4">
-                <div className="text-center w-1/3">
+                <div className="text-center w-1/3 group relative">
                     <div className="text-2xl font-black text-text-main dark:text-white">{trip.departureTime}</div>
-                    <div className="text-xs text-text-muted truncate max-w-full" title={trip.departureLocation}>{trip.departureLocation}</div>
+                    <div className="flex items-center justify-center gap-1 text-xs text-text-muted cursor-pointer hover:text-primary transition-colors"
+                         onClick={(e) => openMapForStation(e, trip.departureLocation)}>
+                         <span className="truncate max-w-full" title={trip.departureLocation}>{trip.departureLocation}</span>
+                         <span className="material-symbols-outlined text-sm">map</span>
+                    </div>
                 </div>
                 <div className="flex-1 flex flex-col items-center">
                     <div className="text-xs text-text-muted mb-1">{trip.duration}</div>
@@ -343,7 +389,6 @@ const SearchResultsPage: React.FC = () => {
           <h1 className="text-3xl font-black text-text-main dark:text-white mb-8 text-center">{t('results.summary.title')}</h1>
           
           <div className="flex flex-col gap-8">
-            {/* Outbound Card */}
             <div>
               <div className="flex items-center gap-2 mb-2 text-text-muted font-bold text-sm uppercase tracking-wide">
                 <span className="material-symbols-outlined text-lg">flight_takeoff</span>
@@ -352,7 +397,6 @@ const SearchResultsPage: React.FC = () => {
               {selectedOutbound && renderTripCard(selectedOutbound, true)}
             </div>
 
-            {/* Return Card (if applicable) */}
             {selectedReturn && (
               <div>
                 <div className="flex items-center gap-2 mb-2 text-text-muted font-bold text-sm uppercase tracking-wide">
@@ -363,7 +407,6 @@ const SearchResultsPage: React.FC = () => {
               </div>
             )}
 
-            {/* Total & Checkout */}
             <div className="bg-white dark:bg-surface-dark rounded-xl p-6 shadow-lg border border-gray-200 dark:border-gray-800 flex flex-col md:flex-row items-center justify-between gap-6">
                <div className="text-center md:text-left">
                   <div className="text-sm text-text-muted mb-1">{t('results.summary.total')} ({totalPassengers} passengers)</div>
@@ -382,6 +425,26 @@ const SearchResultsPage: React.FC = () => {
             </button>
           </div>
         </div>
+        
+        {/* Map Modal (Shared for Summary view too if needed, though buttons hidden in summary usually) */}
+        {mapStation && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+                <div className="bg-white dark:bg-surface-dark w-full max-w-3xl rounded-2xl overflow-hidden shadow-2xl relative">
+                    <div className="p-4 flex justify-between items-center border-b border-gray-100 dark:border-gray-800">
+                        <div>
+                            <h3 className="font-bold text-lg text-text-main dark:text-white">{mapStation.name}</h3>
+                            <p className="text-xs text-text-muted">{mapStation.address}</p>
+                        </div>
+                        <button onClick={() => setMapStation(null)} className="size-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center hover:bg-red-100 hover:text-red-500 transition-colors">
+                            <span className="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+                    <div className="h-[400px] w-full bg-gray-100 relative">
+                        <div ref={mapRef} className="absolute inset-0 z-0" />
+                    </div>
+                </div>
+            </div>
+        )}
       </div>
     );
   }
@@ -398,7 +461,6 @@ const SearchResultsPage: React.FC = () => {
          )}
       </div>
 
-      {/* Departure Time */}
       <div>
         <h4 className="text-xs font-bold text-text-muted uppercase mb-3">{t('results.filter.departure_time')}</h4>
         <div className="space-y-2">
@@ -423,7 +485,6 @@ const SearchResultsPage: React.FC = () => {
 
       <div className="w-full h-px bg-gray-100 dark:bg-gray-800"></div>
 
-      {/* Agencies */}
       <div>
         <h4 className="text-xs font-bold text-text-muted uppercase mb-3">{t('results.filter.agencies')}</h4>
         <div className="space-y-2">
@@ -448,7 +509,6 @@ const SearchResultsPage: React.FC = () => {
 
       <div className="w-full h-px bg-gray-100 dark:bg-gray-800"></div>
 
-      {/* Amenities */}
       <div>
         <h4 className="text-xs font-bold text-text-muted uppercase mb-3">{t('results.filter.amenities')}</h4>
         <div className="space-y-2">
@@ -471,7 +531,6 @@ const SearchResultsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Mobile only apply button */}
       <div className="lg:hidden pt-4">
         <button 
           onClick={() => setIsFilterOpen(false)}
@@ -583,6 +642,26 @@ const SearchResultsPage: React.FC = () => {
             </div>
         </div>
       </div>
+
+      {/* Map Modal */}
+      {mapStation && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+            <div className="bg-white dark:bg-surface-dark w-full max-w-3xl rounded-2xl overflow-hidden shadow-2xl relative">
+                <div className="p-4 flex justify-between items-center border-b border-gray-100 dark:border-gray-800">
+                    <div>
+                        <h3 className="font-bold text-lg text-text-main dark:text-white">{mapStation.name}</h3>
+                        <p className="text-xs text-text-muted">{mapStation.address}</p>
+                    </div>
+                    <button onClick={() => setMapStation(null)} className="size-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center hover:bg-red-100 hover:text-red-500 transition-colors">
+                        <span className="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+                <div className="h-[400px] w-full bg-gray-100 relative">
+                    <div ref={mapRef} className="absolute inset-0 z-0" />
+                </div>
+            </div>
+        </div>
+      )}
 
       {/* Mobile Filter Modal */}
       {isFilterOpen && (
