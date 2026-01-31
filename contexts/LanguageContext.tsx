@@ -174,7 +174,8 @@ const translations = {
     "admin.dashboard": "Tableau de Bord",
     "admin.logout": "Déconnexion",
     "admin.welcome": "Bienvenue",
-
+    "admin.search": "Rechercher...",
+    
     // Super Admin
     "admin.super.role": "Administrateur Plateforme",
     "admin.super.agencies": "Toutes les Agences",
@@ -187,8 +188,18 @@ const translations = {
     "admin.agency.my_agency": "Mon Agence",
     "admin.agency.stations": "Mes Gares",
     "admin.agency.fleet": "Gestion de Flotte",
-    "admin.agency.staff": "Personnel & Chefs",
+    "admin.agency.routes": "Trajets & Horaires",
+    "admin.agency.staff": "Personnel",
     "admin.agency.revenue": "Chiffre d'Affaires",
+    "admin.fleet.add": "Ajouter Bus",
+    "admin.fleet.plate": "Immatriculation",
+    "admin.fleet.capacity": "Capacité",
+    "admin.fleet.status": "État",
+    "admin.route.add": "Créer Trajet",
+    "admin.route.origin": "Départ",
+    "admin.route.dest": "Arrivée",
+    "admin.route.time": "Heure",
+    "admin.route.price": "Prix",
 
     // Station Manager
     "admin.station.role": "Chef de Gare",
@@ -196,7 +207,10 @@ const translations = {
     "admin.station.ticketing": "Guichet",
     "admin.station.clients": "Clients & Passagers",
     "admin.station.daily_sales": "Ventes du Jour",
-    "admin.station.checkin": "Embarquement"
+    "admin.station.checkin": "Embarquement",
+    "admin.station.validate": "Valider Billet",
+    "admin.station.manifest": "Manifeste",
+    "admin.station.scan": "Scanner QR"
   },
   fr: {
     "nav.routes": "Itinéraires",
@@ -363,7 +377,8 @@ const translations = {
     "admin.dashboard": "Tableau de Bord",
     "admin.logout": "Déconnexion",
     "admin.welcome": "Bienvenue",
-
+    "admin.search": "Rechercher...",
+    
     // Super Admin
     "admin.super.role": "Administrateur Plateforme",
     "admin.super.agencies": "Toutes les Agences",
@@ -376,8 +391,18 @@ const translations = {
     "admin.agency.my_agency": "Mon Agence",
     "admin.agency.stations": "Mes Gares",
     "admin.agency.fleet": "Gestion de Flotte",
-    "admin.agency.staff": "Personnel & Chefs",
+    "admin.agency.routes": "Trajets & Horaires",
+    "admin.agency.staff": "Personnel",
     "admin.agency.revenue": "Chiffre d'Affaires",
+    "admin.fleet.add": "Ajouter Bus",
+    "admin.fleet.plate": "Immatriculation",
+    "admin.fleet.capacity": "Capacité",
+    "admin.fleet.status": "État",
+    "admin.route.add": "Créer Trajet",
+    "admin.route.origin": "Départ",
+    "admin.route.dest": "Arrivée",
+    "admin.route.time": "Heure",
+    "admin.route.price": "Prix",
 
     // Station Manager
     "admin.station.role": "Chef de Gare",
@@ -385,7 +410,10 @@ const translations = {
     "admin.station.ticketing": "Guichet",
     "admin.station.clients": "Clients & Passagers",
     "admin.station.daily_sales": "Ventes du Jour",
-    "admin.station.checkin": "Embarquement"
+    "admin.station.checkin": "Embarquement",
+    "admin.station.validate": "Valider Billet",
+    "admin.station.manifest": "Manifeste",
+    "admin.station.scan": "Scanner QR"
   }
 };
 

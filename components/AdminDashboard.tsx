@@ -20,6 +20,22 @@ interface Station {
   dailyRevenue?: number;
 }
 
+interface Bus {
+    id: string;
+    plate: string;
+    capacity: number;
+    status: 'active' | 'maintenance' | 'transit';
+    model: string;
+}
+
+interface Route {
+    id: number;
+    origin: string;
+    destination: string;
+    price: number;
+    schedule: string[];
+}
+
 interface AgencyData {
   id: number;
   name: string;
@@ -28,6 +44,8 @@ interface AgencyData {
   totalRevenue: number;
   stations: Station[];
   admin: Manager;
+  fleet: Bus[];
+  routes: Route[];
 }
 
 // --- MOCK DATA ---
@@ -42,6 +60,16 @@ const mockAgencies: AgencyData[] = [
     stations: [
       { id: 101, name: "Gare Centrale Douala", location: "Douala, Akwa", status: 'active', dailyRevenue: 450000, manager: { id: 1, name: "Jean Dupont", email: "jean.d@express.cm", phone: "+237 699 00 11 22", avatar: "JD" } },
       { id: 102, name: "Terminus Yaoundé", location: "Yaoundé, Mvan", status: 'active', dailyRevenue: 320000, manager: { id: 2, name: "Marie Ngu", email: "marie.n@express.cm", phone: "+237 677 22 33 44", avatar: "MN" } },
+    ],
+    fleet: [
+        { id: "B01", plate: "LT 123 AB", capacity: 70, status: 'active', model: "Yutong 2022" },
+        { id: "B02", plate: "LT 456 CD", capacity: 70, status: 'transit', model: "Yutong 2022" },
+        { id: "B03", plate: "CE 789 XY", capacity: 50, status: 'maintenance', model: "Toyota Coaster" },
+        { id: "B04", plate: "LT 999 ZZ", capacity: 70, status: 'active', model: "Mercedes Benz" }
+    ],
+    routes: [
+        { id: 1, origin: "Douala", destination: "Yaoundé", price: 4500, schedule: ["06:00", "08:00", "10:00", "14:00"] },
+        { id: 2, origin: "Douala", destination: "Bafoussam", price: 6000, schedule: ["07:00", "09:00", "13:00"] }
     ]
   },
   {
@@ -53,7 +81,11 @@ const mockAgencies: AgencyData[] = [
     admin: { id: 91, name: "Boss Green", email: "ceo@green.cm", phone: "...", avatar: "BG" },
     stations: [
       { id: 201, name: "Green Park Bamenda", location: "Bamenda", status: 'active', dailyRevenue: 210000, manager: { id: 3, name: "Peter Suh", email: "peter.suh@green.cm", phone: "+237 675 00 00 00", avatar: "PS" } },
-    ]
+    ],
+    fleet: [
+        { id: "G01", plate: "NW 111 AA", capacity: 60, status: 'active', model: "Toyota Coaster" },
+    ],
+    routes: []
   }
 ];
 
@@ -91,6 +123,7 @@ const AdminDashboard: React.FC = () => {
   const { t } = useLanguage();
   const { user, logout, login } = useNavigation();
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   // State for Demo Switching
   const [currentRole, setCurrentRole] = useState<UserRole>(user?.role || 'super_admin');
@@ -120,7 +153,152 @@ const AdminDashboard: React.FC = () => {
     return agency?.stations.find(s => s.id === user?.stationId);
   };
 
-  // --- RENDER CONTENT BASED ON ROLE ---
+  // --- COMPOSANTS DE VUES SPÉCIFIQUES ---
+
+  // VUE: GESTION DE FLOTTE (AGENCY)
+  const AgencyFleetView = ({ agency }: { agency: AgencyData }) => (
+      <div className="space-y-6 animate-fadeIn">
+        <div className="flex justify-between items-center">
+            <h3 className="text-xl font-bold text-text-main dark:text-white">{t('admin.agency.fleet')}</h3>
+            <button className="bg-primary text-text-main px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 hover:bg-[#0fd651]">
+                <span className="material-symbols-outlined text-lg">add</span>
+                {t('admin.fleet.add')}
+            </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {agency.fleet.map(bus => (
+                <div key={bus.id} className="bg-white dark:bg-surface-dark p-6 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm relative overflow-hidden group">
+                    <div className={`absolute top-0 right-0 p-2 ${bus.status === 'active' ? 'bg-green-100 text-green-700' : bus.status === 'maintenance' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'} rounded-bl-xl font-bold text-xs uppercase`}>
+                        {bus.status}
+                    </div>
+                    <div className="flex items-center gap-4 mb-4">
+                        <div className="size-14 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-text-muted">
+                            <span className="material-symbols-outlined text-3xl">directions_bus</span>
+                        </div>
+                        <div>
+                            <h4 className="font-black text-xl text-text-main dark:text-white">{bus.plate}</h4>
+                            <p className="text-sm text-text-muted">{bus.model}</p>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+                         <div>
+                             <span className="text-xs text-text-muted block">{t('admin.fleet.capacity')}</span>
+                             <span className="font-bold text-text-main dark:text-white">{bus.capacity} seats</span>
+                         </div>
+                         <div>
+                            <span className="text-xs text-text-muted block">Mileage</span>
+                            <span className="font-bold text-text-main dark:text-white">124k km</span>
+                         </div>
+                    </div>
+                </div>
+            ))}
+        </div>
+      </div>
+  );
+
+  // VUE: PLANIFICATION TRAJETS (AGENCY)
+  const AgencyRoutesView = ({ agency }: { agency: AgencyData }) => (
+      <div className="space-y-6 animate-fadeIn">
+          <div className="flex justify-between items-center">
+            <h3 className="text-xl font-bold text-text-main dark:text-white">{t('admin.agency.routes')}</h3>
+            <button className="bg-black dark:bg-white text-white dark:text-black px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 hover:opacity-90">
+                <span className="material-symbols-outlined text-lg">map</span>
+                {t('admin.route.add')}
+            </button>
+        </div>
+        
+        <div className="grid gap-4">
+            {agency.routes.map(route => (
+                <div key={route.id} className="bg-white dark:bg-surface-dark p-6 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                    <div className="flex items-center gap-4">
+                        <div className="flex flex-col items-center gap-1">
+                             <span className="text-xs font-bold text-text-muted">DEPART</span>
+                             <span className="font-black text-lg text-text-main dark:text-white">{route.origin}</span>
+                        </div>
+                        <span className="material-symbols-outlined text-text-muted">arrow_forward</span>
+                        <div className="flex flex-col items-center gap-1">
+                             <span className="text-xs font-bold text-text-muted">ARRIVEE</span>
+                             <span className="font-black text-lg text-text-main dark:text-white">{route.destination}</span>
+                        </div>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2">
+                         {route.schedule.map(time => (
+                             <span key={time} className="px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded-lg text-sm font-bold text-text-main dark:text-white">
+                                 {time}
+                             </span>
+                         ))}
+                         <button className="size-8 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-primary hover:text-primary">
+                             <span className="material-symbols-outlined text-sm">add</span>
+                         </button>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                        <span className="font-black text-xl text-primary">{route.price.toLocaleString()} CFA</span>
+                        <button className="text-text-muted hover:text-text-main"><span className="material-symbols-outlined">edit</span></button>
+                    </div>
+                </div>
+            ))}
+             {agency.routes.length === 0 && (
+                <div className="text-center py-12 text-text-muted">
+                    Aucun trajet configuré.
+                </div>
+            )}
+        </div>
+      </div>
+  );
+
+  // VUE: CHECK-IN / VALIDATION (STATION)
+  const StationCheckinView = () => (
+      <div className="max-w-2xl mx-auto space-y-8 animate-fadeIn">
+          <div className="bg-white dark:bg-surface-dark p-8 rounded-3xl shadow-lg border border-gray-100 dark:border-gray-800 text-center">
+              <div className="size-20 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <span className="material-symbols-outlined text-4xl text-primary">qr_code_scanner</span>
+              </div>
+              <h2 className="text-2xl font-black text-text-main dark:text-white mb-2">{t('admin.station.validate')}</h2>
+              <p className="text-text-muted mb-8">Scannez le QR code du passager ou entrez le numéro de billet manuellement.</p>
+              
+              <div className="flex gap-4 mb-6">
+                  <input 
+                    type="text" 
+                    placeholder="Ex: CB-94821" 
+                    className="flex-1 h-14 bg-gray-50 dark:bg-[#102216] border-2 border-gray-200 dark:border-gray-700 rounded-xl px-4 text-lg font-bold text-center uppercase tracking-widest focus:border-primary outline-none transition-colors"
+                  />
+                  <button className="h-14 px-8 bg-primary text-text-main font-bold rounded-xl hover:bg-[#0fd651] shadow-lg">
+                      OK
+                  </button>
+              </div>
+              <button className="flex items-center justify-center gap-2 w-full py-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl font-bold text-text-muted hover:border-primary hover:text-primary transition-colors">
+                  <span className="material-symbols-outlined">photo_camera</span>
+                  {t('admin.station.scan')}
+              </button>
+          </div>
+
+          {/* Liste rapide derniers checkins */}
+          <div>
+              <h3 className="text-sm font-bold text-text-muted uppercase mb-4">Derniers Passagers Validés</h3>
+              <div className="space-y-3">
+                  {[1,2,3].map(i => (
+                      <div key={i} className="flex items-center justify-between p-4 bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800">
+                          <div className="flex items-center gap-4">
+                              <div className="size-10 rounded-full bg-green-100 flex items-center justify-center text-green-700">
+                                  <span className="material-symbols-outlined">check</span>
+                              </div>
+                              <div>
+                                  <div className="font-bold text-text-main dark:text-white">Jean Michel</div>
+                                  <div className="text-xs text-text-muted">CB-8821{i} • Siège 4A</div>
+                              </div>
+                          </div>
+                          <div className="text-xs font-mono text-text-muted">14:32</div>
+                      </div>
+                  ))}
+              </div>
+          </div>
+      </div>
+  );
+
+  // --- RENDERING PRINCIPAL ---
 
   // 1. SUPER ADMIN VIEW
   const renderSuperAdmin = () => {
@@ -166,25 +344,29 @@ const AdminDashboard: React.FC = () => {
     );
   };
 
-  // 2. AGENCY ADMIN VIEW
+  // 2. AGENCY ADMIN VIEW (Switcher de vues)
   const renderAgencyAdmin = () => {
     const agency = getCurrentAgency();
     if (!agency) return <div>Agency not found</div>;
+
+    // Sub-routing interne simple
+    if (activeTab === 'fleet') return <AgencyFleetView agency={agency} />;
+    if (activeTab === 'stations') return <AgencyRoutesView agency={agency} />; // Remapping 'stations' tab to routes just for demo flow or create new tab
 
     return (
       <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
            <StatCard icon="store" label={t('admin.agency.stations')} value={agency.stations.length} color={agency.color} />
-           <StatCard icon="directions_bus" label="Total Bus" value="24" color="bg-gray-600" />
+           <StatCard icon="directions_bus" label="Total Bus" value={agency.fleet.length} color="bg-gray-600" />
            <StatCard icon="group" label={t('admin.agency.staff')} value="18" color="bg-blue-500" />
            <StatCard icon="payments" label={t('admin.agency.revenue')} value={`${(agency.totalRevenue / 1000000).toFixed(1)}M FCFA`} color="bg-green-600" />
         </div>
 
-        {/* Stations Management */}
+        {/* Stations Management Table */}
         <div className="bg-white dark:bg-surface-dark rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
-           <h3 className="text-xl font-bold text-text-main dark:text-white mb-6">Gestion des Gares</h3>
+           <h3 className="text-xl font-bold text-text-main dark:text-white mb-6">Performance des Gares</h3>
            <div className="overflow-x-auto">
-             <table className="w-full text-left">
+             <table className="w-full text-left min-w-[600px]">
                 <thead className="bg-gray-50 dark:bg-black/20 text-xs uppercase text-text-muted">
                    <tr>
                       <th className="p-4 rounded-l-lg">Nom de la Gare</th>
@@ -209,7 +391,7 @@ const AdminDashboard: React.FC = () => {
                         </td>
                         <td className="p-4 font-mono font-bold">{station.dailyRevenue?.toLocaleString()} FCFA</td>
                         <td className="p-4 text-right">
-                           <button className="text-text-muted hover:text-primary"><span className="material-symbols-outlined">edit</span></button>
+                           <button className="text-text-muted hover:text-primary"><span className="material-symbols-outlined">visibility</span></button>
                         </td>
                      </tr>
                    ))}
@@ -227,6 +409,8 @@ const AdminDashboard: React.FC = () => {
     const agency = getCurrentAgency();
     if (!station || !agency) return <div>Station info error</div>;
 
+    if (activeTab === 'checkin') return <StationCheckinView />;
+
     return (
       <div className="space-y-6">
         {/* Header specifically for Station Manager */}
@@ -241,11 +425,11 @@ const AdminDashboard: React.FC = () => {
               <div className="text-4xl font-black text-primary">{station.dailyRevenue?.toLocaleString()} FCFA</div>
            </div>
            <div className="relative z-10 flex gap-3">
-              <button className="bg-white/10 hover:bg-white/20 backdrop-blur-md px-4 py-3 rounded-xl font-bold flex flex-col items-center min-w-[100px]">
+              <button onClick={() => setActiveTab('ticketing')} className="bg-white/10 hover:bg-white/20 backdrop-blur-md px-4 py-3 rounded-xl font-bold flex flex-col items-center min-w-[100px] transition-all">
                  <span className="material-symbols-outlined text-2xl mb-1">point_of_sale</span>
                  <span>Vente</span>
               </button>
-              <button className="bg-primary text-text-main px-4 py-3 rounded-xl font-bold flex flex-col items-center min-w-[100px] hover:bg-[#0fd651]">
+              <button onClick={() => setActiveTab('checkin')} className="bg-primary text-text-main px-4 py-3 rounded-xl font-bold flex flex-col items-center min-w-[100px] hover:bg-[#0fd651] transition-all">
                  <span className="material-symbols-outlined text-2xl mb-1">qr_code_scanner</span>
                  <span>Scan</span>
               </button>
@@ -300,35 +484,35 @@ const AdminDashboard: React.FC = () => {
   // Sidebar Logic based on Role
   const renderSidebar = () => {
     return (
-      <nav className="flex-1 py-6 space-y-2 px-3">
-        <SidebarItem icon="dashboard" label={t('admin.dashboard')} isActive={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
+      <nav className="flex-1 py-6 space-y-2 px-3 overflow-y-auto">
+        <SidebarItem icon="dashboard" label={t('admin.dashboard')} isActive={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }} />
         
         {currentRole === 'super_admin' && (
           <>
-            <SidebarItem icon="business" label={t('admin.super.agencies')} isActive={activeTab === 'agencies'} onClick={() => setActiveTab('agencies')} />
-            <SidebarItem icon="group" label={t('admin.super.users')} isActive={activeTab === 'users'} onClick={() => {}} />
-            <SidebarItem icon="payments" label="Finances" isActive={activeTab === 'finance'} onClick={() => {}} />
+            <SidebarItem icon="business" label={t('admin.super.agencies')} isActive={activeTab === 'agencies'} onClick={() => { setActiveTab('agencies'); setIsSidebarOpen(false); }} />
+            <SidebarItem icon="group" label={t('admin.super.users')} isActive={activeTab === 'users'} onClick={() => setIsSidebarOpen(false)} />
+            <SidebarItem icon="payments" label="Finances" isActive={activeTab === 'finance'} onClick={() => setIsSidebarOpen(false)} />
           </>
         )}
 
         {currentRole === 'agency_admin' && (
           <>
-            <SidebarItem icon="store" label={t('admin.agency.stations')} isActive={activeTab === 'stations'} onClick={() => setActiveTab('stations')} />
-            <SidebarItem icon="directions_bus" label={t('admin.agency.fleet')} isActive={activeTab === 'fleet'} onClick={() => {}} />
-            <SidebarItem icon="badge" label={t('admin.agency.staff')} isActive={activeTab === 'staff'} onClick={() => {}} />
+            <SidebarItem icon="directions_bus" label={t('admin.agency.fleet')} isActive={activeTab === 'fleet'} onClick={() => { setActiveTab('fleet'); setIsSidebarOpen(false); }} />
+            <SidebarItem icon="map" label={t('admin.agency.routes')} isActive={activeTab === 'routes'} onClick={() => { setActiveTab('routes'); setIsSidebarOpen(false); }} />
+            <SidebarItem icon="badge" label={t('admin.agency.staff')} isActive={activeTab === 'staff'} onClick={() => setIsSidebarOpen(false)} />
           </>
         )}
 
         {currentRole === 'station_manager' && (
           <>
-             <SidebarItem icon="confirmation_number" label={t('admin.station.ticketing')} isActive={activeTab === 'ticketing'} onClick={() => {}} />
-             <SidebarItem icon="qr_code_scanner" label={t('admin.station.checkin')} isActive={activeTab === 'checkin'} onClick={() => {}} />
-             <SidebarItem icon="groups" label={t('admin.station.clients')} isActive={activeTab === 'clients'} onClick={() => {}} />
+             <SidebarItem icon="confirmation_number" label={t('admin.station.ticketing')} isActive={activeTab === 'ticketing'} onClick={() => setIsSidebarOpen(false)} />
+             <SidebarItem icon="qr_code_scanner" label={t('admin.station.checkin')} isActive={activeTab === 'checkin'} onClick={() => { setActiveTab('checkin'); setIsSidebarOpen(false); }} />
+             <SidebarItem icon="groups" label={t('admin.station.clients')} isActive={activeTab === 'clients'} onClick={() => setIsSidebarOpen(false)} />
           </>
         )}
 
         <div className="my-4 border-t border-gray-100 dark:border-gray-800"></div>
-        <SidebarItem icon="settings" label="Paramètres" isActive={activeTab === 'settings'} onClick={() => {}} />
+        <SidebarItem icon="settings" label="Paramètres" isActive={activeTab === 'settings'} onClick={() => setIsSidebarOpen(false)} />
       </nav>
     );
   };
@@ -353,13 +537,21 @@ const AdminDashboard: React.FC = () => {
 
   return (
     <div className="flex min-h-screen bg-gray-50 dark:bg-background-dark font-display">
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div className="fixed inset-0 bg-black/50 z-20 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>
+      )}
+
       {/* Sidebar Navigation */}
-      <aside className="w-20 lg:w-64 bg-white dark:bg-surface-dark border-r border-gray-200 dark:border-gray-800 flex flex-col fixed h-full z-10 transition-all">
-        <div className="h-16 flex items-center justify-center lg:justify-start lg:px-6 border-b border-gray-100 dark:border-gray-800">
-          <div className="size-8 rounded-lg bg-primary text-text-main flex items-center justify-center mr-0 lg:mr-3">
+      <aside className={`fixed inset-y-0 left-0 w-64 bg-white dark:bg-surface-dark border-r border-gray-200 dark:border-gray-800 flex flex-col z-30 transition-transform transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
+        <div className="h-16 flex items-center px-6 border-b border-gray-100 dark:border-gray-800">
+          <div className="size-8 rounded-lg bg-primary text-text-main flex items-center justify-center mr-3">
             <span className="material-symbols-outlined text-xl">admin_panel_settings</span>
           </div>
-          <span className="font-black text-xl text-text-main dark:text-white hidden lg:block">CamBus</span>
+          <span className="font-black text-xl text-text-main dark:text-white">CamBus</span>
+          <button onClick={() => setIsSidebarOpen(false)} className="ml-auto lg:hidden text-text-muted">
+              <span className="material-symbols-outlined">close</span>
+          </button>
         </div>
 
         {renderSidebar()}
@@ -367,45 +559,50 @@ const AdminDashboard: React.FC = () => {
         <div className="p-4 border-t border-gray-100 dark:border-gray-800">
            <button 
              onClick={logout}
-             className="flex items-center justify-center lg:justify-start gap-3 w-full p-3 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors font-bold"
+             className="flex items-center gap-3 w-full p-3 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors font-bold"
            >
              <span className="material-symbols-outlined">logout</span>
-             <span className="hidden lg:inline">{t('nav.logout')}</span>
+             <span>{t('nav.logout')}</span>
            </button>
         </div>
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 ml-20 lg:ml-64 p-6 lg:p-10 animate-fadeIn">
+      <main className="flex-1 lg:ml-64 p-4 lg:p-10 animate-fadeIn min-w-0">
         
         {/* Top Bar with Demo Switcher */}
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-          <div>
-             <div className="flex items-center gap-2 mb-1">
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold text-white uppercase tracking-wide ${getRoleColor(currentRole)}`}>
-                  {getRoleLabel(currentRole)}
-                </span>
-                {user?.role === 'station_manager' && (
-                  <span className="text-xs text-text-muted">• {getCurrentStation()?.name}</span>
-                )}
-                 {user?.role === 'agency_admin' && (
-                  <span className="text-xs text-text-muted">• {getCurrentAgency()?.name}</span>
-                )}
+          <div className="flex items-center gap-4">
+             <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 bg-white dark:bg-surface-dark rounded-lg shadow-sm">
+                 <span className="material-symbols-outlined">menu</span>
+             </button>
+             <div>
+                <div className="flex items-center gap-2 mb-1">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold text-white uppercase tracking-wide ${getRoleColor(currentRole)}`}>
+                    {getRoleLabel(currentRole)}
+                    </span>
+                    {user?.role === 'station_manager' && (
+                    <span className="text-xs text-text-muted">• {getCurrentStation()?.name}</span>
+                    )}
+                    {user?.role === 'agency_admin' && (
+                    <span className="text-xs text-text-muted">• {getCurrentAgency()?.name}</span>
+                    )}
+                </div>
+                <h2 className="text-2xl font-black text-text-main dark:text-white">
+                {t('admin.welcome')}, {user?.name || 'Admin'}
+                </h2>
              </div>
-             <h2 className="text-2xl font-black text-text-main dark:text-white">
-               {t('admin.welcome')}, {user?.name || 'Admin'}
-             </h2>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
              {/* DEMO ROLE SWITCHER */}
-             <div className="flex items-center bg-white dark:bg-surface-dark rounded-lg p-1 border border-gray-200 dark:border-gray-700 shadow-sm">
-                <button onClick={() => switchRole('super_admin')} className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${currentRole === 'super_admin' ? 'bg-gray-900 text-white' : 'text-text-muted hover:bg-gray-100 dark:hover:bg-gray-800'}`}>Super</button>
-                <button onClick={() => switchRole('agency_admin')} className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${currentRole === 'agency_admin' ? 'bg-gray-900 text-white' : 'text-text-muted hover:bg-gray-100 dark:hover:bg-gray-800'}`}>Agency</button>
-                <button onClick={() => switchRole('station_manager')} className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${currentRole === 'station_manager' ? 'bg-gray-900 text-white' : 'text-text-muted hover:bg-gray-100 dark:hover:bg-gray-800'}`}>Station</button>
+             <div className="flex items-center bg-white dark:bg-surface-dark rounded-lg p-1 border border-gray-200 dark:border-gray-700 shadow-sm overflow-x-auto max-w-full">
+                <button onClick={() => switchRole('super_admin')} className={`px-3 py-1.5 rounded text-xs font-bold transition-all whitespace-nowrap ${currentRole === 'super_admin' ? 'bg-gray-900 text-white' : 'text-text-muted hover:bg-gray-100 dark:hover:bg-gray-800'}`}>Super</button>
+                <button onClick={() => switchRole('agency_admin')} className={`px-3 py-1.5 rounded text-xs font-bold transition-all whitespace-nowrap ${currentRole === 'agency_admin' ? 'bg-gray-900 text-white' : 'text-text-muted hover:bg-gray-100 dark:hover:bg-gray-800'}`}>Agency</button>
+                <button onClick={() => switchRole('station_manager')} className={`px-3 py-1.5 rounded text-xs font-bold transition-all whitespace-nowrap ${currentRole === 'station_manager' ? 'bg-gray-900 text-white' : 'text-text-muted hover:bg-gray-100 dark:hover:bg-gray-800'}`}>Station</button>
              </div>
 
-             <div className="size-10 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden border-2 border-white dark:border-gray-600 shadow-sm">
+             <div className="hidden sm:block size-10 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden border-2 border-white dark:border-gray-600 shadow-sm">
                <div className="size-full flex items-center justify-center font-bold text-text-muted">
                  {user?.avatar || 'AD'}
                </div>
