@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
-import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
 
 const StationManagerDashboard: React.FC = () => {
-  const { t } = useLanguage();
   const { user, logout } = useNavigation();
   const [activeTab, setActiveTab] = useState('checkin');
 
