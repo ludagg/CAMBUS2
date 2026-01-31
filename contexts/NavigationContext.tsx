@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 
-type Page = 'home' | 'agencies' | 'results' | 'checkout' | 'login' | 'signup' | 'admin' | 'bookings';
+type Page = 'home' | 'agencies' | 'results' | 'checkout' | 'login' | 'signup' | 'bookings' | 'super_admin' | 'agency_admin' | 'station_manager';
 
 export interface SearchParams {
   from: string;
@@ -71,8 +71,16 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const login = (userData: User) => {
     setUser(userData);
-    if (['super_admin', 'agency_admin', 'station_manager'].includes(userData.role || '')) {
-      navigateTo('admin');
+    
+    // Redirection automatique basée sur le rôle
+    if (userData.role === 'super_admin') {
+      navigateTo('super_admin');
+    } else if (userData.role === 'agency_admin') {
+      navigateTo('agency_admin');
+    } else if (userData.role === 'station_manager') {
+      navigateTo('station_manager');
+    } else {
+      navigateTo('home');
     }
   };
 
