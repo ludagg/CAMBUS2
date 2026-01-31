@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useNavigation, SelectedTrip } from '../contexts/NavigationContext';
+import { useNavigation } from '../contexts/NavigationContext';
 
 interface Trip {
   id: number;
