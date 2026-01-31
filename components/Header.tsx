@@ -27,6 +27,9 @@ const Header: React.FC = () => {
         <a href="#" onClick={(e) => { e.preventDefault(); navigateTo('home'); }} className="text-text-main dark:text-gray-200 text-sm font-medium hover:text-primary transition-colors">{t('nav.routes')}</a>
         <a href="#" className="text-text-main dark:text-gray-200 text-sm font-medium hover:text-primary transition-colors">{t('nav.service')}</a>
         <a href="#" className="text-text-main dark:text-gray-200 text-sm font-medium hover:text-primary transition-colors">{t('nav.help')}</a>
+        {user && (
+          <a href="#" onClick={(e) => { e.preventDefault(); navigateTo('bookings'); }} className="text-text-main dark:text-gray-200 text-sm font-medium hover:text-primary transition-colors">{t('nav.bookings')}</a>
+        )}
       </nav>
       
       <div className="flex items-center gap-4">
@@ -71,6 +74,9 @@ const Header: React.FC = () => {
            <a href="#" onClick={(e) => { e.preventDefault(); navigateTo('home'); setIsMobileMenuOpen(false); }} className="py-3 px-4 text-text-main dark:text-gray-200 font-medium hover:bg-gray-100 dark:hover:bg-gray-800 rounded">{t('nav.routes')}</a>
            <a href="#" className="py-3 px-4 text-text-main dark:text-gray-200 font-medium hover:bg-gray-100 dark:hover:bg-gray-800 rounded">{t('nav.service')}</a>
            <a href="#" className="py-3 px-4 text-text-main dark:text-gray-200 font-medium hover:bg-gray-100 dark:hover:bg-gray-800 rounded">{t('nav.help')}</a>
+           {user && (
+              <a href="#" onClick={(e) => { e.preventDefault(); navigateTo('bookings'); setIsMobileMenuOpen(false); }} className="py-3 px-4 text-text-main dark:text-gray-200 font-medium hover:bg-gray-100 dark:hover:bg-gray-800 rounded">{t('nav.bookings')}</a>
+           )}
            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 flex flex-col gap-3">
              {user ? (
                  <button onClick={logout} className="w-full flex items-center justify-center rounded-lg h-10 px-6 bg-red-100 text-red-600 text-sm font-bold hover:bg-red-200 transition-colors">

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation, SelectedTrip } from '../contexts/NavigationContext';
 
@@ -87,6 +87,12 @@ const SearchResultsPage: React.FC = () => {
   const { searchParams, navigateTo, setBookingDetails } = useNavigation();
   const [sortOption, setSortOption] = useState<'price' | 'time' | 'duration'>('time');
   
+  // Filter State
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [selectedTimes, setSelectedTimes] = useState<string[]>([]);
+  const [selectedAgencies, setSelectedAgencies] = useState<string[]>([]);
+  const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
+
   // Selection State
   const [selectedOutbound, setSelectedOutbound] = useState<Trip | null>(null);
   const [selectedReturn, setSelectedReturn] = useState<Trip | null>(null);
@@ -109,14 +115,14 @@ const SearchResultsPage: React.FC = () => {
   }
 
   // Determine trips to display based on step
-  let tripsToDisplay: Trip[] = [];
+  let initialTrips: Trip[] = [];
   let stepTitle = "";
   let routeFrom = "";
   let routeTo = "";
   let routeDate = "";
 
   if (currentStep === 'outbound') {
-    tripsToDisplay = generateTrips(searchParams.from, searchParams.to, searchParams.date);
+    initialTrips = generateTrips(searchParams.from, searchParams.to, searchParams.date);
     stepTitle = t('results.step.outbound');
     routeFrom = searchParams.from;
     routeTo = searchParams.to;
@@ -126,14 +132,17 @@ const SearchResultsPage: React.FC = () => {
     const returnDateStr = searchParams.returnDate || searchParams.date;
     const allReturnTrips = generateTrips(searchParams.to, searchParams.from, returnDateStr);
 
-    // Filter to match strict requirements
+    // Filter to match strict requirements (same agency usually required for round trip deals, but here we keep it loose or same agency preferred)
+    // For simplicity, let's show all return trips but filtered by same agency if possible, or just all.
+    // Let's filter to match the outbound agency for a consistent ticket experience
     if (selectedOutbound) {
-      tripsToDisplay = allReturnTrips.filter(trip => 
-        trip.agencyName === selectedOutbound.agencyName &&
-        trip.departureLocation === selectedOutbound.arrivalLocation
+      initialTrips = allReturnTrips.filter(trip => 
+        trip.agencyName === selectedOutbound.agencyName
       );
+      // Fallback if no return trips from same agency (unlikely in this mock)
+      if (initialTrips.length === 0) initialTrips = allReturnTrips;
     } else {
-      tripsToDisplay = allReturnTrips;
+      initialTrips = allReturnTrips;
     }
 
     stepTitle = t('results.step.return');
@@ -142,8 +151,41 @@ const SearchResultsPage: React.FC = () => {
     routeDate = returnDateStr;
   }
 
+  // Extract unique filter options from current trip list
+  const availableAgencies = useMemo(() => Array.from(new Set(initialTrips.map(t => t.agencyName))), [initialTrips]);
+  const availableAmenities = useMemo(() => Array.from(new Set(initialTrips.flatMap(t => t.amenities))), [initialTrips]);
+
+  // Filter Logic
+  const filteredTrips = useMemo(() => {
+    return initialTrips.filter(trip => {
+      // Filter by Agency
+      if (selectedAgencies.length > 0 && !selectedAgencies.includes(trip.agencyName)) {
+        return false;
+      }
+
+      // Filter by Amenities (Must have ALL selected)
+      if (selectedAmenities.length > 0) {
+        const hasAllAmenities = selectedAmenities.every(a => trip.amenities.includes(a));
+        if (!hasAllAmenities) return false;
+      }
+
+      // Filter by Time
+      if (selectedTimes.length > 0) {
+        const hour = parseInt(trip.departureTime.split(':')[0]);
+        let period = '';
+        if (hour >= 6 && hour < 12) period = 'morning';
+        else if (hour >= 12 && hour < 18) period = 'afternoon';
+        else period = 'evening';
+        
+        if (!selectedTimes.includes(period)) return false;
+      }
+
+      return true;
+    });
+  }, [initialTrips, selectedAgencies, selectedAmenities, selectedTimes]);
+
   // Sort trips
-  const sortedTrips = [...tripsToDisplay].sort((a, b) => {
+  const sortedTrips = [...filteredTrips].sort((a, b) => {
     if (sortOption === 'price') return a.price - b.price;
     if (sortOption === 'time') return a.departureTime.localeCompare(b.departureTime);
     if (sortOption === 'duration') return a.duration.localeCompare(b.duration);
@@ -152,11 +194,31 @@ const SearchResultsPage: React.FC = () => {
 
   const handleTripSelect = (trip: Trip) => {
     window.scrollTo(0, 0);
+    // Reset filters for next step
+    clearFilters();
+    
     if (currentStep === 'outbound') {
       setSelectedOutbound(trip);
     } else if (currentStep === 'return') {
       setSelectedReturn(trip);
     }
+  };
+
+  const handleFilterChange = (type: 'time' | 'agency' | 'amenity', value: string) => {
+    const updateList = (prev: string[]) => {
+      if (prev.includes(value)) return prev.filter(item => item !== value);
+      return [...prev, value];
+    };
+
+    if (type === 'time') setSelectedTimes(prev => updateList(prev));
+    if (type === 'agency') setSelectedAgencies(prev => updateList(prev));
+    if (type === 'amenity') setSelectedAmenities(prev => updateList(prev));
+  };
+
+  const clearFilters = () => {
+    setSelectedTimes([]);
+    setSelectedAgencies([]);
+    setSelectedAmenities([]);
   };
   
   const handleProceedToCheckout = () => {
@@ -201,7 +263,7 @@ const SearchResultsPage: React.FC = () => {
   };
 
   const renderTripCard = (trip: Trip, isSummary = false) => (
-    <div key={trip.id} className={`bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm ${!isSummary ? 'hover:shadow-md transition-shadow' : ''} overflow-hidden flex flex-col md:flex-row mb-4`}>
+    <div key={trip.id} className={`bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm ${!isSummary ? 'hover:shadow-md transition-shadow' : ''} overflow-hidden flex flex-col md:flex-row mb-4 animate-fadeIn`}>
         {/* Left: Agency Info */}
         <div className="p-4 md:w-1/4 flex flex-row md:flex-col items-center gap-3 border-b md:border-b-0 md:border-r border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-black/10">
             <div className={`size-10 md:size-12 rounded-full ${trip.color} flex items-center justify-center text-white`}>
@@ -324,13 +386,110 @@ const SearchResultsPage: React.FC = () => {
     );
   }
 
+  // Filter Sidebar Component
+  const FilterSidebar = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+         <h3 className="text-lg font-bold text-text-main dark:text-white">{t('results.filter.title')}</h3>
+         {(selectedTimes.length > 0 || selectedAgencies.length > 0 || selectedAmenities.length > 0) && (
+           <button onClick={clearFilters} className="text-xs text-primary font-bold hover:underline">
+             {t('results.filter.clear')}
+           </button>
+         )}
+      </div>
+
+      {/* Departure Time */}
+      <div>
+        <h4 className="text-xs font-bold text-text-muted uppercase mb-3">{t('results.filter.departure_time')}</h4>
+        <div className="space-y-2">
+          {['morning', 'afternoon', 'evening'].map(period => (
+            <label key={period} className="flex items-center gap-3 cursor-pointer group">
+              <div className="relative flex items-center">
+                <input 
+                  type="checkbox" 
+                  checked={selectedTimes.includes(period)}
+                  onChange={() => handleFilterChange('time', period)}
+                  className="peer size-4 border-2 border-gray-300 dark:border-gray-600 rounded checked:bg-primary checked:border-primary transition-all appearance-none cursor-pointer"
+                />
+                <span className="absolute inset-0 text-white material-symbols-outlined text-[12px] flex items-center justify-center opacity-0 peer-checked:opacity-100 pointer-events-none">check</span>
+              </div>
+              <span className={`text-sm ${selectedTimes.includes(period) ? 'font-medium text-text-main dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}>
+                {t(`results.filter.${period}`)}
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="w-full h-px bg-gray-100 dark:bg-gray-800"></div>
+
+      {/* Agencies */}
+      <div>
+        <h4 className="text-xs font-bold text-text-muted uppercase mb-3">{t('results.filter.agencies')}</h4>
+        <div className="space-y-2">
+          {availableAgencies.map(agency => (
+             <label key={agency} className="flex items-center gap-3 cursor-pointer group">
+               <div className="relative flex items-center">
+                <input 
+                  type="checkbox" 
+                  checked={selectedAgencies.includes(agency)}
+                  onChange={() => handleFilterChange('agency', agency)}
+                  className="peer size-4 border-2 border-gray-300 dark:border-gray-600 rounded checked:bg-primary checked:border-primary transition-all appearance-none cursor-pointer"
+                />
+                <span className="absolute inset-0 text-white material-symbols-outlined text-[12px] flex items-center justify-center opacity-0 peer-checked:opacity-100 pointer-events-none">check</span>
+              </div>
+               <span className={`text-sm ${selectedAgencies.includes(agency) ? 'font-medium text-text-main dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}>
+                 {agency}
+               </span>
+             </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="w-full h-px bg-gray-100 dark:bg-gray-800"></div>
+
+      {/* Amenities */}
+      <div>
+        <h4 className="text-xs font-bold text-text-muted uppercase mb-3">{t('results.filter.amenities')}</h4>
+        <div className="space-y-2">
+          {availableAmenities.map(amenity => (
+             <label key={amenity} className="flex items-center gap-3 cursor-pointer group">
+               <div className="relative flex items-center">
+                <input 
+                  type="checkbox" 
+                  checked={selectedAmenities.includes(amenity)}
+                  onChange={() => handleFilterChange('amenity', amenity)}
+                  className="peer size-4 border-2 border-gray-300 dark:border-gray-600 rounded checked:bg-primary checked:border-primary transition-all appearance-none cursor-pointer"
+                />
+                <span className="absolute inset-0 text-white material-symbols-outlined text-[12px] flex items-center justify-center opacity-0 peer-checked:opacity-100 pointer-events-none">check</span>
+              </div>
+               <span className={`text-sm ${selectedAmenities.includes(amenity) ? 'font-medium text-text-main dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}>
+                 {getAmenityName(amenity)}
+               </span>
+             </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Mobile only apply button */}
+      <div className="lg:hidden pt-4">
+        <button 
+          onClick={() => setIsFilterOpen(false)}
+          className="w-full py-3 bg-primary text-text-main font-bold rounded-lg"
+        >
+          {t('results.filter.apply')}
+        </button>
+      </div>
+    </div>
+  );
+
   // VIEW: LIST (Outbound or Return)
   return (
     <div className="bg-background-light dark:bg-background-dark min-h-screen pb-20">
       
       {/* Search Summary Header */}
       <div className="bg-surface-light dark:bg-surface-dark border-b border-gray-200 dark:border-gray-800 shadow-sm sticky top-[72px] z-30">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-4">
              <div className="flex flex-col">
                 <div className="flex items-center gap-2 text-sm font-bold text-primary uppercase tracking-wider mb-1">
@@ -358,43 +517,87 @@ const SearchResultsPage: React.FC = () => {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-5xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-4 py-8">
         
-        {/* Filter & Sort Bar */}
-        <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-text-main dark:text-white">
-                {sortedTrips.length} {t('results.found')}
-            </h2>
-            <div className="flex items-center gap-2">
-                <span className="text-sm text-text-muted hidden sm:inline">{t('results.sort_by')}:</span>
-                <select 
-                    value={sortOption}
-                    onChange={(e) => setSortOption(e.target.value as any)}
-                    className="bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700 rounded-lg text-sm px-3 py-2 text-text-main dark:text-white focus:ring-2 focus:ring-primary outline-none"
-                >
-                    <option value="time">{t('results.sort.departure')}</option>
-                    <option value="price">{t('results.sort.price')}</option>
-                    <option value="duration">{t('results.sort.duration')}</option>
-                </select>
+        {/* Mobile Filter Toggle */}
+        <div className="lg:hidden flex gap-4 mb-4">
+           <button 
+             onClick={() => setIsFilterOpen(true)}
+             className="flex-1 py-3 bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700 rounded-lg font-bold text-text-main dark:text-white flex items-center justify-center gap-2 shadow-sm"
+           >
+             <span className="material-symbols-outlined">tune</span>
+             {t('results.filter.open')}
+             {(selectedTimes.length > 0 || selectedAgencies.length > 0 || selectedAmenities.length > 0) && (
+               <span className="size-2 rounded-full bg-primary"></span>
+             )}
+           </button>
+        </div>
+
+        <div className="flex flex-col lg:flex-row gap-8">
+            
+            {/* Sidebar Filters (Desktop) */}
+            <div className="hidden lg:block w-64 flex-shrink-0">
+               <div className="bg-white dark:bg-surface-dark p-6 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm sticky top-48">
+                  <FilterSidebar />
+               </div>
+            </div>
+
+            {/* Results Column */}
+            <div className="flex-1">
+                {/* Filter & Sort Bar */}
+                <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-xl font-bold text-text-main dark:text-white">
+                        {sortedTrips.length} {t('results.found')}
+                    </h2>
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm text-text-muted hidden sm:inline">{t('results.sort_by')}:</span>
+                        <select 
+                            value={sortOption}
+                            onChange={(e) => setSortOption(e.target.value as any)}
+                            className="bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700 rounded-lg text-sm px-3 py-2 text-text-main dark:text-white focus:ring-2 focus:ring-primary outline-none"
+                        >
+                            <option value="time">{t('results.sort.departure')}</option>
+                            <option value="price">{t('results.sort.price')}</option>
+                            <option value="duration">{t('results.sort.duration')}</option>
+                        </select>
+                    </div>
+                </div>
+
+                {/* Results List */}
+                <div className="flex flex-col">
+                    {sortedTrips.length > 0 ? (
+                        sortedTrips.map(trip => renderTripCard(trip))
+                    ) : (
+                        <div className="text-center py-12 bg-white dark:bg-surface-dark rounded-xl border border-gray-200 dark:border-gray-800">
+                           <div className="material-symbols-outlined text-6xl text-gray-300 dark:text-gray-700 mb-4">search_off</div>
+                           <h3 className="text-xl font-bold text-text-main dark:text-white mb-2">No trips found</h3>
+                           <p className="text-text-muted mb-4">
+                              Try adjusting your filters or search criteria.
+                           </p>
+                           <button onClick={clearFilters} className="text-primary font-bold hover:underline">
+                             {t('results.filter.clear')}
+                           </button>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
-
-        {/* Results List */}
-        <div className="flex flex-col">
-            {sortedTrips.length > 0 ? (
-                sortedTrips.map(trip => renderTripCard(trip))
-            ) : (
-                <div className="text-center py-12">
-                   <div className="material-symbols-outlined text-6xl text-gray-300 dark:text-gray-700 mb-4">search_off</div>
-                   <h3 className="text-xl font-bold text-text-main dark:text-white mb-2">No return trips found</h3>
-                   <p className="text-text-muted">
-                      No trips available from the same agency and station.
-                   </p>
-                </div>
-            )}
-        </div>
-
       </div>
+
+      {/* Mobile Filter Modal */}
+      {isFilterOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm animate-fadeIn">
+           <div className="w-full sm:w-[400px] bg-white dark:bg-surface-dark rounded-t-2xl sm:rounded-2xl p-6 max-h-[85vh] overflow-y-auto shadow-2xl animate-slideUp">
+              <div className="flex items-center justify-between mb-6">
+                 <h3 className="text-xl font-bold text-text-main dark:text-white">{t('results.filter.title')}</h3>
+                 <button onClick={() => setIsFilterOpen(false)} className="size-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                    <span className="material-symbols-outlined">close</span>
+                 </button>
+              </div>
+              <FilterSidebar />
+           </div>
+        </div>
+      )}
     </div>
   );
 };

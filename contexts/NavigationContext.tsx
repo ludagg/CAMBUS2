@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 
-type Page = 'home' | 'agencies' | 'results' | 'checkout' | 'login' | 'signup';
+type Page = 'home' | 'agencies' | 'results' | 'checkout' | 'login' | 'signup' | 'admin' | 'bookings';
 
 export interface SearchParams {
   from: string;
@@ -33,9 +33,15 @@ export interface BookingDetails {
   passengers: { adults: number; children: number };
 }
 
-interface User {
+export type UserRole = 'user' | 'super_admin' | 'agency_admin' | 'station_manager';
+
+export interface User {
   name: string;
   email: string;
+  role?: UserRole;
+  agencyId?: number; // Pour Agency Admin & Station Manager
+  stationId?: number; // Pour Station Manager uniquement
+  avatar?: string;
 }
 
 interface NavigationContextType {
@@ -52,7 +58,7 @@ interface NavigationContextType {
 
 const NavigationContext = createContext<NavigationContextType | undefined>(undefined);
 
-export const NavigationProvider = ({ children }: { children: ReactNode }) => {
+export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [currentPage, setCurrentPage] = useState<Page>('home');
   const [searchParams, setSearchParams] = useState<SearchParams | null>(null);
   const [bookingDetails, setBookingDetails] = useState<BookingDetails | null>(null);
@@ -65,6 +71,9 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
 
   const login = (userData: User) => {
     setUser(userData);
+    if (['super_admin', 'agency_admin', 'station_manager'].includes(userData.role || '')) {
+      navigateTo('admin');
+    }
   };
 
   const logout = () => {

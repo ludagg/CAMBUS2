@@ -1,8 +1,17 @@
 import React from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useNavigation } from '../contexts/NavigationContext';
 
 const Footer: React.FC = () => {
   const { t } = useLanguage();
+  const { login } = useNavigation();
+
+  const handleAdminAccess = (e: React.MouseEvent) => {
+    e.preventDefault();
+    // Default to Super Admin for the "Admin Access" link. 
+    // The user can switch roles inside the dashboard.
+    login({ name: 'Super Admin', email: 'admin@cambus.cm', role: 'super_admin', avatar: 'SA' });
+  };
 
   return (
     <footer className="bg-background-light dark:bg-background-dark border-t border-gray-200 dark:border-gray-800 pt-16 pb-8 px-6 md:px-10">
@@ -51,6 +60,7 @@ const Footer: React.FC = () => {
             <li><a href="#" className="hover:text-primary">{t('footer.link.careers')}</a></li>
             <li><a href="#" className="hover:text-primary">{t('footer.link.press')}</a></li>
             <li><a href="#" className="hover:text-primary">{t('footer.link.sustainability')}</a></li>
+            <li><a href="#" onClick={handleAdminAccess} className="hover:text-primary font-bold text-xs mt-4 block text-gray-500">Accès Administration (Demo)</a></li>
           </ul>
         </div>
       </div>

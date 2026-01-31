@@ -8,12 +8,19 @@ import Footer from './components/Footer';
 import AgenciesPage from './components/AgenciesPage';
 import SearchResultsPage from './components/SearchResultsPage';
 import CheckoutPage from './components/CheckoutPage';
+import AdminDashboard from './components/AdminDashboard';
+import BookingsPage from './components/BookingsPage';
 import { LoginPage, SignupPage } from './components/AuthPages';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { NavigationProvider, useNavigation } from './contexts/NavigationContext';
 
 const AppContent: React.FC = () => {
   const { currentPage } = useNavigation();
+
+  // If Admin Dashboard, we render a different layout (no standard Header/Footer inside the dashboard component itself)
+  if (currentPage === 'admin') {
+    return <AdminDashboard />;
+  }
 
   return (
     <div className="relative flex flex-col min-h-screen w-full">
@@ -32,6 +39,8 @@ const AppContent: React.FC = () => {
           <SearchResultsPage />
         ) : currentPage === 'checkout' ? (
           <CheckoutPage />
+        ) : currentPage === 'bookings' ? (
+          <BookingsPage />
         ) : currentPage === 'login' ? (
           <LoginPage />
         ) : (
