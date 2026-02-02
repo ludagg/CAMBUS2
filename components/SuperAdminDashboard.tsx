@@ -1,9 +1,93 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
+import { db } from '../firebase/config';
+import { 
+  collection, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  serverTimestamp 
+} from 'firebase/firestore';
+
+// --- TYPES ---
+interface City {
+  id: string; // ID Firestore est un string
+  name: string;
+  region: string;
+  status: 'active' | 'inactive';
+}
 
 const SuperAdminDashboard: React.FC = () => {
   const { logout } = useNavigation();
   const [activeTab, setActiveTab] = useState('overview');
+
+  // --- STATE POUR LES VILLES (FIRESTORE) ---
+  const [cities, setCities] = useState<City[]>([]);
+  const [isLoadingCities, setIsLoadingCities] = useState(true);
+
+  const [newCityName, setNewCityName] = useState('');
+  const [newCityRegion, setNewCityRegion] = useState('');
+
+  // --- EFFET DE CHARGEMENT TEMPS RÉEL (LISTENER) ---
+  useEffect(() => {
+    if (activeTab === 'cities' || activeTab === 'overview') {
+      const q = query(collection(db, 'cities'), orderBy('name'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const citiesData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as City[];
+        setCities(citiesData);
+        setIsLoadingCities(false);
+      });
+      return () => unsubscribe();
+    }
+  }, [activeTab]);
+
+  // --- ACTIONS VILLES (CRUD FIRESTORE) ---
+  const handleAddCity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCityName || !newCityRegion) return;
+
+    try {
+      await addDoc(collection(db, 'cities'), {
+        name: newCityName,
+        region: newCityRegion,
+        status: 'active',
+        createdAt: serverTimestamp()
+      });
+      setNewCityName('');
+      setNewCityRegion('');
+    } catch (error) {
+      console.error("Erreur lors de l'ajout de la ville:", error);
+      alert("Impossible d'ajouter la ville. Vérifiez vos droits d'accès.");
+    }
+  };
+
+  const toggleCityStatus = async (id: string, currentStatus: string) => {
+    try {
+      const cityRef = doc(db, 'cities', id);
+      await updateDoc(cityRef, {
+        status: currentStatus === 'active' ? 'inactive' : 'active'
+      });
+    } catch (error) {
+      console.error("Erreur lors de la mise à jour:", error);
+    }
+  };
+
+  const deleteCity = async (id: string) => {
+    if (window.confirm('Êtes-vous sûr de vouloir supprimer cette ville ? Cette action est irréversible.')) {
+      try {
+        await deleteDoc(doc(db, 'cities', id));
+      } catch (error) {
+        console.error("Erreur lors de la suppression:", error);
+      }
+    }
+  };
 
   // Sidebar item component
   const NavItem = ({ id, icon, label }: any) => (
@@ -32,6 +116,7 @@ const SuperAdminDashboard: React.FC = () => {
            <div className="text-xs font-bold text-gray-500 uppercase px-3 mb-2">Platform</div>
            <NavItem id="overview" icon="dashboard" label="Vue d'ensemble" />
            <NavItem id="agencies" icon="business" label="Agences" />
+           <NavItem id="cities" icon="location_city" label="Villes & Terminaux" />
            <NavItem id="users" icon="group" label="Utilisateurs" />
            
            <div className="text-xs font-bold text-gray-500 uppercase px-3 mb-2 mt-8">Finance</div>
@@ -59,6 +144,7 @@ const SuperAdminDashboard: React.FC = () => {
             <h1 className="text-3xl font-black">
                {activeTab === 'overview' && "Tableau de Bord"}
                {activeTab === 'agencies' && "Gestion des Agences"}
+               {activeTab === 'cities' && "Gestion des Villes"}
                {activeTab === 'users' && "Utilisateurs Inscrits"}
                {activeTab === 'revenue' && "Revenus Plateforme"}
             </h1>
@@ -68,6 +154,7 @@ const SuperAdminDashboard: React.FC = () => {
             </div>
          </header>
 
+         {/* VUE: TABLEAU DE BORD (OVERVIEW) */}
          {activeTab === 'overview' && (
            <div className="space-y-8 animate-fadeIn">
               {/* KPIs */}
@@ -85,8 +172,10 @@ const SuperAdminDashboard: React.FC = () => {
                     <div className="mt-4 text-gray-500 text-xs font-bold">Sur 6 inscrites</div>
                  </div>
                  <div className="bg-[#1a1a1a] p-6 rounded-2xl border border-gray-800">
-                    <div className="text-gray-400 text-sm font-bold mb-1">Billets Vendus</div>
-                    <div className="text-3xl font-black text-white">12,450</div>
+                    <div className="text-gray-400 text-sm font-bold mb-1">Villes Desservies</div>
+                    <div className="text-3xl font-black text-white">
+                        {isLoadingCities ? '...' : cities.filter(c => c.status === 'active').length}
+                    </div>
                  </div>
                  <div className="bg-[#1a1a1a] p-6 rounded-2xl border border-gray-800">
                     <div className="text-gray-400 text-sm font-bold mb-1">Commissions (10%)</div>
@@ -134,6 +223,7 @@ const SuperAdminDashboard: React.FC = () => {
            </div>
          )}
 
+         {/* VUE: GESTION DES AGENCES */}
          {activeTab === 'agencies' && (
              <div className="bg-[#1a1a1a] rounded-2xl border border-gray-800 p-8 text-center animate-fadeIn">
                 <div className="size-20 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -145,6 +235,93 @@ const SuperAdminDashboard: React.FC = () => {
                    Configuration Nouvelle Agence
                 </button>
              </div>
+         )}
+
+         {/* VUE: GESTION DES VILLES (CITIES) */}
+         {activeTab === 'cities' && (
+           <div className="space-y-6 animate-fadeIn">
+              
+              {/* Formulaire Ajout Rapide */}
+              <div className="bg-[#1a1a1a] p-6 rounded-2xl border border-gray-800">
+                 <h3 className="font-bold text-lg mb-4">Ajouter une nouvelle destination</h3>
+                 <form onSubmit={handleAddCity} className="flex gap-4">
+                    <div className="flex-1">
+                       <input 
+                         type="text" 
+                         placeholder="Nom de la ville (ex: Maroua)" 
+                         value={newCityName}
+                         onChange={(e) => setNewCityName(e.target.value)}
+                         className="w-full bg-black border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-primary outline-none"
+                       />
+                    </div>
+                    <div className="w-1/3">
+                       <select 
+                         value={newCityRegion}
+                         onChange={(e) => setNewCityRegion(e.target.value)}
+                         className="w-full bg-black border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-primary outline-none"
+                       >
+                         <option value="">Sélectionner Région</option>
+                         <option value="Centre">Centre</option>
+                         <option value="Littoral">Littoral</option>
+                         <option value="Ouest">Ouest</option>
+                         <option value="Nord">Nord</option>
+                         <option value="Extrême-Nord">Extrême-Nord</option>
+                         <option value="Adamaoua">Adamaoua</option>
+                         <option value="Est">Est</option>
+                         <option value="Sud">Sud</option>
+                         <option value="Nord-Ouest">Nord-Ouest</option>
+                         <option value="Sud-Ouest">Sud-Ouest</option>
+                       </select>
+                    </div>
+                    <button type="submit" className="bg-primary text-black font-bold px-6 py-3 rounded-lg hover:bg-white transition-colors flex items-center gap-2">
+                       <span className="material-symbols-outlined">add</span> Ajouter
+                    </button>
+                 </form>
+              </div>
+
+              {/* Liste des Villes */}
+              <div className="bg-[#1a1a1a] rounded-2xl border border-gray-800 p-6">
+                 <h3 className="font-bold text-lg mb-4">Villes Disponibles ({cities.length})</h3>
+                 
+                 {isLoadingCities ? (
+                    <div className="py-12 text-center text-gray-500">Chargement des données...</div>
+                 ) : cities.length === 0 ? (
+                    <div className="py-12 text-center text-gray-500">Aucune ville configurée. Commencez par en ajouter une.</div>
+                 ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {cities.map(city => (
+                        <div key={city.id} className="bg-black border border-gray-800 rounded-xl p-4 flex items-center justify-between group hover:border-gray-600 transition-colors">
+                            <div className="flex items-center gap-3">
+                                <div className={`size-10 rounded-lg flex items-center justify-center ${city.status === 'active' ? 'bg-blue-900/30 text-blue-500' : 'bg-gray-800 text-gray-500'}`}>
+                                    <span className="material-symbols-outlined">location_city</span>
+                                </div>
+                                <div>
+                                    <div className={`font-bold ${city.status === 'inactive' ? 'text-gray-500 line-through' : 'text-white'}`}>{city.name}</div>
+                                    <div className="text-xs text-gray-500">{city.region}</div>
+                                </div>
+                            </div>
+                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button 
+                                onClick={() => toggleCityStatus(city.id, city.status)} 
+                                title={city.status === 'active' ? "Désactiver" : "Activer"}
+                                className={`size-8 rounded-lg flex items-center justify-center ${city.status === 'active' ? 'bg-yellow-900/20 text-yellow-600 hover:bg-yellow-900/40' : 'bg-green-900/20 text-green-600 hover:bg-green-900/40'}`}
+                                >
+                                    <span className="material-symbols-outlined text-lg">{city.status === 'active' ? 'visibility_off' : 'visibility'}</span>
+                                </button>
+                                <button 
+                                onClick={() => deleteCity(city.id)}
+                                title="Supprimer"
+                                className="size-8 rounded-lg bg-red-900/20 text-red-500 hover:bg-red-900/40 flex items-center justify-center"
+                                >
+                                    <span className="material-symbols-outlined text-lg">delete</span>
+                                </button>
+                            </div>
+                        </div>
+                        ))}
+                    </div>
+                 )}
+              </div>
+           </div>
          )}
       </main>
     </div>

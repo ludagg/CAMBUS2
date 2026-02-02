@@ -1,201 +1,217 @@
-# Architecture et Spécifications Backend - CamBus
+# Architecture et Spécifications Backend - CamBus (Firebase Edition)
 
-Ce document sert de référence technique pour le développement du backend de l'application CamBus. Le backend sera développé avec **Next.js (App Router - API Routes)** et **PostgreSQL**. L'objectif est de fournir une API RESTful sécurisée, performante et scalable pour consommer le frontend React (Vite).
-
----
-
-## 1. Stack Technologique
-
-*   **Framework :** Next.js 14+ (Utilisation exclusive des "Route Handlers" pour l'API).
-*   **Langage :** TypeScript (Strict mode).
-*   **Base de Données :** PostgreSQL.
-*   **ORM :** Prisma (Recommandé pour la sécurité et le typage) ou Drizzle.
-*   **Authentification :** Auth.js (NextAuth) v5 ou Lucia Auth.
-*   **Validation :** Zod (pour valider les entrées API).
-*   **Paiement (Simulation) :** Intégration fictive avec webhooks pour Mobile Money/Stripe.
+Ce document sert de référence technique pour le développement du backend de l'application CamBus en utilisant **Firebase**. L'approche est "Serverless", tirant parti de Firestore pour la base de données, Firebase Auth pour l'identité, et Cloud Storage pour les médias.
 
 ---
 
-## 2. Sécurité & Communication Frontend-Backend
+## 1. Stack Technologique & Services
 
-La sécurité est la priorité absolue, étant donné la gestion de paiements et de données personnelles.
-
-### 2.1. Authentification & Sessions
-*   **Méthode :** Utilisation de **JWT (JSON Web Tokens)** stockés dans des **Cookies HTTP-Only, Secure, SameSite=Strict**.
-    *   *Pourquoi ?* Le stockage dans `localStorage` est vulnérable aux failles XSS. Les cookies HTTP-Only empêchent le JavaScript côté client de lire le token.
-*   **Flux :**
-    1.  Le Frontend envoie `email/password` à `/api/auth/login`.
-    2.  Le Backend valide, signe un JWT et renvoie un header `Set-Cookie`.
-    3.  Chaque requête suivante du Frontend inclut automatiquement ce cookie.
-
-### 2.2. Protection des Routes (Middleware)
-Un Middleware Next.js doit intercepter toutes les requêtes vers `/api/admin/*`, `/api/agency/*` et `/api/station/*`.
-*   Il décrypte le token.
-*   Il vérifie le champ `role` du user.
-*   Si le rôle ne correspond pas (ex: un `user` tente d'accéder à une route `super_admin`), renvoyer **403 Forbidden**.
-
-### 2.3. Sécurité des Données
-*   **Mots de passe :** Hachage obligatoire avec **Argon2** ou **Bcrypt**. Ne jamais stocker en clair.
-*   **Validation des Entrées :** Toutes les données reçues (Body, Query params) doivent passer par un schéma **Zod** avant d'atteindre la base de données.
-*   **CORS :** Configurer les headers CORS pour n'accepter que les requêtes provenant du domaine du Frontend (ex: `https://cambus-app.com`).
-*   **Rate Limiting :** Implémenter `upstash/ratelimit` ou une solution similaire sur les routes de login et de recherche pour éviter les attaques brute-force et DDoS.
+*   **Plateforme :** Firebase (Google Cloud Platform).
+*   **Base de Données :** Cloud Firestore (NoSQL Document Database).
+*   **Authentification :** Firebase Authentication.
+*   **Stockage Fichiers :** Cloud Storage for Firebase.
+*   **Hébergement :** Firebase Hosting (ou Vercel pour le frontend).
+*   **Logique Backend (Optionnel) :** Cloud Functions (pour les tâches complexes comme l'envoi d'emails ou le nettoyage de données).
 
 ---
 
-## 3. Structure de la Base de Données (PostgreSQL Schema)
+## 2. Authentification & Sécurité
 
-Voici le schéma relationnel conceptuel (ERD) à implémenter.
+### 2.1. Firebase Authentication
+*   **Providers :** Email/Mot de passe, Google Sign-In (optionnel).
+*   **Gestion des Rôles :** Les rôles (`SUPER_ADMIN`, `AGENCY_ADMIN`, `STATION_MANAGER`, `USER`) seront gérés via les **Custom Claims** de Firebase Auth ou stockés dans le document `users/{userId}`.
+    *   *Recommandation :* Stocker le rôle dans le document `public_profiles/{userId}` ou `users/{userId}` pour faciliter la lecture côté frontend, et utiliser des règles de sécurité Firestore basées sur ce document.
 
-### 3.1. Users & Roles
-```sql
-ENUM Role { USER, SUPER_ADMIN, AGENCY_ADMIN, STATION_MANAGER }
+### 2.2. Règles de Sécurité Firestore (Firestore Rules)
+C'est le pare-feu de l'application. Il ne faut jamais laisser la base de données en mode "test mode" (read/write: true).
 
-TABLE User {
-  id            UUID PRIMARY KEY,
-  email         VARCHAR UNIQUE NOT NULL,
-  passwordHash  VARCHAR NOT NULL,
-  fullName      VARCHAR NOT NULL,
-  role          Role DEFAULT USER,
-  agencyId      INT NULL, -- FK vers Agency (pour AgencyAdmin & StationManager)
-  stationId     INT NULL, -- FK vers Station (pour StationManager uniquement)
-  createdAt     TIMESTAMP
-}
-```
+**Exemple de stratégie de règles :**
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Fonction helper pour vérifier le rôle
+    function hasRole(role) {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    }
 
-### 3.2. Agencies & Infrastructure
-```sql
-TABLE Agency {
-  id            SERIAL PRIMARY KEY,
-  name          VARCHAR NOT NULL,
-  logoUrl       VARCHAR,
-  colorHex      VARCHAR,
-  contactEmail  VARCHAR,
-  status        ENUM('ACTIVE', 'SUSPENDED')
-}
+    // Collection USERS
+    match /users/{userId} {
+      allow read: if request.auth != null && (request.auth.uid == userId || hasRole('super_admin'));
+      allow write: if request.auth.uid == userId; // L'utilisateur peut modifier son profil
+    }
 
-TABLE Station {
-  id            SERIAL PRIMARY KEY,
-  agencyId      INT NOT NULL, -- FK Agency
-  name          VARCHAR NOT NULL,
-  address       VARCHAR NOT NULL,
-  gpsLat        FLOAT,
-  gpsLng        FLOAT,
-  city          VARCHAR NOT NULL
-}
+    // Collection AGENCIES
+    match /agencies/{agencyId} {
+      allow read: if true; // Public pour la recherche
+      allow write: if hasRole('super_admin') || (hasRole('agency_admin') && request.auth.token.agencyId == agencyId);
+    }
+    
+    // Collection CITIES (Villes)
+    match /cities/{cityId} {
+      allow read: if true; // Public pour la recherche
+      allow write: if hasRole('super_admin'); // Seul le super admin gère les villes
+    }
 
-TABLE Bus {
-  id            SERIAL PRIMARY KEY,
-  agencyId      INT NOT NULL,
-  plateNumber   VARCHAR UNIQUE NOT NULL,
-  model         VARCHAR,
-  capacity      INT NOT NULL, -- Ex: 70 places
-  status        ENUM('ACTIVE', 'MAINTENANCE', 'TRANSIT')
-}
-```
-
-### 3.3. Voyages (Core Business)
-**Concept clé :** Une `Route` est un modèle (ex: Douala->Yaoundé à 07:00). Un `Trip` est une instance concrète pour une date donnée (ex: Le Douala->Yaoundé du 25 Décembre).
-
-```sql
-TABLE Route {
-  id            SERIAL PRIMARY KEY,
-  agencyId      INT NOT NULL,
-  origin        VARCHAR NOT NULL,
-  destination   VARCHAR NOT NULL,
-  basePrice     DECIMAL NOT NULL,
-  departureTime TIME NOT NULL, -- 07:00
-  estimatedDur  VARCHAR -- "4h"
-}
-
-TABLE Trip {
-  id            SERIAL PRIMARY KEY,
-  routeId       INT NOT NULL, -- FK Route
-  busId         INT NULL,     -- FK Bus (assigné par Agency Admin)
-  date          DATE NOT NULL,
-  driverName    VARCHAR,
-  status        ENUM('SCHEDULED', 'BOARDING', 'DEPARTED', 'COMPLETED', 'CANCELLED'),
-  seatsAvailable INT NOT NULL -- Décrémenté à chaque résa
-}
-```
-
-### 3.4. Réservations & Paiements
-```sql
-TABLE Booking {
-  id            UUID PRIMARY KEY, -- C'est le Booking Reference (ex: CB-9821)
-  tripId        INT NOT NULL,
-  userId        UUID NOT NULL,
-  seatNumbers   VARCHAR[] NOT NULL, -- Array: ["1A", "1B"]
-  totalPrice    DECIMAL NOT NULL,
-  status        ENUM('PENDING', 'CONFIRMED', 'CANCELLED', 'BOARDED'),
-  qrCodeHash    VARCHAR UNIQUE NOT NULL, -- Hash pour validation
-  paymentRef    VARCHAR, -- ID Transaction externe
-  createdAt     TIMESTAMP
+    // Collection TRIPS
+    match /trips/{tripId} {
+      allow read: if true; // Public pour la recherche
+      allow write: if hasRole('agency_admin'); // Seuls les admins d'agence créent des trajets
+    }
+    
+    // Collection BOOKINGS
+    match /bookings/{bookingId} {
+      allow create: if request.auth != null; // Utilisateur connecté
+      allow read: if request.auth.uid == resource.data.userId || hasRole('station_manager');
+    }
+  }
 }
 ```
 
 ---
 
-## 4. Endpoints API & Logique Métier
+## 3. Modèle de Données (NoSQL - Firestore)
 
-### 4.1. Public & Recherche
-*   `GET /api/agencies` : Liste les agences actives.
-*   `GET /api/trips?from=Douala&to=Yaounde&date=2023-12-25` :
-    *   **Logique :** Cherche dans la table `Trip`. Si aucun `Trip` n'existe pour cette date mais qu'une `Route` existe, le backend peut "pré-générer" l'affichage, mais le `Trip` doit être créé en BDD au moment de la première réservation ou par un script CRON.
-    *   **Retourne :** Liste des voyages avec prix, horaires, places restantes.
+Contrairement au SQL, nous denormalisons les données pour optimiser la lecture.
 
-### 4.2. Flux de Réservation (Complexe)
-*   `POST /api/bookings/create`
-    *   **Body :** `{ tripId, seatNumbers[], paymentMethod, userDetails }`
-    *   **Transaction Critique (ACID) :**
-        1.  Démarrer une transaction SQL.
-        2.  Vérifier si les `seatNumbers` sont libres pour ce `tripId`. **Verrouiller les lignes (Row Locking)** pour éviter les doubles réservations simultanées.
-        3.  Si libre : Créer l'entrée `Booking` avec status `CONFIRMED` (si paiement réussi) et décrémenter `seatsAvailable` dans `Trip`.
-        4.  Générer le `qrCodeHash` unique.
-        5.  Commit transaction.
-        6.  Envoyer email de confirmation (asynchrone).
-    *   **Sécurité :** Vérifier que `totalPrice` correspond bien au `unitPrice * nbSeats` (ne pas faire confiance au prix envoyé par le frontend).
+### 3.1. Collection `users`
+Document ID : `auth.uid`
+```json
+{
+  "email": "user@example.com",
+  "fullName": "Jean Dupont",
+  "role": "user", // "super_admin", "agency_admin", "station_manager"
+  "agencyId": "agency_123", // Optionnel (pour le staff)
+  "stationId": "station_456", // Optionnel (pour le staff)
+  "createdAt": Timestamp
+}
+```
 
-### 4.3. Super Admin (`/api/admin/*`)
-*   `GET /stats` : Agrégation SQL (`SUM(totalPrice)`) sur toutes les réservations.
-*   `POST /agencies` : Créer une nouvelle agence et son compte Admin par défaut.
-*   `PATCH /agencies/:id/status` : Suspendre une agence (soft delete).
+### 3.2. Collection `agencies`
+Document ID : Auto-generated ou slug
+```json
+{
+  "name": "Express Voyage",
+  "logoUrl": "https://firebasestorage...",
+  "contactEmail": "contact@express.cm",
+  "colorHex": "#2563eb",
+  "status": "active",
+  "stats": { // Agrégation pour lecture rapide
+      "totalRoutes": 12,
+      "fleetSize": 45
+  }
+}
+```
 
-### 4.4. Agency Admin (`/api/agency/*`)
-*   **Middleware :** Vérifie que `user.agencyId` correspond aux ressources demandées.
-*   `GET /fleet` : Liste les bus.
-*   `POST /routes` : Créer des modèles de trajets.
-*   `GET /analytics` : Revenus par route, taux de remplissage des bus.
+### 3.3. Collection `stations`
+Document ID : Auto-generated
+```json
+{
+  "agencyId": "agency_123",
+  "name": "Gare Centrale Douala",
+  "location": { "lat": 4.05, "lng": 9.76 },
+  "city": "Douala",
+  "address": "Bd de la Liberté"
+}
+```
 
-### 4.5. Station Manager (`/api/station/*`)
-*   **Middleware :** Vérifie `user.role === STATION_MANAGER`.
-*   `POST /scan-ticket`
-    *   **Body :** `{ qrContent }`
-    *   **Logique :**
-        1.  Cherche le booking correspondant au hash.
-        2.  Vérifie que `booking.trip.date` est aujourd'hui.
-        3.  Vérifie que le départ est bien depuis la gare du manager (`user.stationId`).
-        4.  Si `status === 'CONFIRMED'`, le passer à `BOARDED` et renvoyer "OK + Numéro de Siège".
-        5.  Si `status === 'BOARDED'`, renvoyer "DÉJÀ VALIDÉ" (Alerte fraude).
-*   `GET /manifest/:tripId` : Liste de tous les passagers pour un départ donné (pour impression papier ou contrôle police).
+### 3.4. Collection `trips` (Trajets planifiés)
+Document ID : Auto-generated
+```json
+{
+  "agencyId": "agency_123",
+  "agencyName": "Express Voyage", // Dénormalisé pour éviter une requête supplémentaire
+  "agencyLogo": "...", // Dénormalisé
+  "origin": "Douala",
+  "destination": "Yaoundé",
+  "departureTime": "07:30", // Format HH:mm
+  "date": "2023-12-25", // Format YYYY-MM-DD pour requêtes simples
+  "price": 4500,
+  "totalSeats": 70,
+  "seatsAvailable": 68,
+  "seatsBooked": ["1A", "1B"], // Tableau des sièges occupés
+  "status": "scheduled" // scheduled, boarding, completed, cancelled
+}
+```
+
+### 3.5. Collection `bookings`
+Document ID : Auto-generated
+```json
+{
+  "userId": "user_xyz",
+  "tripId": "trip_abc",
+  "tripDate": "2023-12-25", // Dénormalisé
+  "tripRoute": "Douala - Yaoundé", // Dénormalisé
+  "seats": ["1A", "2B"],
+  "totalPrice": 9000,
+  "status": "confirmed",
+  "qrCodeString": "CB-TRIPABC-USERXYZ-TIMESTAMP",
+  "paymentMethod": "momo",
+  "createdAt": Timestamp
+}
+```
+
+### 3.6. Collection `cities` (Villes desservies)
+Document ID : Auto-generated
+```json
+{
+  "name": "Douala",
+  "region": "Littoral",
+  "status": "active", // active, inactive
+  "createdAt": Timestamp
+}
+```
 
 ---
 
-## 5. Gestion des Images
-Pour les logos des agences et avatars :
-*   Ne pas stocker les images en Base de Données (BLOB).
-*   Utiliser un service de stockage d'objets (AWS S3, Cloudinary, ou Vercel Blob).
-*   Stocker uniquement l'URL dans PostgreSQL (`logoUrl`).
+## 4. Logique Métier & Client-Side
+
+### 4.1. Recherche de Trajets
+Utiliser les index composites de Firestore.
+```javascript
+// Exemple de requête
+const q = query(
+  collection(db, "trips"),
+  where("origin", "==", "Douala"),
+  where("destination", "==", "Yaoundé"),
+  where("date", "==", "2023-12-25"),
+  where("seatsAvailable", ">", 0)
+);
+```
+
+### 4.2. Flux de Réservation (Transaction)
+Pour éviter les doubles réservations (race condition), utiliser une **Transaction Firestore**.
+
+1.  **Lire** le document `trip` pour vérifier si les sièges demandés ne sont pas dans `seatsBooked` et si `seatsAvailable` est suffisant.
+2.  **Si OK** :
+    *   Mettre à jour le document `trip` : ajouter les sièges à `seatsBooked`, décrémenter `seatsAvailable`.
+    *   Créer le document `booking`.
+3.  **Si KO** : Annuler la transaction et informer l'utilisateur.
+
+### 4.3. Scan QR Code (Station Manager)
+1.  Le manager scanne le QR code (qui contient l'ID du booking).
+2.  L'app requête `db.collection('bookings').doc(qrCodeId)`.
+3.  Vérification côté client (ou Cloud Function) :
+    *   Est-ce que le booking est pour aujourd'hui ?
+    *   Est-ce que le statut est `confirmed` ?
+4.  Update : Passer le statut à `boarded`.
 
 ---
 
-## 6. Liste de contrôle pour le Développement
+## 5. Stockage (Storage)
+Structure des dossiers :
+*   `/agencies/{agencyId}/logo.png`
+*   `/users/{userId}/avatar.jpg`
 
-1.  [ ] Initialiser projet Next.js + TypeScript.
-2.  [ ] Configurer Docker Compose pour PostgreSQL localement.
-3.  [ ] Écrire le schéma Prisma et exécuter `prisma migrate`.
-4.  [ ] Mettre en place Auth.js avec le provider "Credentials".
-5.  [ ] Créer le Seed script (peupler la BDD avec Super Admin et Agences de démo).
-6.  [ ] Développer l'API de recherche (`GET /trips`).
-7.  [ ] Développer la logique de transaction pour `POST /bookings`.
-8.  [ ] Implémenter le endpoint de scan QR sécurisé.
-9.  [ ] Sécuriser les headers (Helmet) et Rate Limiting.
+---
+
+## 6. Checklist de Migration & Développement
+
+1.  [x] Créer le projet Firebase Console.
+2.  [x] Ajouter la config dans `firebase/config.ts`.
+3.  [ ] Activer **Authentication** (Email/Password) dans la console.
+4.  [ ] Créer la base de données **Firestore** en mode production (règles strictes).
+5.  [ ] Développer un script de "Seed" pour remplir la base avec les données fictives (Agences, Gares, Trajets) afin que l'app ne soit pas vide.
+6.  [ ] Remplacer les appels `mockData` dans les composants React par des `getDocs` ou `onSnapshot` (pour le temps réel).
+7.  [ ] Implémenter le contexte d'authentification (`AuthProvider`) pour écouter `onAuthStateChanged`.
