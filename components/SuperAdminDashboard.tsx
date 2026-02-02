@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
-import { db } from '../firebase/config';
+import { db, auth } from '../firebase/config';
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { 
   collection, 
   addDoc, 
@@ -29,10 +30,37 @@ const SuperAdminDashboard: React.FC = () => {
   const [cities, setCities] = useState<City[]>([]);
   const [isLoadingCities, setIsLoadingCities] = useState(true);
 
+  // --- STATE AUTHENTIFICATION ---
+  const [isFireAuthReady, setIsFireAuthReady] = useState(false);
+  const [authStatus, setAuthStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
+
   const [newCityName, setNewCityName] = useState('');
   const [newCityRegion, setNewCityRegion] = useState('');
 
-  // --- EFFET DE CHARGEMENT TEMPS RÉEL (LISTENER) ---
+  // --- 1. AUTHENTIFICATION ANONYME AUTOMATIQUE ---
+  useEffect(() => {
+    // Vérifier si déjà connecté ou connecter anonymement
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setIsFireAuthReady(true);
+        setAuthStatus('connected');
+      } else {
+        signInAnonymously(auth)
+          .then(() => {
+            setIsFireAuthReady(true);
+            setAuthStatus('connected');
+          })
+          .catch((error) => {
+            console.error("Erreur Auth Anonyme:", error);
+            setAuthStatus('error');
+          });
+      }
+    });
+
+    return () => unsubscribeAuth();
+  }, []);
+
+  // --- 2. EFFET DE CHARGEMENT TEMPS RÉEL (LISTENER) ---
   useEffect(() => {
     if (activeTab === 'cities' || activeTab === 'overview') {
       const q = query(collection(db, 'cities'), orderBy('name'));
@@ -43,6 +71,9 @@ const SuperAdminDashboard: React.FC = () => {
         })) as City[];
         setCities(citiesData);
         setIsLoadingCities(false);
+      }, (error) => {
+        console.error("Erreur lecture villes:", error);
+        setIsLoadingCities(false);
       });
       return () => unsubscribe();
     }
@@ -52,6 +83,10 @@ const SuperAdminDashboard: React.FC = () => {
   const handleAddCity = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCityName || !newCityRegion) return;
+    if (!isFireAuthReady) {
+      alert("Connexion à la base de données en cours, veuillez patienter...");
+      return;
+    }
 
     try {
       await addDoc(collection(db, 'cities'), {
@@ -64,11 +99,12 @@ const SuperAdminDashboard: React.FC = () => {
       setNewCityRegion('');
     } catch (error) {
       console.error("Erreur lors de l'ajout de la ville:", error);
-      alert("Impossible d'ajouter la ville. Vérifiez vos droits d'accès.");
+      alert("Impossible d'ajouter la ville. Vérifiez la console pour les détails.");
     }
   };
 
   const toggleCityStatus = async (id: string, currentStatus: string) => {
+    if (!isFireAuthReady) return;
     try {
       const cityRef = doc(db, 'cities', id);
       await updateDoc(cityRef, {
@@ -80,6 +116,7 @@ const SuperAdminDashboard: React.FC = () => {
   };
 
   const deleteCity = async (id: string) => {
+    if (!isFireAuthReady) return;
     if (window.confirm('Êtes-vous sûr de vouloir supprimer cette ville ? Cette action est irréversible.')) {
       try {
         await deleteDoc(doc(db, 'cities', id));
@@ -132,6 +169,15 @@ const SuperAdminDashboard: React.FC = () => {
                  <div className="truncate text-xs text-gray-500">owner@cambus.cm</div>
               </div>
            </div>
+           
+           {/* Connection Status Indicator */}
+           <div className="px-3 mb-4 flex items-center gap-2 text-xs">
+              <div className={`size-2 rounded-full ${authStatus === 'connected' ? 'bg-green-500' : authStatus === 'error' ? 'bg-red-500' : 'bg-yellow-500 animate-pulse'}`}></div>
+              <span className="text-gray-500">
+                {authStatus === 'connected' ? 'DB Connectée (Auth Anon)' : authStatus === 'error' ? 'Erreur Connexion' : 'Connexion...'}
+              </span>
+           </div>
+
            <button onClick={logout} className="w-full py-2 bg-red-900/20 text-red-500 rounded-lg text-sm font-bold hover:bg-red-900/40 transition-colors">
               Déconnexion
            </button>
@@ -149,7 +195,7 @@ const SuperAdminDashboard: React.FC = () => {
                {activeTab === 'revenue' && "Revenus Plateforme"}
             </h1>
             <div className="flex items-center gap-4">
-               <span className="size-2 rounded-full bg-green-500 animate-pulse"></span>
+               <span className={`size-2 rounded-full ${isFireAuthReady ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
                <span className="text-sm font-mono text-gray-400">Système Opérationnel</span>
             </div>
          </header>
@@ -242,7 +288,7 @@ const SuperAdminDashboard: React.FC = () => {
            <div className="space-y-6 animate-fadeIn">
               
               {/* Formulaire Ajout Rapide */}
-              <div className="bg-[#1a1a1a] p-6 rounded-2xl border border-gray-800">
+              <div className={`bg-[#1a1a1a] p-6 rounded-2xl border border-gray-800 ${!isFireAuthReady ? 'opacity-50 pointer-events-none' : ''}`}>
                  <h3 className="font-bold text-lg mb-4">Ajouter une nouvelle destination</h3>
                  <form onSubmit={handleAddCity} className="flex gap-4">
                     <div className="flex-1">
@@ -273,7 +319,7 @@ const SuperAdminDashboard: React.FC = () => {
                          <option value="Sud-Ouest">Sud-Ouest</option>
                        </select>
                     </div>
-                    <button type="submit" className="bg-primary text-black font-bold px-6 py-3 rounded-lg hover:bg-white transition-colors flex items-center gap-2">
+                    <button type="submit" disabled={!isFireAuthReady} className="bg-primary text-black font-bold px-6 py-3 rounded-lg hover:bg-white transition-colors flex items-center gap-2 disabled:bg-gray-700 disabled:text-gray-400">
                        <span className="material-symbols-outlined">add</span> Ajouter
                     </button>
                  </form>
