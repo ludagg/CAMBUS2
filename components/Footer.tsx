@@ -4,13 +4,20 @@ import { useNavigation } from '../contexts/NavigationContext';
 
 const Footer: React.FC = () => {
   const { t } = useLanguage();
-  const { login } = useNavigation();
+  const { setUser, navigateTo } = useNavigation();
 
   const handleAdminAccess = (e: React.MouseEvent) => {
     e.preventDefault();
     // Default to Super Admin for the "Admin Access" link. 
     // The user can switch roles inside the dashboard.
-    login({ name: 'Super Admin', email: 'admin@cambus.cm', role: 'super_admin', avatar: 'SA' });
+    setUser({ 
+        uid: 'demo-super-admin', 
+        name: 'Super Admin', 
+        email: 'admin@cambus.cm', 
+        role: 'super_admin', 
+        avatar: 'SA' 
+    });
+    navigateTo('super_admin');
   };
 
   return (

@@ -121,7 +121,7 @@ const StatCard = ({ icon, label, value, color }: any) => (
 
 const AdminDashboard: React.FC = () => {
   const { t } = useLanguage();
-  const { user, logout, login } = useNavigation();
+  const { user, logout, setUser } = useNavigation();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
@@ -132,17 +132,17 @@ const AdminDashboard: React.FC = () => {
   const switchRole = (role: UserRole) => {
     setCurrentRole(role);
     // Determine context based on role for realism
-    let mockUser: User = { name: "Admin", email: "admin@test.com", role: role };
+    let mockUser: User = { uid: 'demo-admin', name: "Admin", email: "admin@test.com", role: role };
     
     if (role === 'super_admin') {
-      mockUser = { name: "Super Admin", email: "admin@cambus.cm", role: 'super_admin', avatar: "SA" };
+      mockUser = { uid: 'demo-super-admin', name: "Super Admin", email: "admin@cambus.cm", role: 'super_admin', avatar: "SA" };
     } else if (role === 'agency_admin') {
-      mockUser = { name: "Boss Express", email: "ceo@express.cm", role: 'agency_admin', agencyId: 1, avatar: "BE" };
+      mockUser = { uid: 'demo-agency-admin', name: "Boss Express", email: "ceo@express.cm", role: 'agency_admin', agencyId: 1, avatar: "BE" };
     } else if (role === 'station_manager') {
-      mockUser = { name: "Jean Dupont", email: "jean@express.cm", role: 'station_manager', agencyId: 1, stationId: 101, avatar: "JD" };
+      mockUser = { uid: 'demo-station-manager', name: "Jean Dupont", email: "jean@express.cm", role: 'station_manager', agencyId: 1, stationId: 101, avatar: "JD" };
     }
     
-    login(mockUser);
+    setUser(mockUser);
     setActiveTab('dashboard'); // Reset tab on switch
   };
 

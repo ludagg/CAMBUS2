@@ -1,34 +1,33 @@
 import React, { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useNavigation, UserRole } from '../contexts/NavigationContext';
+import { useNavigation } from '../contexts/NavigationContext';
 
 export const LoginPage: React.FC = () => {
   const { t } = useLanguage();
-  const { navigateTo, login, bookingDetails } = useNavigation();
+  const { navigateTo, login } = useNavigation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [selectedRole, setSelectedRole] = useState<UserRole>('user');
+  const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Simulation des données utilisateur basées sur le rôle choisi
-    let mockUser: any = { name: 'Utilisateur Standard', email, role: 'user', avatar: 'US' };
+    setError('');
+    setIsSubmitting(true);
 
-    if (selectedRole === 'super_admin') {
-      mockUser = { name: 'Super Admin', email: 'admin@cambus.cm', role: 'super_admin', avatar: 'SA' };
-    } else if (selectedRole === 'agency_admin') {
-      mockUser = { name: 'Directeur Express', email: 'boss@express.cm', role: 'agency_admin', agencyId: 1, avatar: 'DE' };
-    } else if (selectedRole === 'station_manager') {
-      mockUser = { name: 'Chef de Gare Douala', email: 'chef.douala@express.cm', role: 'station_manager', agencyId: 1, stationId: 101, avatar: 'CG' };
-    }
-
-    login(mockUser);
-    
-    // La redirection est gérée dans NavigationContext, 
-    // sauf si c'est un user normal avec une réservation en cours
-    if (selectedRole === 'user' && bookingDetails) {
-      navigateTo('checkout');
+    try {
+      await login(email, password);
+      // La redirection est gérée dans NavigationContext
+    } catch (err: any) {
+      console.error("Login error:", err);
+      if (err.code === 'auth/invalid-credential') {
+        setError("Email ou mot de passe incorrect.");
+      } else if (err.code === 'auth/too-many-requests') {
+        setError("Trop de tentatives. Veuillez réessayer plus tard.");
+      } else {
+        setError("Une erreur est survenue lors de la connexion.");
+      }
+      setIsSubmitting(false);
     }
   };
 
@@ -43,22 +42,13 @@ export const LoginPage: React.FC = () => {
            <p className="text-text-muted text-sm">{t('auth.login.subtitle')}</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-           {/* Role Selector for Demo Purposes */}
-           <div className="bg-gray-50 dark:bg-[#102216] p-3 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 mb-6">
-              <label className="block text-xs font-bold text-text-muted mb-2 uppercase text-center">--- CHOISIR LE RÔLE (DÉMO) ---</label>
-              <select 
-                value={selectedRole}
-                onChange={(e) => setSelectedRole(e.target.value as UserRole)}
-                className="w-full h-10 px-3 bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-600 rounded-lg text-sm font-bold text-text-main dark:text-white outline-none focus:ring-2 focus:ring-primary"
-              >
-                <option value="user">Passager (Site Public)</option>
-                <option value="super_admin">Super Admin (Plateforme)</option>
-                <option value="agency_admin">Admin Agence (Compagnie)</option>
-                <option value="station_manager">Chef de Gare (Opérations)</option>
-              </select>
-           </div>
+        {error && (
+            <div className="mb-4 p-3 bg-red-100 border border-red-200 text-red-700 rounded-lg text-sm text-center font-medium">
+                {error}
+            </div>
+        )}
 
+        <form onSubmit={handleSubmit} className="space-y-4">
            <div>
               <label className="block text-xs font-bold text-text-muted mb-1 uppercase">{t('auth.label.email')}</label>
               <input 
@@ -67,7 +57,7 @@ export const LoginPage: React.FC = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full h-12 px-4 bg-gray-50 dark:bg-[#102216] border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-text-main dark:text-white transition-all"
-                placeholder={selectedRole === 'user' ? 'votre@email.com' : 'admin@cambus.cm'}
+                placeholder="nom@exemple.com"
               />
            </div>
            <div>
@@ -82,7 +72,11 @@ export const LoginPage: React.FC = () => {
               />
            </div>
            
-           <button className="w-full h-12 bg-primary text-text-main font-bold rounded-xl hover:bg-[#0fd651] transition-colors mt-2 shadow-lg hover:shadow-xl">
+           <button 
+             disabled={isSubmitting}
+             className="w-full h-12 bg-primary text-text-main font-bold rounded-xl hover:bg-[#0fd651] transition-colors mt-2 shadow-lg hover:shadow-xl flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+           >
+              {isSubmitting && <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>}
               {t('auth.btn.login')}
            </button>
         </form>
@@ -102,19 +96,35 @@ export const LoginPage: React.FC = () => {
 
 export const SignupPage: React.FC = () => {
   const { t } = useLanguage();
-  const { navigateTo, login, bookingDetails } = useNavigation();
+  const { navigateTo, signup } = useNavigation();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    login({ name, email, role: 'user', avatar: 'NU' });
+    setError('');
+    setIsSubmitting(true);
 
-    if (bookingDetails) {
-      navigateTo('checkout');
-    } else {
-      navigateTo('home');
+    if (password.length < 6) {
+        setError("Le mot de passe doit contenir au moins 6 caractères.");
+        setIsSubmitting(false);
+        return;
+    }
+
+    try {
+        await signup(name, email, password);
+        // La redirection est gérée dans NavigationContext
+    } catch (err: any) {
+        console.error("Signup error:", err);
+        if (err.code === 'auth/email-already-in-use') {
+            setError("Cette adresse email est déjà utilisée.");
+        } else {
+            setError("Erreur lors de l'inscription. Vérifiez votre connexion.");
+        }
+        setIsSubmitting(false);
     }
   };
 
@@ -127,6 +137,17 @@ export const SignupPage: React.FC = () => {
            </div>
            <h1 className="text-2xl font-black text-text-main dark:text-white mb-2">{t('auth.signup.title')}</h1>
            <p className="text-text-muted text-sm">{t('auth.signup.subtitle')}</p>
+        </div>
+
+        {error && (
+            <div className="mb-4 p-3 bg-red-100 border border-red-200 text-red-700 rounded-lg text-sm text-center font-medium">
+                {error}
+            </div>
+        )}
+
+        <div className="mb-6 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300">
+            <p className="font-bold mb-1">💡 Astuce Admin :</p>
+            <p>Utilisez un email contenant <b>"admin"</b> pour créer automatiquement un compte Super Admin et accéder au tableau de bord.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -158,10 +179,15 @@ export const SignupPage: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full h-12 px-4 bg-gray-50 dark:bg-[#102216] border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-text-main dark:text-white transition-all"
+                minLength={6}
               />
            </div>
            
-           <button className="w-full h-12 bg-primary text-text-main font-bold rounded-xl hover:bg-[#0fd651] transition-colors mt-2 shadow-lg">
+           <button 
+             disabled={isSubmitting}
+             className="w-full h-12 bg-primary text-text-main font-bold rounded-xl hover:bg-[#0fd651] transition-colors mt-2 shadow-lg flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+           >
+              {isSubmitting && <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>}
               {t('auth.btn.signup')}
            </button>
         </form>

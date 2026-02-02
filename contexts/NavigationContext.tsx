@@ -1,4 +1,13 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { auth, db } from '../firebase/config';
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut, 
+  onAuthStateChanged,
+  User as FirebaseUser
+} from 'firebase/auth';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 type Page = 'home' | 'agencies' | 'results' | 'checkout' | 'login' | 'signup' | 'bookings' | 'super_admin' | 'agency_admin' | 'station_manager';
 
@@ -36,11 +45,12 @@ export interface BookingDetails {
 export type UserRole = 'user' | 'super_admin' | 'agency_admin' | 'station_manager';
 
 export interface User {
+  uid: string;
   name: string;
   email: string;
   role?: UserRole;
-  agencyId?: number; // Pour Agency Admin & Station Manager
-  stationId?: number; // Pour Station Manager uniquement
+  agencyId?: number;
+  stationId?: number;
   avatar?: string;
 }
 
@@ -52,8 +62,11 @@ interface NavigationContextType {
   bookingDetails: BookingDetails | null;
   setBookingDetails: (details: BookingDetails) => void;
   user: User | null;
-  login: (userData: User) => void;
-  logout: () => void;
+  setUser: (user: User | null) => void;
+  loading: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  signup: (name: string, email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
 }
 
 const NavigationContext = createContext<NavigationContextType | undefined>(undefined);
@@ -62,29 +75,104 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
   const [currentPage, setCurrentPage] = useState<Page>('home');
   const [searchParams, setSearchParams] = useState<SearchParams | null>(null);
   const [bookingDetails, setBookingDetails] = useState<BookingDetails | null>(null);
+  
+  // Auth State
   const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Écouter les changements d'état Firebase Auth
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // L'utilisateur est connecté, on récupère son profil complet dans Firestore
+        try {
+          const docRef = doc(db, 'users', firebaseUser.uid);
+          const docSnap = await getDoc(docRef);
+
+          if (docSnap.exists()) {
+            // Fusionner les données Auth et Firestore
+            setUser({ 
+              uid: firebaseUser.uid,
+              email: firebaseUser.email || '',
+              ...docSnap.data() 
+            } as User);
+          } else {
+            // Fallback si le document n'existe pas encore (rare)
+            setUser({
+              uid: firebaseUser.uid,
+              name: firebaseUser.displayName || 'Utilisateur',
+              email: firebaseUser.email || '',
+              role: 'user',
+              avatar: 'US'
+            });
+          }
+        } catch (error) {
+          console.error("Erreur récupération profil:", error);
+        }
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Redirection automatique basée sur le rôle après mise à jour du user
+  useEffect(() => {
+    if (!loading && user) {
+        // Ne rediriger que si on est sur la page de login/signup pour éviter de perturber la navigation
+        if (currentPage === 'login' || currentPage === 'signup') {
+            if (user.role === 'super_admin') navigateTo('super_admin');
+            else if (user.role === 'agency_admin') navigateTo('agency_admin');
+            else if (user.role === 'station_manager') navigateTo('station_manager');
+            else if (bookingDetails) navigateTo('checkout'); // Si réservation en cours
+            else navigateTo('home');
+        }
+    }
+  }, [user, loading, currentPage, bookingDetails]);
 
   const navigateTo = (page: Page) => {
     window.scrollTo(0, 0);
     setCurrentPage(page);
   };
 
-  const login = (userData: User) => {
-    setUser(userData);
-    
-    // Redirection automatique basée sur le rôle
-    if (userData.role === 'super_admin') {
-      navigateTo('super_admin');
-    } else if (userData.role === 'agency_admin') {
-      navigateTo('agency_admin');
-    } else if (userData.role === 'station_manager') {
-      navigateTo('station_manager');
-    } else {
-      navigateTo('home');
-    }
+  const login = async (email: string, password: string) => {
+    await signInWithEmailAndPassword(auth, email, password);
+    // L'état 'user' sera mis à jour par le listener onAuthStateChanged
   };
 
-  const logout = () => {
+  const signup = async (name: string, email: string, password: string) => {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const uid = userCredential.user.uid;
+
+    // Logique simple pour devenir Admin : si l'email contient "admin", on donne le rôle super_admin
+    // Dans une vraie app, cela se ferait via une Cloud Function sécurisée.
+    let role: UserRole = 'user';
+    let avatar = 'US';
+    
+    if (email.includes('admin')) {
+        role = 'super_admin';
+        avatar = 'SA';
+    } else if (email.includes('express')) {
+        role = 'agency_admin';
+        avatar = 'AG';
+    }
+
+    // Création du document utilisateur dans Firestore
+    await setDoc(doc(db, 'users', uid), {
+      name,
+      email,
+      role,
+      avatar,
+      createdAt: serverTimestamp()
+    });
+    
+    // L'état 'user' sera mis à jour par le listener
+  };
+
+  const logout = async () => {
+    await signOut(auth);
     setUser(null);
     navigateTo('home');
   };
@@ -98,7 +186,10 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
       bookingDetails, 
       setBookingDetails,
       user,
+      setUser,
+      loading,
       login,
+      signup,
       logout
     }}>
       {children}

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
-import { db, auth } from '../firebase/config';
-import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { db } from '../firebase/config';
 import { 
   collection, 
   addDoc, 
@@ -23,39 +22,15 @@ interface City {
 }
 
 const SuperAdminDashboard: React.FC = () => {
-  const { logout } = useNavigation();
+  const { user, logout } = useNavigation();
   const [activeTab, setActiveTab] = useState('overview');
 
   // --- STATE POUR LES VILLES (FIRESTORE) ---
   const [cities, setCities] = useState<City[]>([]);
   const [isLoadingCities, setIsLoadingCities] = useState(true);
 
-  // --- STATE AUTHENTIFICATION ---
-  const [authStatus, setAuthStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
-
   const [newCityName, setNewCityName] = useState('');
   const [newCityRegion, setNewCityRegion] = useState('');
-
-  // --- 1. AUTHENTIFICATION ANONYME AUTOMATIQUE ---
-  useEffect(() => {
-    // On essaie de se connecter, mais on ne bloque pas l'UI si ça échoue (cas du Test Mode)
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setAuthStatus('connected');
-      } else {
-        signInAnonymously(auth)
-          .then(() => {
-            setAuthStatus('connected');
-          })
-          .catch((error) => {
-            console.warn("Auth Anonyme échouée (Si Firestore est en mode Test, cela fonctionnera quand même):", error);
-            setAuthStatus('error');
-          });
-      }
-    });
-
-    return () => unsubscribeAuth();
-  }, []);
 
   // --- 2. EFFET DE CHARGEMENT TEMPS RÉEL (LISTENER) ---
   useEffect(() => {
@@ -93,7 +68,7 @@ const SuperAdminDashboard: React.FC = () => {
     } catch (error: any) {
       console.error("Erreur lors de l'ajout de la ville:", error);
       if (error.code === 'permission-denied') {
-          alert("ERREUR PERMISSION: Firestore refuse l'écriture.\n\nSolution rapide: Allez dans Firebase Console > Firestore > Règles et mettez 'allow read, write: if true;' (Mode Test).");
+          alert("ERREUR PERMISSION: Vous n'avez pas les droits pour écrire. Vérifiez que vous êtes bien connecté avec un compte 'super_admin'.");
       } else {
           alert(`Erreur technique: ${error.message}`);
       }
@@ -160,21 +135,15 @@ const SuperAdminDashboard: React.FC = () => {
 
         <div className="pt-6 border-t border-gray-800">
            <div className="flex items-center gap-3 px-3 mb-4">
-              <div className="size-10 rounded-full bg-gray-800 flex items-center justify-center font-bold text-gray-400 border border-gray-700">SA</div>
+              <div className="size-10 rounded-full bg-gray-800 flex items-center justify-center font-bold text-gray-400 border border-gray-700">
+                  {user?.avatar || 'SA'}
+              </div>
               <div className="flex-1 min-w-0">
-                 <div className="truncate font-bold text-sm">Super Admin</div>
-                 <div className="truncate text-xs text-gray-500">owner@cambus.cm</div>
+                 <div className="truncate font-bold text-sm">{user?.name}</div>
+                 <div className="truncate text-xs text-gray-500">{user?.email}</div>
               </div>
            </div>
            
-           {/* Connection Status Indicator */}
-           <div className="px-3 mb-4 flex items-center gap-2 text-xs">
-              <div className={`size-2 rounded-full ${authStatus === 'connected' ? 'bg-green-500' : authStatus === 'error' ? 'bg-yellow-500' : 'bg-yellow-500 animate-pulse'}`}></div>
-              <span className="text-gray-500">
-                {authStatus === 'connected' ? 'Connecté' : authStatus === 'error' ? 'Mode Dégradé (Check Logs)' : 'Connexion...'}
-              </span>
-           </div>
-
            <button onClick={logout} className="w-full py-2 bg-red-900/20 text-red-500 rounded-lg text-sm font-bold hover:bg-red-900/40 transition-colors">
               Déconnexion
            </button>
