@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
+import { db } from '../firebase/config';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 const SearchWidget: React.FC = () => {
   const { t } = useLanguage();
@@ -17,6 +19,26 @@ const SearchWidget: React.FC = () => {
   const [passengers, setPassengers] = useState({ adults: 1, children: 0 });
   const [isPassengerMenuOpen, setIsPassengerMenuOpen] = useState(false);
   const passengerMenuRef = useRef<HTMLDivElement>(null);
+
+  // Firestore Cities
+  const [availableCities, setAvailableCities] = useState<string[]>([]);
+
+  // Fetch Cities from Firestore
+  useEffect(() => {
+    const fetchCities = async () => {
+        try {
+            const q = query(collection(db, 'cities'), where('status', '==', 'active'));
+            const snapshot = await getDocs(q);
+            const cityNames = snapshot.docs.map(doc => doc.data().name);
+            setAvailableCities(cityNames.sort());
+        } catch (error) {
+            console.error("Error fetching cities for search:", error);
+            // Fallback defaults
+            setAvailableCities(["Douala", "Yaoundé", "Bafoussam", "Bamenda", "Kribi", "Garoua"]);
+        }
+    };
+    fetchCities();
+  }, []);
 
   // Close passenger menu when clicking outside
   useEffect(() => {
@@ -120,12 +142,17 @@ const SearchWidget: React.FC = () => {
           
           {/* From / To Group */}
           <div className="flex flex-col md:flex-row flex-1 w-full gap-2 relative">
+            <datalist id="cities-list">
+                {availableCities.map(city => <option key={city} value={city} />)}
+            </datalist>
+
             <div className="flex-1 relative group">
               <label className="block text-xs font-semibold text-text-muted dark:text-gray-400 mb-1.5 ml-1">{t('search.label.from')}</label>
               <div className="relative flex items-center">
                 <span className="material-symbols-outlined absolute left-4 text-gray-400">trip_origin</span>
                 <input 
                   type="text" 
+                  list="cities-list"
                   value={fromLocation}
                   onChange={(e) => setFromLocation(e.target.value)}
                   className="w-full h-12 pl-12 pr-4 bg-gray-50 dark:bg-[#102216] border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-text-main dark:text-white font-medium transition-all" 
@@ -149,6 +176,7 @@ const SearchWidget: React.FC = () => {
                 <span className="material-symbols-outlined absolute left-4 text-gray-400">location_on</span>
                 <input 
                   type="text" 
+                  list="cities-list"
                   value={toLocation}
                   onChange={(e) => setToLocation(e.target.value)}
                   className="w-full h-12 pl-12 pr-4 bg-gray-50 dark:bg-[#102216] border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-text-main dark:text-white font-medium transition-all" 
