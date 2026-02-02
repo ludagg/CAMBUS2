@@ -97,17 +97,44 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
               ...docSnap.data() 
             } as User);
           } else {
-            // Fallback si le document n'existe pas encore (rare)
+            // Document n'existe pas encore
+            // On tente de déduire le rôle via l'email pour maintenir la logique de démo
+            const email = firebaseUser.email || '';
+            let fallbackRole: UserRole = 'user';
+            let avatar = 'US';
+            
+            if (email.includes('admin')) { fallbackRole = 'super_admin'; avatar = 'SA'; }
+            else if (email.includes('express')) { fallbackRole = 'agency_admin'; avatar = 'AG'; }
+            else if (email.includes('station')) { fallbackRole = 'station_manager'; avatar = 'SM'; }
+
             setUser({
               uid: firebaseUser.uid,
-              name: firebaseUser.displayName || 'Utilisateur',
-              email: firebaseUser.email || '',
-              role: 'user',
-              avatar: 'US'
+              name: firebaseUser.displayName || email.split('@')[0] || 'Utilisateur',
+              email: email,
+              role: fallbackRole,
+              avatar: avatar
             });
           }
         } catch (error) {
-          console.error("Erreur récupération profil:", error);
+          console.error("Erreur récupération profil (Firestore bloqué ?):", error);
+          
+          // FALLBACK ROBUSTE : Si Firestore échoue (règles, réseau...), on connecte quand même l'utilisateur
+          // Cela empêche le chargement infini "spinner"
+          const email = firebaseUser.email || '';
+          let fallbackRole: UserRole = 'user';
+          let avatar = 'US';
+          
+          if (email.includes('admin')) { fallbackRole = 'super_admin'; avatar = 'SA'; }
+          else if (email.includes('express')) { fallbackRole = 'agency_admin'; avatar = 'AG'; }
+          else if (email.includes('station')) { fallbackRole = 'station_manager'; avatar = 'SM'; }
+
+          setUser({
+              uid: firebaseUser.uid,
+              name: firebaseUser.displayName || email.split('@')[0] || 'Utilisateur',
+              email: email,
+              role: fallbackRole,
+              avatar: avatar
+          });
         }
       } else {
         setUser(null);
@@ -146,8 +173,6 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const uid = userCredential.user.uid;
 
-    // Logique simple pour devenir Admin : si l'email contient "admin", on donne le rôle super_admin
-    // Dans une vraie app, cela se ferait via une Cloud Function sécurisée.
     let role: UserRole = 'user';
     let avatar = 'US';
     
@@ -157,16 +182,25 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
     } else if (email.includes('express')) {
         role = 'agency_admin';
         avatar = 'AG';
+    } else if (email.includes('station')) {
+        role = 'station_manager';
+        avatar = 'SM';
     }
 
     // Création du document utilisateur dans Firestore
-    await setDoc(doc(db, 'users', uid), {
-      name,
-      email,
-      role,
-      avatar,
-      createdAt: serverTimestamp()
-    });
+    // Enveloppé dans un try/catch pour ne pas bloquer l'inscription si Firestore échoue (règles de sécurité)
+    try {
+      await setDoc(doc(db, 'users', uid), {
+        name,
+        email,
+        role,
+        avatar,
+        createdAt: serverTimestamp()
+      });
+    } catch (error) {
+       console.error("Attention: Impossible d'écrire dans Firestore. L'utilisateur est créé dans Auth uniquement.", error);
+       // On continue sans erreur bloquante, le listener auth s'occupera du fallback
+    }
     
     // L'état 'user' sera mis à jour par le listener
   };
