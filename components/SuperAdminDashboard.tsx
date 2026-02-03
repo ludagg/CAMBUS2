@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigation } from '../contexts/NavigationContext';
+import { useNavigation, UserRole } from '../contexts/NavigationContext';
 import { db } from '../firebase/config';
 import { 
   collection, 
@@ -10,7 +10,9 @@ import {
   onSnapshot, 
   query, 
   orderBy, 
-  serverTimestamp 
+  serverTimestamp,
+  writeBatch,
+  limit
 } from 'firebase/firestore';
 
 // --- TYPES ---
@@ -28,56 +30,70 @@ interface Agency {
   email: string;
   color: string;
   status: 'active' | 'inactive';
-  createdAt?: any;
+  revenue?: number;
 }
 
 interface PlatformUser {
   uid: string;
   name: string;
   email: string;
-  role: string;
+  role: UserRole;
   avatar?: string;
   createdAt?: any;
+}
+
+interface Transaction {
+  id: string;
+  userName: string;
+  amount: number;
+  agencyName: string;
+  date: any;
+  status: string;
 }
 
 const SuperAdminDashboard: React.FC = () => {
   const { user, logout } = useNavigation();
   const [activeTab, setActiveTab] = useState('overview');
-
-  // --- STATES ---
+  
+  // Data States
   const [cities, setCities] = useState<City[]>([]);
   const [agencies, setAgencies] = useState<Agency[]>([]);
-  const [platformUsers, setPlatformUsers] = useState<PlatformUser[]>([]);
+  const [users, setUsers] = useState<PlatformUser[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Forms States
-  const [newCityName, setNewCityName] = useState('');
-  const [newCityRegion, setNewCityRegion] = useState('');
-  
-  const [newAgencyName, setNewAgencyName] = useState('');
-  const [newAgencyEmail, setNewAgencyEmail] = useState('');
-  const [newAgencyColor, setNewAgencyColor] = useState('#13ec5b');
+  // UI States
+  const [isAgencyModalOpen, setIsAgencyModalOpen] = useState(false);
+  const [editingAgency, setEditingAgency] = useState<Agency | null>(null);
+  const [agencyForm, setAgencyForm] = useState({ name: '', email: '', color: '#13ec5b' });
+  const [newCity, setNewCity] = useState({ name: '', region: 'Centre' });
 
-  // --- FIRESTORE LISTENERS ---
+  // --- FIRESTORE REALTIME LISTENERS ---
   useEffect(() => {
     setIsLoading(true);
     
-    // Villes
-    const qCities = query(collection(db, 'cities'), orderBy('name'));
-    const unsubCities = onSnapshot(qCities, (snap) => {
+    const unsubCities = onSnapshot(query(collection(db, 'cities'), orderBy('name')), (snap) => {
       setCities(snap.docs.map(d => ({ id: d.id, ...d.data() } as City)));
     });
 
-    // Agences
-    const qAgencies = query(collection(db, 'agencies'), orderBy('name'));
-    const unsubAgencies = onSnapshot(qAgencies, (snap) => {
+    const unsubAgencies = onSnapshot(query(collection(db, 'agencies'), orderBy('name')), (snap) => {
       setAgencies(snap.docs.map(d => ({ id: d.id, ...d.data() } as Agency)));
     });
 
-    // Utilisateurs
-    const qUsers = query(collection(db, 'users'), orderBy('email'));
-    const unsubUsers = onSnapshot(qUsers, (snap) => {
-      setPlatformUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as PlatformUser)));
+    const unsubUsers = onSnapshot(query(collection(db, 'users'), orderBy('name')), (snap) => {
+      setUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as PlatformUser)));
+    });
+
+    // Mock/Real Transactions
+    const unsubTrans = onSnapshot(query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(10)), (snap) => {
+      setTransactions(snap.docs.map(d => ({ 
+        id: d.id, 
+        userName: d.data().passengerName || 'Client',
+        amount: d.data().totalPrice || 0,
+        agencyName: d.data().agencyName || 'CamBus',
+        date: d.data().createdAt,
+        status: d.data().status || 'completed'
+      } as Transaction)));
       setIsLoading(false);
     });
 
@@ -85,341 +101,463 @@ const SuperAdminDashboard: React.FC = () => {
       unsubCities();
       unsubAgencies();
       unsubUsers();
+      unsubTrans();
     };
   }, []);
 
-  // --- ACTIONS: CITIES ---
-  const handleAddCity = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCityName || !newCityRegion) return;
-    try {
-      await addDoc(collection(db, 'cities'), {
-        name: newCityName,
-        region: newCityRegion,
-        status: 'active',
-        createdAt: serverTimestamp()
-      });
-      setNewCityName('');
-      setNewCityRegion('');
-    } catch (err) { alert("Erreur: " + err); }
+  // --- ACTIONS ---
+
+  const handleSeedData = async () => {
+    const batch = writeBatch(db);
+    const demoCities = [
+      { name: "Douala", region: "Littoral", status: "active" },
+      { name: "Yaoundé", region: "Centre", status: "active" },
+      { name: "Bafoussam", region: "Ouest", status: "active" },
+      { name: "Kribi", region: "Sud", status: "active" },
+      { name: "Garoua", region: "Nord", status: "active" }
+    ];
+    demoCities.forEach(city => {
+      const ref = doc(collection(db, 'cities'));
+      batch.set(ref, { ...city, createdAt: serverTimestamp() });
+    });
+    await batch.commit();
+    alert("Villes initialisées !");
   };
 
-  const deleteCity = async (id: string) => {
-    if (confirm('Supprimer cette ville ?')) await deleteDoc(doc(db, 'cities', id));
+  const addCity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCity.name) return;
+    await addDoc(collection(db, 'cities'), { ...newCity, status: 'active', createdAt: serverTimestamp() });
+    setNewCity({ name: '', region: 'Centre' });
   };
 
-  // --- ACTIONS: AGENCIES ---
-  const handleAddAgency = async (e: React.FormEvent) => {
+  const saveAgency = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAgencyName || !newAgencyEmail) return;
-    try {
-      await addDoc(collection(db, 'agencies'), {
-        name: newAgencyName,
-        email: newAgencyEmail,
-        color: newAgencyColor,
-        logo: 'directions_bus',
-        status: 'active',
-        createdAt: serverTimestamp()
+    if (editingAgency) {
+      await updateDoc(doc(db, 'agencies', editingAgency.id), { ...agencyForm });
+    } else {
+      await addDoc(collection(db, 'agencies'), { 
+        ...agencyForm, 
+        logo: 'directions_bus', 
+        status: 'active', 
+        createdAt: serverTimestamp() 
       });
-      setNewAgencyName('');
-      setNewAgencyEmail('');
-    } catch (err) { alert("Erreur: " + err); }
+    }
+    setAgencyForm({ name: '', email: '', color: '#13ec5b' });
+    setEditingAgency(null);
+    setIsAgencyModalOpen(false);
   };
 
   const toggleAgencyStatus = async (id: string, current: string) => {
-    await updateDoc(doc(db, 'agencies', id), {
-      status: current === 'active' ? 'inactive' : 'active'
+    await updateDoc(doc(db, 'agencies', id), { 
+      status: current === 'active' ? 'inactive' : 'active' 
     });
   };
 
-  const deleteAgency = async (id: string) => {
-    if (confirm('Supprimer cette agence ?')) await deleteDoc(doc(db, 'agencies', id));
+  const deleteDocItem = async (col: string, id: string) => {
+    if (confirm("Confirmer la suppression ?")) await deleteDoc(doc(db, col, id));
   };
 
-  // --- RENDER HELPERS ---
+  const updateUserRole = async (uid: string, newRole: UserRole) => {
+    await updateDoc(doc(db, 'users', uid), { role: newRole });
+  };
+
+  // --- HELPERS ---
+  const totalRevenue = transactions.reduce((acc, curr) => acc + curr.amount, 0);
+
   const NavItem = ({ id, icon, label }: any) => (
     <button 
       onClick={() => setActiveTab(id)}
-      className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all font-bold ${activeTab === id ? 'bg-white text-black shadow-md' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}
+      className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${
+        activeTab === id 
+          ? 'bg-primary text-black font-black shadow-xl shadow-primary/20 scale-[1.02]' 
+          : 'text-gray-500 hover:bg-white/5 hover:text-white'
+      }`}
     >
-      <span className="material-symbols-outlined">{icon}</span>
-      <span className="text-sm">{label}</span>
+      <span className="material-symbols-outlined text-[24px]">{icon}</span>
+      <span className="text-sm font-bold tracking-tight">{label}</span>
     </button>
   );
 
   return (
-    <div className="flex min-h-screen bg-[#0a0a0a] text-white font-display">
+    <div className="flex h-screen bg-[#050505] text-white overflow-hidden font-display">
       
-      {/* Sidebar */}
-      <aside className="w-64 bg-black border-r border-gray-800 p-6 flex flex-col fixed h-full">
-        <div className="flex items-center gap-3 mb-10 px-2">
-           <div className="size-8 rounded bg-primary flex items-center justify-center text-black">
-             <span className="material-symbols-outlined font-black">admin_panel_settings</span>
+      {/* SIDEBAR LUXE */}
+      <aside className="w-80 bg-black border-r border-white/5 flex flex-col p-8 z-20">
+        <div className="flex items-center gap-4 mb-14 px-2">
+           <div className="size-12 bg-primary rounded-2xl flex items-center justify-center text-black shadow-lg shadow-primary/20 rotate-3">
+              <span className="material-symbols-outlined font-black text-2xl">admin_panel_settings</span>
            </div>
-           <div className="font-black text-xl tracking-tight">CamBus <span className="text-primary text-xs border border-primary px-1 rounded ml-1">ADMIN</span></div>
+           <div>
+              <div className="font-black text-2xl tracking-tighter leading-none">CamBus</div>
+              <div className="text-[10px] text-primary font-black uppercase tracking-[0.3em] mt-1">Super Console</div>
+           </div>
         </div>
 
-        <nav className="flex-1 space-y-1">
-           <div className="text-[10px] font-black text-gray-600 uppercase px-3 mb-2 tracking-widest">Plateforme</div>
-           <NavItem id="overview" icon="dashboard" label="Vue d'ensemble" />
-           <NavItem id="agencies" icon="business" label="Agences" />
-           <NavItem id="cities" icon="location_city" label="Villes & Terminaux" />
+        <nav className="flex-1 space-y-2">
+           <div className="px-5 mb-4 text-[10px] font-black text-gray-700 uppercase tracking-[0.2em]">Principal</div>
+           <NavItem id="overview" icon="dashboard" label="Dashboard" />
+           <NavItem id="agencies" icon="business_center" label="Partenaires" />
+           <NavItem id="cities" icon="map" label="Réseau Routier" />
            <NavItem id="users" icon="group" label="Utilisateurs" />
            
-           <div className="text-[10px] font-black text-gray-600 uppercase px-3 mb-2 mt-8 tracking-widest">Finance</div>
-           <NavItem id="revenue" icon="payments" label="Revenus" />
+           <div className="px-5 mt-12 mb-4 text-[10px] font-black text-gray-700 uppercase tracking-[0.2em]">Finances</div>
+           <NavItem id="revenue" icon="account_balance" label="Transactions" />
         </nav>
 
-        <div className="pt-6 border-t border-gray-800">
-           <div className="flex items-center gap-3 px-3 mb-4 overflow-hidden">
-              <div className="size-9 rounded-lg bg-primary/20 flex items-center justify-center font-bold text-primary border border-primary/30 shrink-0">
-                  {user?.avatar || 'SA'}
+        <div className="mt-auto pt-8">
+           <div className="bg-white/5 p-5 rounded-[2rem] border border-white/5">
+              <div className="flex items-center gap-4 mb-5">
+                 <div className="size-12 rounded-2xl bg-primary/10 flex items-center justify-center font-black text-primary border border-primary/20">
+                    {user?.avatar || 'SA'}
+                 </div>
+                 <div className="min-w-0">
+                    <div className="text-sm font-black truncate">{user?.name}</div>
+                    <div className="text-[10px] text-gray-500 font-bold uppercase">Master Admin</div>
+                 </div>
               </div>
-              <div className="min-w-0">
-                 <div className="truncate font-bold text-xs">{user?.name}</div>
-                 <div className="truncate text-[10px] text-gray-500 uppercase font-black tracking-tighter">Super Admin</div>
-              </div>
+              <button onClick={logout} className="w-full py-4 bg-red-500/10 text-red-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all border border-red-500/10">
+                 Déconnexion
+              </button>
            </div>
-           
-           <button onClick={logout} className="w-full py-2.5 bg-red-900/10 text-red-500 rounded-lg text-xs font-black hover:bg-red-900/20 transition-colors border border-red-900/20 uppercase tracking-widest">
-              Déconnexion
-           </button>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 ml-64 p-8 overflow-y-auto">
-         <header className="flex justify-between items-center mb-8 bg-black/40 backdrop-blur-md p-6 rounded-2xl border border-gray-800 sticky top-0 z-10 shadow-xl">
-            <div>
-               <h1 className="text-2xl font-black uppercase tracking-tight">
-                  {activeTab === 'overview' && "Dashboard Principal"}
-                  {activeTab === 'agencies' && "Annuaire des Agences"}
-                  {activeTab === 'cities' && "Réseau Urbain"}
-                  {activeTab === 'users' && "Gestion des Comptes"}
-               </h1>
-               <p className="text-xs text-gray-500 font-bold">Dernière mise à jour: {new Date().toLocaleTimeString()}</p>
-            </div>
-            <div className="flex items-center gap-4">
-               <div className="flex items-center gap-2 bg-green-500/10 text-green-500 px-3 py-1.5 rounded-full border border-green-500/20">
-                  <span className="size-2 rounded-full bg-green-500 animate-pulse"></span>
-                  <span className="text-[10px] font-black uppercase tracking-widest">Live Cloud Connection</span>
-               </div>
-            </div>
-         </header>
-
-         {/* VUE: TABLEAU DE BORD */}
-         {activeTab === 'overview' && (
-           <div className="space-y-8 animate-fadeIn">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                 <div className="bg-[#111] p-6 rounded-2xl border border-gray-800 hover:border-primary/50 transition-colors group">
-                    <div className="text-gray-500 text-[10px] font-black uppercase tracking-widest mb-1 group-hover:text-primary">Chiffre d'Affaires</div>
-                    <div className="text-3xl font-black">45.2M <span className="text-xs text-gray-600 font-normal">FCFA</span></div>
-                 </div>
-                 <div className="bg-[#111] p-6 rounded-2xl border border-gray-800 hover:border-primary/50 transition-colors group">
-                    <div className="text-gray-500 text-[10px] font-black uppercase tracking-widest mb-1 group-hover:text-primary">Agences Actives</div>
-                    <div className="text-3xl font-black">{agencies.filter(a => a.status === 'active').length}</div>
-                 </div>
-                 <div className="bg-[#111] p-6 rounded-2xl border border-gray-800 hover:border-primary/50 transition-colors group">
-                    <div className="text-gray-500 text-[10px] font-black uppercase tracking-widest mb-1 group-hover:text-primary">Villes Desservies</div>
-                    <div className="text-3xl font-black">{cities.filter(c => c.status === 'active').length}</div>
-                 </div>
-                 <div className="bg-[#111] p-6 rounded-2xl border border-gray-800 hover:border-primary/50 transition-colors group">
-                    <div className="text-gray-500 text-[10px] font-black uppercase tracking-widest mb-1 group-hover:text-primary">Utilisateurs</div>
-                    <div className="text-3xl font-black">{platformUsers.length}</div>
-                 </div>
-              </div>
-
-              <div className="grid lg:grid-cols-2 gap-8">
-                  {/* Recent Agencies */}
-                  <div className="bg-[#111] rounded-2xl border border-gray-800 p-6">
-                    <h3 className="font-black text-sm uppercase tracking-widest mb-6 border-b border-gray-800 pb-4 flex items-center gap-2">
-                        <span className="material-symbols-outlined text-primary">analytics</span>
-                        Performance Agences
-                    </h3>
-                    <div className="space-y-4">
-                        {agencies.slice(0, 5).map(agency => (
-                            <div key={agency.id} className="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-gray-800/50">
-                                <div className="flex items-center gap-3">
-                                    <div className="size-10 rounded-lg flex items-center justify-center text-white" style={{backgroundColor: agency.color + '20', color: agency.color}}>
-                                        <span className="material-symbols-outlined">{agency.logo}</span>
-                                    </div>
-                                    <div className="font-bold text-sm">{agency.name}</div>
-                                </div>
-                                <span className="text-xs font-black font-mono text-gray-500">1.2M CFA</span>
-                            </div>
-                        ))}
-                    </div>
-                  </div>
-
-                  {/* Recent Users */}
-                  <div className="bg-[#111] rounded-2xl border border-gray-800 p-6">
-                    <h3 className="font-black text-sm uppercase tracking-widest mb-6 border-b border-gray-800 pb-4 flex items-center gap-2">
-                        <span className="material-symbols-outlined text-primary">group</span>
-                        Dernières Inscriptions
-                    </h3>
-                    <div className="space-y-4">
-                        {platformUsers.slice(0, 5).map(u => (
-                            <div key={u.uid} className="flex items-center gap-3 p-3 rounded-xl bg-black/40 border border-gray-800/50">
-                                <div className="size-10 rounded-full bg-gray-800 flex items-center justify-center text-xs font-bold text-gray-500 border border-gray-700">
-                                    {u.avatar || u.name.charAt(0)}
-                                </div>
-                                <div>
-                                    <div className="font-bold text-sm">{u.name}</div>
-                                    <div className="text-[10px] text-gray-500">{u.email}</div>
-                                </div>
-                                <div className="ml-auto text-[9px] font-black uppercase px-2 py-0.5 rounded bg-white/5 text-gray-400">
-                                    {u.role}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                  </div>
+      {/* MAIN CONTENT AREA */}
+      <main className="flex-1 overflow-y-auto p-12 lg:p-16 custom-scrollbar relative">
+        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[150px] -z-10 -translate-y-1/2 translate-x-1/2"></div>
+        
+        {/* Header Dynamique */}
+        <header className="flex justify-between items-start mb-16">
+           <div>
+              <h1 className="text-5xl font-black uppercase tracking-tighter mb-3">
+                 {activeTab === 'overview' && "Contrôle Central"}
+                 {activeTab === 'agencies' && "Gestion Agences"}
+                 {activeTab === 'cities' && "Réseau National"}
+                 {activeTab === 'users' && "Accès Plateforme"}
+                 {activeTab === 'revenue' && "Trésorerie"}
+              </h1>
+              <p className="text-gray-500 text-lg font-medium max-w-xl">
+                 {activeTab === 'overview' && "Aperçu global de la performance et de la santé du système CamBus."}
+                 {activeTab === 'agencies' && "Supervision des agences de transport partenaires et de leurs statuts."}
+                 {activeTab === 'cities' && "Configuration des destinations et du maillage géographique."}
+                 {activeTab === 'users' && "Gestion hiérarchique des comptes et des permissions."}
+                 {activeTab === 'revenue' && "Audit des flux financiers et des commissions générées."}
+              </p>
+           </div>
+           
+           <div className="flex gap-4">
+              <div className="bg-white/5 border border-white/10 rounded-2xl px-6 py-4 flex items-center gap-4 shadow-sm backdrop-blur-md">
+                 <div className="size-3 rounded-full bg-green-500 animate-pulse shadow-[0_0_15px_rgba(34,197,94,0.6)]"></div>
+                 <span className="text-xs font-black uppercase tracking-widest text-gray-400">Database Live</span>
               </div>
            </div>
-         )}
+        </header>
 
-         {/* VUE: AGENCES */}
-         {activeTab === 'agencies' && (
-           <div className="space-y-6 animate-fadeIn">
-              <div className="bg-[#111] p-8 rounded-2xl border border-gray-800">
-                 <h3 className="font-black text-lg mb-6 uppercase tracking-widest">Enregistrer une Agence</h3>
-                 <form onSubmit={handleAddAgency} className="grid md:grid-cols-4 gap-4">
-                    <input 
-                      type="text" placeholder="Nom de l'agence" value={newAgencyName} onChange={e => setNewAgencyName(e.target.value)}
-                      className="bg-black border border-gray-800 rounded-xl px-4 py-3 text-sm focus:border-primary outline-none"
-                    />
-                    <input 
-                      type="email" placeholder="Email Contact" value={newAgencyEmail} onChange={e => setNewAgencyEmail(e.target.value)}
-                      className="bg-black border border-gray-800 rounded-xl px-4 py-3 text-sm focus:border-primary outline-none"
-                    />
-                    <div className="flex items-center gap-3 px-4 py-3 bg-black border border-gray-800 rounded-xl">
-                        <span className="text-xs text-gray-500 font-bold">Couleur</span>
-                        <input type="color" value={newAgencyColor} onChange={e => setNewAgencyColor(e.target.value)} className="bg-transparent size-6 rounded cursor-pointer" />
+        {/* SECTION: OVERVIEW */}
+        {activeTab === 'overview' && (
+           <div className="space-y-12 animate-fadeIn">
+              {/* Stats Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                 {[
+                   { label: "Volume Ventes", value: totalRevenue.toLocaleString(), sub: "FCFA", icon: "payments", color: "text-green-500" },
+                   { label: "Agences", value: agencies.length, sub: "Actives", icon: "business", color: "text-blue-500" },
+                   { label: "Villes", value: cities.length, sub: "Connectées", icon: "map", color: "text-primary" },
+                   { label: "Membres", value: users.length, sub: "Inscrits", icon: "group", color: "text-purple-500" }
+                 ].map((stat, i) => (
+                    <div key={i} className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] hover:border-primary/40 transition-all group shadow-lg">
+                       <div className={`size-14 rounded-2xl ${stat.color} bg-white/5 flex items-center justify-center mb-8`}>
+                          <span className="material-symbols-outlined text-3xl">{stat.icon}</span>
+                       </div>
+                       <div className="text-4xl font-black mb-1">{stat.value} <span className="text-sm font-normal text-gray-500">{stat.sub}</span></div>
+                       <div className="text-xs text-gray-500 font-black uppercase tracking-widest">{stat.label}</div>
                     </div>
-                    <button type="submit" className="bg-primary text-black font-black uppercase tracking-widest text-xs rounded-xl hover:bg-white transition-all">
-                       Ajouter l'agence
-                    </button>
-                 </form>
+                 ))}
               </div>
 
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {agencies.map(agency => (
-                      <div key={agency.id} className="bg-[#111] border border-gray-800 rounded-2xl p-6 relative group overflow-hidden">
-                          <div className="absolute top-0 left-0 w-1.5 h-full" style={{backgroundColor: agency.color}}></div>
-                          <div className="flex items-center justify-between mb-4">
-                                <div className="size-14 rounded-2xl flex items-center justify-center shadow-lg" style={{backgroundColor: agency.color + '15', color: agency.color}}>
-                                    <span className="material-symbols-outlined text-4xl">{agency.logo}</span>
-                                </div>
-                                <div className="flex gap-1">
-                                    <button onClick={() => toggleAgencyStatus(agency.id, agency.status)} className={`size-8 rounded-lg flex items-center justify-center ${agency.status === 'active' ? 'bg-green-500/10 text-green-500' : 'bg-gray-800 text-gray-500'}`}>
-                                        <span className="material-symbols-outlined text-lg">{agency.status === 'active' ? 'check_circle' : 'do_not_disturb_on'}</span>
-                                    </button>
-                                    <button onClick={() => deleteAgency(agency.id)} className="size-8 rounded-lg bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500/20">
-                                        <span className="material-symbols-outlined text-lg">delete</span>
-                                    </button>
-                                </div>
+              {/* Layout Mixte */}
+              <div className="grid lg:grid-cols-3 gap-10">
+                 <div className="lg:col-span-2 bg-white/5 border border-white/10 rounded-[3rem] p-12 backdrop-blur-sm relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-12 opacity-5"><span className="material-symbols-outlined text-9xl">monitoring</span></div>
+                    <h3 className="text-2xl font-black mb-10 flex items-center gap-4">
+                       <span className="size-2 bg-primary rounded-full"></span>
+                       Activité des Réservations
+                    </h3>
+                    <div className="h-80 flex items-end gap-4 px-2">
+                       {[60, 40, 85, 30, 95, 70, 50, 80, 45, 90, 65, 75].map((h, i) => (
+                          <div key={i} className="flex-1 bg-primary/10 rounded-2xl relative group hover:bg-primary/40 transition-all" style={{ height: `${h}%` }}>
+                             <div className="absolute inset-0 bg-gradient-to-t from-primary/20 to-transparent"></div>
                           </div>
-                          <h4 className="font-black text-xl mb-1">{agency.name}</h4>
-                          <p className="text-xs text-gray-500 font-bold mb-4">{agency.email}</p>
-                          <div className="pt-4 border-t border-gray-800 flex justify-between items-center">
-                              <span className="text-[10px] font-black uppercase text-gray-600 tracking-widest">Performance</span>
-                              <span className="text-sm font-bold">8.4M CFA</span>
+                       ))}
+                    </div>
+                    <div className="flex justify-between mt-8 px-4 text-[10px] font-black text-gray-700 uppercase tracking-[0.3em]">
+                       <span>Jan</span><span>Mar</span><span>Juin</span><span>Sep</span><span>Déc</span>
+                    </div>
+                 </div>
+
+                 <div className="bg-white/5 border border-white/10 rounded-[3rem] p-12 backdrop-blur-sm">
+                    <h3 className="text-2xl font-black mb-10">Derniers Inscrits</h3>
+                    <div className="space-y-8">
+                       {users.slice(0, 6).map((u, i) => (
+                          <div key={i} className="flex items-center gap-5 group">
+                             <div className="size-12 rounded-2xl bg-white/5 border border-white/5 flex items-center justify-center font-black text-gray-500 text-sm group-hover:border-primary/30 transition-all">
+                                {u.avatar || u.name.charAt(0)}
+                             </div>
+                             <div className="flex-1 min-w-0">
+                                <div className="text-sm font-black truncate">{u.name}</div>
+                                <div className="text-[10px] text-gray-600 font-bold uppercase tracking-tighter">{u.email}</div>
+                             </div>
+                             <span className="text-[10px] font-black text-primary px-2 py-1 bg-primary/5 rounded">NEW</span>
                           </div>
-                      </div>
-                  ))}
+                       ))}
+                    </div>
+                 </div>
               </div>
            </div>
-         )}
+        )}
 
-         {/* VUE: VILLES */}
-         {activeTab === 'cities' && (
-           <div className="space-y-6 animate-fadeIn">
-              <div className="bg-[#111] p-8 rounded-2xl border border-gray-800">
-                 <h3 className="font-black text-lg mb-6 uppercase tracking-widest">Nouvelle Destination</h3>
-                 <form onSubmit={handleAddCity} className="flex gap-4">
-                    <input 
-                      type="text" placeholder="Nom de la ville" value={newCityName} onChange={e => setNewCityName(e.target.value)}
-                      className="flex-1 bg-black border border-gray-800 rounded-xl px-4 py-3 text-sm focus:border-primary outline-none"
-                    />
-                    <select value={newCityRegion} onChange={e => setNewCityRegion(e.target.value)} className="w-64 bg-black border border-gray-800 rounded-xl px-4 py-3 text-sm focus:border-primary outline-none text-gray-400">
-                         <option value="">Sélectionner Région</option>
-                         <option value="Centre">Centre</option><option value="Littoral">Littoral</option><option value="Ouest">Ouest</option><option value="Nord">Nord</option><option value="Adamaoua">Adamaoua</option>
-                    </select>
-                    <button type="submit" className="bg-primary text-black font-black uppercase tracking-widest text-xs px-8 rounded-xl hover:bg-white transition-all">
-                       Valider
-                    </button>
-                 </form>
+        {/* SECTION: AGENCIES */}
+        {activeTab === 'agencies' && (
+           <div className="space-y-10 animate-fadeIn">
+              <div className="flex justify-between items-center mb-4">
+                 <h2 className="text-2xl font-black text-gray-600 uppercase tracking-widest">Partenaires Certifiés ({agencies.length})</h2>
+                 <button 
+                  onClick={() => { setEditingAgency(null); setAgencyForm({name: '', email: '', color: '#13ec5b'}); setIsAgencyModalOpen(true); }}
+                  className="px-10 py-5 bg-primary text-black font-black text-xs uppercase tracking-[0.2em] rounded-2xl hover:bg-white transition-all shadow-xl shadow-primary/10"
+                 >
+                    + Créer Agence
+                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {cities.map(city => (
-                    <div key={city.id} className="bg-[#111] border border-gray-800 rounded-xl p-4 flex items-center justify-between group hover:border-primary/30 transition-all">
-                        <div className="flex items-center gap-3">
-                            <div className="size-10 rounded-lg bg-gray-800 flex items-center justify-center text-primary border border-gray-700">
-                                <span className="material-symbols-outlined">location_city</span>
-                            </div>
-                            <div>
-                                <div className="font-black text-sm">{city.name}</div>
-                                <div className="text-[10px] text-gray-600 uppercase font-black tracking-tighter">{city.region}</div>
-                            </div>
-                        </div>
-                        <button onClick={() => deleteCity(city.id)} className="opacity-0 group-hover:opacity-100 size-8 rounded-lg bg-red-900/20 text-red-500 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center">
-                            <span className="material-symbols-outlined text-lg">delete</span>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-10">
+                 {agencies.map(agency => (
+                    <div key={agency.id} className="bg-white/5 border border-white/10 p-10 rounded-[2.5rem] relative overflow-hidden group hover:border-primary/40 transition-all shadow-2xl">
+                       <div className="absolute top-0 right-0 p-6 opacity-0 group-hover:opacity-100 transition-all flex gap-3">
+                          <button onClick={() => { setEditingAgency(agency); setAgencyForm({name: agency.name, email: agency.email, color: agency.color}); setIsAgencyModalOpen(true); }} className="size-10 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center hover:bg-primary hover:text-black">
+                             <span className="material-symbols-outlined text-sm">edit</span>
+                          </button>
+                          <button onClick={() => deleteDocItem('agencies', agency.id)} className="size-10 rounded-xl bg-red-500/20 backdrop-blur-md text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white">
+                             <span className="material-symbols-outlined text-sm">delete</span>
+                          </button>
+                       </div>
+                       
+                       <div className="size-24 rounded-[2rem] flex items-center justify-center mb-10 shadow-inner" style={{ backgroundColor: agency.color + '15', color: agency.color, border: `1px solid ${agency.color}30` }}>
+                          <span className="material-symbols-outlined text-6xl">{agency.logo}</span>
+                       </div>
+                       
+                       <h4 className="text-3xl font-black mb-2 tracking-tighter">{agency.name}</h4>
+                       <p className="text-sm text-gray-500 font-bold mb-10 opacity-70">{agency.email}</p>
+                       
+                       <div className="flex justify-between items-center pt-8 border-t border-white/5">
+                          <button 
+                            onClick={() => toggleAgencyStatus(agency.id, agency.status)}
+                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${agency.status === 'active' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'}`}
+                          >
+                             {agency.status === 'active' ? 'En Service' : 'Suspendue'}
+                          </button>
+                          <span className="text-[11px] font-black text-gray-700 uppercase">ID: {agency.id.slice(0, 6)}</span>
+                       </div>
+                    </div>
+                 ))}
+              </div>
+           </div>
+        )}
+
+        {/* SECTION: CITIES */}
+        {activeTab === 'cities' && (
+           <div className="grid lg:grid-cols-3 gap-16 animate-fadeIn">
+              <div className="lg:col-span-1">
+                 <div className="bg-white/5 border border-white/10 p-12 rounded-[3rem] sticky top-12 backdrop-blur-xl">
+                    <h3 className="text-3xl font-black mb-10 tracking-tighter">Nouvelle Escale</h3>
+                    <form onSubmit={addCity} className="space-y-8">
+                       <div className="space-y-3">
+                          <label className="block text-[10px] font-black text-gray-600 uppercase tracking-widest">Désignation Ville</label>
+                          <input 
+                            type="text" required value={newCity.name} onChange={e => setNewCity({...newCity, name: e.target.value})}
+                            className="w-full h-16 bg-black border border-white/10 rounded-2xl px-6 text-sm font-bold focus:border-primary focus:ring-0 outline-none transition-all"
+                            placeholder="ex: Bertoua"
+                          />
+                       </div>
+                       <div className="space-y-3">
+                          <label className="block text-[10px] font-black text-gray-600 uppercase tracking-widest">Région</label>
+                          <select 
+                            value={newCity.region} onChange={e => setNewCity({...newCity, region: e.target.value})}
+                            className="w-full h-16 bg-black border border-white/10 rounded-2xl px-6 text-sm font-bold focus:border-primary outline-none appearance-none"
+                          >
+                             {["Centre", "Littoral", "Ouest", "Nord", "Sud", "Adamaoua", "Est", "Extrême-Nord", "Nord-Ouest", "Sud-Ouest"].map(r => (
+                               <option key={r} value={r}>{r}</option>
+                             ))}
+                          </select>
+                       </div>
+                       <button type="submit" className="w-full py-6 bg-primary text-black font-black uppercase text-xs tracking-[0.2em] rounded-2xl shadow-2xl shadow-primary/10 hover:shadow-primary/30 transition-all">
+                          Publier la Ville
+                       </button>
+                    </form>
+                    
+                    {cities.length === 0 && (
+                        <button onClick={handleSeedData} className="w-full mt-4 py-3 border border-white/5 rounded-2xl text-[10px] font-black text-gray-500 uppercase tracking-widest hover:text-white transition-all">
+                            Seeder les données par défaut
                         </button>
-                    </div>
-                  ))}
+                    )}
+                 </div>
+              </div>
+
+              <div className="lg:col-span-2">
+                 <div className="grid sm:grid-cols-2 gap-6">
+                    {cities.map(city => (
+                       <div key={city.id} className="bg-white/5 border border-white/10 p-8 rounded-3xl flex items-center justify-between group hover:border-primary/40 transition-all shadow-xl">
+                          <div className="flex items-center gap-6">
+                             <div className="size-14 rounded-2xl bg-black border border-white/5 flex items-center justify-center text-primary shadow-inner">
+                                <span className="material-symbols-outlined text-2xl">location_on</span>
+                             </div>
+                             <div>
+                                <div className="font-black text-xl tracking-tight">{city.name}</div>
+                                <div className="text-[10px] text-gray-600 font-black uppercase tracking-widest">{city.region}</div>
+                             </div>
+                          </div>
+                          <button onClick={() => deleteDocItem('cities', city.id)} className="size-10 rounded-xl text-gray-700 hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all">
+                             <span className="material-symbols-outlined text-xl">delete</span>
+                          </button>
+                       </div>
+                    ))}
+                 </div>
               </div>
            </div>
-         )}
+        )}
 
-         {/* VUE: UTILISATEURS */}
-         {activeTab === 'users' && (
-            <div className="bg-[#111] rounded-2xl border border-gray-800 overflow-hidden animate-fadeIn shadow-2xl">
-                <div className="p-6 border-b border-gray-800 bg-black/20">
-                    <h3 className="font-black text-sm uppercase tracking-widest">Base de données Utilisateurs ({platformUsers.length})</h3>
-                </div>
-                <table className="w-full text-left">
-                    <thead className="bg-black/50 text-[10px] uppercase text-gray-500 font-black tracking-widest">
-                        <tr>
-                            <th className="p-4">Utilisateur</th>
-                            <th className="p-4">Email</th>
-                            <th className="p-4">Rôle</th>
-                            <th className="p-4">Actions</th>
-                        </tr>
+        {/* SECTION: USERS */}
+        {activeTab === 'users' && (
+           <div className="bg-white/5 border border-white/10 rounded-[3rem] overflow-hidden animate-fadeIn shadow-2xl backdrop-blur-md">
+              <div className="overflow-x-auto">
+                 <table className="w-full text-left">
+                    <thead className="bg-white/5 text-[10px] font-black text-gray-700 uppercase tracking-[0.3em]">
+                       <tr>
+                          <th className="px-10 py-8">Utilisateur</th>
+                          <th className="px-10 py-8">Email / Contact</th>
+                          <th className="px-10 py-8">Rôle Système</th>
+                          <th className="px-10 py-8 text-right">Actions</th>
+                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-800 text-sm">
-                        {platformUsers.map(u => (
-                            <tr key={u.uid} className="hover:bg-white/5 transition-colors">
-                                <td className="p-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="size-8 rounded-lg bg-gray-800 flex items-center justify-center font-bold text-gray-500 border border-gray-700">
-                                            {u.avatar || u.name.charAt(0)}
-                                        </div>
-                                        <span className="font-bold">{u.name}</span>
-                                    </div>
-                                </td>
-                                <td className="p-4 text-gray-400 font-mono text-xs">{u.email}</td>
-                                <td className="p-4">
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter ${
-                                        u.role === 'super_admin' ? 'bg-purple-900/30 text-purple-400' : 
-                                        u.role === 'agency_admin' ? 'bg-blue-900/30 text-blue-400' : 'bg-gray-800 text-gray-400'
-                                    }`}>
-                                        {u.role}
-                                    </span>
-                                </td>
-                                <td className="p-4">
-                                    <button className="text-gray-500 hover:text-white transition-colors">
-                                        <span className="material-symbols-outlined text-lg">settings</span>
-                                    </button>
-                                </td>
-                            </tr>
-                        ))}
+                    <tbody className="divide-y divide-white/5">
+                       {users.map(u => (
+                          <tr key={u.uid} className="hover:bg-white/5 transition-colors group">
+                             <td className="px-10 py-8">
+                                <div className="flex items-center gap-5">
+                                   <div className="size-14 rounded-2xl bg-gray-900 border border-white/10 flex items-center justify-center font-black text-primary text-lg shadow-2xl">
+                                      {u.avatar || u.name.charAt(0)}
+                                   </div>
+                                   <div className="font-black text-base tracking-tight">{u.name}</div>
+                                </div>
+                             </td>
+                             <td className="px-10 py-8 text-xs font-mono text-gray-600">{u.email}</td>
+                             <td className="px-10 py-8">
+                                <select 
+                                  value={u.role} 
+                                  onChange={(e) => updateUserRole(u.uid, e.target.value as UserRole)}
+                                  className={`bg-transparent border-none text-[10px] font-black uppercase tracking-widest focus:ring-0 cursor-pointer transition-colors ${
+                                    u.role === 'super_admin' ? 'text-purple-500' : u.role === 'agency_admin' ? 'text-blue-500' : 'text-gray-500'
+                                  }`}
+                                >
+                                   <option value="user">Passager Standard</option>
+                                   <option value="agency_admin">Directeur Agence</option>
+                                   <option value="station_manager">Chef de Gare</option>
+                                   <option value="super_admin">Super Administrateur</option>
+                                </select>
+                             </td>
+                             <td className="px-10 py-8 text-right">
+                                <button className="size-12 rounded-2xl text-gray-700 hover:text-white hover:bg-white/5 transition-all">
+                                   <span className="material-symbols-outlined text-2xl">settings</span>
+                                </button>
+                             </td>
+                          </tr>
+                       ))}
                     </tbody>
-                </table>
-            </div>
-         )}
+                 </table>
+              </div>
+           </div>
+        )}
+
+        {/* SECTION: REVENUE */}
+        {activeTab === 'revenue' && (
+           <div className="space-y-12 animate-fadeIn">
+              <div className="bg-white/5 border border-white/10 rounded-[3rem] p-12 backdrop-blur-sm">
+                 <h3 className="text-2xl font-black mb-10 uppercase tracking-widest text-gray-600">Flux de Trésorerie Récents</h3>
+                 <div className="space-y-6">
+                    {transactions.map(t => (
+                       <div key={t.id} className="flex items-center justify-between p-7 rounded-[2rem] bg-black/40 border border-white/5 hover:border-primary/20 transition-all">
+                          <div className="flex items-center gap-6">
+                             <div className="size-14 rounded-2xl bg-green-500/10 flex items-center justify-center text-green-500">
+                                <span className="material-symbols-outlined text-3xl">receipt_long</span>
+                             </div>
+                             <div>
+                                <div className="font-black text-lg">{t.userName}</div>
+                                <div className="text-[10px] text-gray-600 uppercase font-black tracking-widest">Payé à {t.agencyName}</div>
+                             </div>
+                          </div>
+                          <div className="text-right">
+                             <div className="text-2xl font-black text-primary">+{t.amount.toLocaleString()} <span className="text-xs font-normal">FCFA</span></div>
+                             <div className="text-[10px] text-gray-700 font-bold uppercase tracking-tighter">Réussi • CB-{t.id.slice(0, 6)}</div>
+                          </div>
+                       </div>
+                    ))}
+                    {transactions.length === 0 && (
+                        <div className="text-center py-20 text-gray-700">Aucune transaction enregistrée.</div>
+                    )}
+                 </div>
+              </div>
+           </div>
+        )}
 
       </main>
+
+      {/* MODAL SYSTEM: AGENCIES */}
+      {isAgencyModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-8 bg-black/95 backdrop-blur-2xl animate-fadeIn">
+           <div className="bg-[#0a0a0a] border border-white/10 w-full max-w-xl rounded-[3.5rem] p-16 shadow-[0_0_150px_rgba(19,236,91,0.08)] relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-2 bg-primary"></div>
+              
+              <div className="flex justify-between items-center mb-12">
+                 <h3 className="text-4xl font-black tracking-tighter">
+                   {editingAgency ? "Éditer l'Agence" : "Nouveau Partenaire"}
+                 </h3>
+                 <button onClick={() => setIsAgencyModalOpen(false)} className="size-12 rounded-full hover:bg-white/5 flex items-center justify-center transition-colors">
+                    <span className="material-symbols-outlined text-2xl text-gray-500">close</span>
+                 </button>
+              </div>
+
+              <form onSubmit={saveAgency} className="space-y-10">
+                 <div className="space-y-3">
+                    <label className="block text-[10px] font-black text-gray-700 uppercase tracking-widest">Nom de la Compagnie</label>
+                    <input 
+                      type="text" required value={agencyForm.name} onChange={e => setAgencyForm({...agencyForm, name: e.target.value})}
+                      className="w-full h-16 bg-black border border-white/10 rounded-2xl px-7 text-sm font-bold focus:border-primary outline-none"
+                      placeholder="ex: Finexs Voyages"
+                    />
+                 </div>
+                 <div className="space-y-3">
+                    <label className="block text-[10px] font-black text-gray-700 uppercase tracking-widest">Email Professionnel</label>
+                    <input 
+                      type="email" required value={agencyForm.email} onChange={e => setAgencyForm({...agencyForm, email: e.target.value})}
+                      className="w-full h-16 bg-black border border-white/10 rounded-2xl px-7 text-sm font-bold focus:border-primary outline-none"
+                      placeholder="admin@agence.cm"
+                    />
+                 </div>
+                 <div className="space-y-3">
+                    <label className="block text-[10px] font-black text-gray-700 uppercase tracking-widest">Couleur de Marque</label>
+                    <div className="flex items-center gap-8 bg-black border border-white/10 rounded-2xl px-7 py-4">
+                       <input type="color" value={agencyForm.color} onChange={e => setAgencyForm({...agencyForm, color: e.target.value})} className="size-12 rounded-xl cursor-pointer bg-transparent border-none p-0" />
+                       <span className="font-mono text-xs uppercase text-gray-600 font-black tracking-widest">{agencyForm.color}</span>
+                    </div>
+                 </div>
+                 
+                 <div className="flex gap-6 pt-10">
+                    <button type="button" onClick={() => setIsAgencyModalOpen(false)} className="flex-1 py-6 text-xs font-black uppercase tracking-widest text-gray-700 hover:text-white transition-colors">Annuler</button>
+                    <button type="submit" className="flex-1 py-6 bg-primary text-black font-black uppercase text-xs tracking-[0.2em] rounded-2xl shadow-2xl shadow-primary/20">Sauvegarder</button>
+                 </div>
+              </form>
+           </div>
+        </div>
+      )}
     </div>
   );
 };
