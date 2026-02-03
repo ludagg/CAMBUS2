@@ -137,11 +137,9 @@ const AdminDashboard: React.FC = () => {
     if (role === 'super_admin') {
       mockUser = { uid: 'demo-super-admin', name: "Super Admin", email: "admin@cambus.cm", role: 'super_admin', avatar: "SA" };
     } else if (role === 'agency_admin') {
-      // Fix: assigning '1' (string) instead of 1 (number) as User properties expect strings
-      mockUser = { uid: 'demo-agency-admin', name: "Boss Express", email: "ceo@express.cm", role: 'agency_admin', agencyId: '1', avatar: "BE" };
+      mockUser = { uid: 'demo-agency-admin', name: "Boss Express", email: "ceo@express.cm", role: 'agency_admin', agencyId: 1, avatar: "BE" };
     } else if (role === 'station_manager') {
-      // Fix: assigning '1' and '101' (strings) instead of numbers as User properties expect strings
-      mockUser = { uid: 'demo-station-manager', name: "Jean Dupont", email: "jean@express.cm", role: 'station_manager', agencyId: '1', stationId: '101', avatar: "JD" };
+      mockUser = { uid: 'demo-station-manager', name: "Jean Dupont", email: "jean@express.cm", role: 'station_manager', agencyId: 1, stationId: 101, avatar: "JD" };
     }
     
     setUser(mockUser);
@@ -149,12 +147,10 @@ const AdminDashboard: React.FC = () => {
   };
 
   // Get Context Data based on current user role
-  // Fix: use a.id.toString() to compare with string-typed user?.agencyId
-  const getCurrentAgency = () => mockAgencies.find(a => a.id.toString() === user?.agencyId);
+  const getCurrentAgency = () => mockAgencies.find(a => a.id === user?.agencyId);
   const getCurrentStation = () => {
     const agency = getCurrentAgency();
-    // Fix: use s.id.toString() to compare with string-typed user?.stationId
-    return agency?.stations.find(s => s.id.toString() === user?.stationId);
+    return agency?.stations.find(s => s.id === user?.stationId);
   };
 
   // --- COMPOSANTS DE VUES SPÉCIFIQUES ---

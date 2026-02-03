@@ -1,9 +1,10 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { db } from '../firebase/config';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+
+const FALLBACK_CITIES = ["Douala", "Yaoundé", "Bafoussam", "Bamenda", "Kribi", "Garoua", "Maroua", "Ngaoundéré"];
 
 const SearchWidget: React.FC = () => {
   const { t } = useLanguage();
@@ -22,21 +23,28 @@ const SearchWidget: React.FC = () => {
   const passengerMenuRef = useRef<HTMLDivElement>(null);
 
   // Firestore Cities
-  const [availableCities, setAvailableCities] = useState<string[]>([]);
+  const [availableCities, setAvailableCities] = useState<string[]>(FALLBACK_CITIES);
 
-  // Fetch Cities from Firestore
+  // Fetch Cities from Firestore with robust error handling
   useEffect(() => {
     const fetchCities = async () => {
         try {
-            const q = query(collection(db, 'cities'), where('status', '==', 'active'));
+            const q = query(collection(db, 'cities'), where('status', '==', 'active'), limit(50));
             const snapshot = await getDocs(q);
-            // Fix: Cast doc.data() to any to access the 'name' property which is typed as unknown
-            const cityNames = snapshot.docs.map(doc => (doc.data() as any).name);
-            setAvailableCities(cityNames.sort());
-        } catch (error) {
-            console.error("Error fetching cities for search:", error);
-            // Fallback defaults
-            setAvailableCities(["Douala", "Yaoundé", "Bafoussam", "Bamenda", "Kribi", "Garoua"]);
+            if (!snapshot.empty) {
+                const cityNames = snapshot.docs.map(doc => doc.data().name);
+                setAvailableCities(cityNames.sort());
+            } else {
+                setAvailableCities(FALLBACK_CITIES);
+            }
+        } catch (error: any) {
+            // Silently handle permission errors by using fallbacks
+            if (error.code === 'permission-denied') {
+                console.warn("Firestore permissions strictly restricted. Using fallback cities.");
+            } else {
+                console.error("Error fetching cities:", error);
+            }
+            setAvailableCities(FALLBACK_CITIES);
         }
     };
     fetchCities();
@@ -61,8 +69,8 @@ const SearchWidget: React.FC = () => {
 
   const handleSearch = () => {
     setSearchParams({
-      from: fromLocation || "Douala", // Default for demo
-      to: toLocation || "Yaoundé", // Default for demo
+      from: fromLocation || availableCities[0],
+      to: toLocation || availableCities[1],
       date: departureDate || new Date().toISOString().split('T')[0],
       returnDate: returnDate || undefined,
       passengers,
@@ -97,7 +105,6 @@ const SearchWidget: React.FC = () => {
         
         {/* Top Header: Tabs and Trip Type */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 border-b border-gray-100 dark:border-gray-700 pb-2">
-          {/* Main Tabs */}
           <div className="flex gap-6">
             <button 
               className="flex items-center gap-2 pb-2 font-semibold transition-colors text-teal-accent dark:text-primary border-b-2 border-teal-accent dark:border-primary"
@@ -114,7 +121,6 @@ const SearchWidget: React.FC = () => {
             </button>
           </div>
 
-          {/* Trip Type Selector (Radio-like) */}
           <div className="flex bg-gray-100 dark:bg-[#102216] p-1 rounded-lg self-start sm:self-auto">
             <button 
               onClick={() => setTripType('one-way')}
@@ -142,7 +148,6 @@ const SearchWidget: React.FC = () => {
         {/* Search Form */}
         <div className="flex flex-col lg:flex-row gap-4 items-end">
           
-          {/* From / To Group */}
           <div className="flex flex-col md:flex-row flex-1 w-full gap-2 relative">
             <datalist id="cities-list">
                 {availableCities.map(city => <option key={city} value={city} />)}
@@ -163,7 +168,6 @@ const SearchWidget: React.FC = () => {
               </div>
             </div>
 
-            {/* Swap Button */}
             <button 
               onClick={handleSwap}
               className="absolute top-[34px] left-1/2 -translate-x-1/2 z-10 hidden md:flex items-center justify-center size-8 rounded-full bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-600 shadow-sm text-primary hover:bg-gray-50 transition-colors"
@@ -188,10 +192,7 @@ const SearchWidget: React.FC = () => {
             </div>
           </div>
 
-          {/* Date & Passengers Group */}
           <div className="flex flex-col md:flex-row gap-4 w-full lg:w-auto">
-            
-            {/* Departure Date */}
             <div className={`${tripType === 'round-trip' ? 'w-full md:w-36' : 'w-full md:w-48'} relative`}>
               <label className="block text-xs font-semibold text-text-muted dark:text-gray-400 mb-1.5 ml-1">{t('search.label.departure')}</label>
               <div className="relative flex items-center">
@@ -208,7 +209,6 @@ const SearchWidget: React.FC = () => {
               </div>
             </div>
 
-            {/* Return Date (Conditional) */}
             {tripType === 'round-trip' && (
               <div className="w-full md:w-36 relative animate-fadeIn">
                 <label className="block text-xs font-semibold text-text-muted dark:text-gray-400 mb-1.5 ml-1">{t('search.label.return')}</label>
@@ -227,7 +227,6 @@ const SearchWidget: React.FC = () => {
               </div>
             )}
 
-            {/* Passengers Dropdown */}
             <div className="w-full md:w-48 relative" ref={passengerMenuRef}>
               <label className="block text-xs font-semibold text-text-muted dark:text-gray-400 mb-1.5 ml-1">{t('search.label.passengers')}</label>
               <button 
@@ -239,11 +238,8 @@ const SearchWidget: React.FC = () => {
                 <span className="material-symbols-outlined absolute right-3 text-gray-400 text-sm pointer-events-none">expand_more</span>
               </button>
 
-              {/* Dropdown Menu */}
               {isPassengerMenuOpen && (
                 <div className="absolute top-full left-0 right-0 mt-2 p-4 bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl z-50 w-full min-w-[240px]">
-                  
-                  {/* Adults */}
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex flex-col">
                       <span className="font-bold text-text-main dark:text-white text-sm">{t('search.passenger.adults')}</span>
@@ -267,7 +263,6 @@ const SearchWidget: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Children */}
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex flex-col">
                       <span className="font-bold text-text-main dark:text-white text-sm">{t('search.passenger.children')}</span>
@@ -302,7 +297,6 @@ const SearchWidget: React.FC = () => {
             </div>
           </div>
 
-          {/* Search Button */}
           <div className="w-full lg:w-auto">
             <button 
               onClick={handleSearch}
