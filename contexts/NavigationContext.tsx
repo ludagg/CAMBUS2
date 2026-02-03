@@ -9,7 +9,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
-type Page = 'home' | 'agencies' | 'results' | 'checkout' | 'login' | 'signup' | 'bookings' | 'super_admin' | 'agency_admin' | 'station_manager';
+export type Page = 'home' | 'agencies' | 'results' | 'checkout' | 'login' | 'signup' | 'bookings' | 'super_admin' | 'agency_admin' | 'station_manager';
 
 export interface SearchParams {
   from: string;
@@ -63,7 +63,7 @@ interface NavigationContextType {
   setBookingDetails: (details: BookingDetails) => void;
   user: User | null;
   setUser: (user: User | null) => void;
-  loading: boolean;
+  authLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -78,27 +78,24 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
   
   // Auth State
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(true);
 
   // Écouter les changements d'état Firebase Auth
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setAuthLoading(true);
       if (firebaseUser) {
-        // L'utilisateur est connecté, on récupère son profil complet dans Firestore
         try {
           const docRef = doc(db, 'users', firebaseUser.uid);
           const docSnap = await getDoc(docRef);
 
           if (docSnap.exists()) {
-            // Fusionner les données Auth et Firestore
             setUser({ 
               uid: firebaseUser.uid,
               email: firebaseUser.email || '',
               ...docSnap.data() 
             } as User);
           } else {
-            // Document n'existe pas encore
-            // On tente de déduire le rôle via l'email pour maintenir la logique de démo
             const email = firebaseUser.email || '';
             let fallbackRole: UserRole = 'user';
             let avatar = 'US';
@@ -116,48 +113,42 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
             });
           }
         } catch (error) {
-          console.error("Erreur récupération profil (Firestore bloqué ?):", error);
-          
-          // FALLBACK ROBUSTE : Si Firestore échoue (règles, réseau...), on connecte quand même l'utilisateur
-          // Cela empêche le chargement infini "spinner"
+          console.error("Firestore error fallback:", error);
           const email = firebaseUser.email || '';
           let fallbackRole: UserRole = 'user';
-          let avatar = 'US';
-          
-          if (email.includes('admin')) { fallbackRole = 'super_admin'; avatar = 'SA'; }
-          else if (email.includes('express')) { fallbackRole = 'agency_admin'; avatar = 'AG'; }
-          else if (email.includes('station')) { fallbackRole = 'station_manager'; avatar = 'SM'; }
+          if (email.includes('admin')) fallbackRole = 'super_admin';
+          else if (email.includes('express')) fallbackRole = 'agency_admin';
+          else if (email.includes('station')) fallbackRole = 'station_manager';
 
           setUser({
               uid: firebaseUser.uid,
-              name: firebaseUser.displayName || email.split('@')[0] || 'Utilisateur',
+              name: email.split('@')[0] || 'Utilisateur',
               email: email,
               role: fallbackRole,
-              avatar: avatar
+              avatar: fallbackRole.charAt(0).toUpperCase()
           });
         }
       } else {
         setUser(null);
       }
-      setLoading(false);
+      setAuthLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
-  // Redirection automatique basée sur le rôle après mise à jour du user
+  // Gestion des redirections automatiques de connexion
   useEffect(() => {
-    if (!loading && user) {
-        // Ne rediriger que si on est sur la page de login/signup pour éviter de perturber la navigation
+    if (!authLoading && user) {
         if (currentPage === 'login' || currentPage === 'signup') {
             if (user.role === 'super_admin') navigateTo('super_admin');
             else if (user.role === 'agency_admin') navigateTo('agency_admin');
             else if (user.role === 'station_manager') navigateTo('station_manager');
-            else if (bookingDetails) navigateTo('checkout'); // Si réservation en cours
+            else if (bookingDetails) navigateTo('checkout');
             else navigateTo('home');
         }
     }
-  }, [user, loading, currentPage, bookingDetails]);
+  }, [user, authLoading, currentPage, bookingDetails]);
 
   const navigateTo = (page: Page) => {
     window.scrollTo(0, 0);
@@ -166,7 +157,6 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const login = async (email: string, password: string) => {
     await signInWithEmailAndPassword(auth, email, password);
-    // L'état 'user' sera mis à jour par le listener onAuthStateChanged
   };
 
   const signup = async (name: string, email: string, password: string) => {
@@ -176,19 +166,10 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
     let role: UserRole = 'user';
     let avatar = 'US';
     
-    if (email.includes('admin')) {
-        role = 'super_admin';
-        avatar = 'SA';
-    } else if (email.includes('express')) {
-        role = 'agency_admin';
-        avatar = 'AG';
-    } else if (email.includes('station')) {
-        role = 'station_manager';
-        avatar = 'SM';
-    }
+    if (email.includes('admin')) { role = 'super_admin'; avatar = 'SA'; }
+    else if (email.includes('express')) { role = 'agency_admin'; avatar = 'AG'; }
+    else if (email.includes('station')) { role = 'station_manager'; avatar = 'SM'; }
 
-    // Création du document utilisateur dans Firestore
-    // Enveloppé dans un try/catch pour ne pas bloquer l'inscription si Firestore échoue (règles de sécurité)
     try {
       await setDoc(doc(db, 'users', uid), {
         name,
@@ -197,12 +178,9 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
         avatar,
         createdAt: serverTimestamp()
       });
-    } catch (error) {
-       console.error("Attention: Impossible d'écrire dans Firestore. L'utilisateur est créé dans Auth uniquement.", error);
-       // On continue sans erreur bloquante, le listener auth s'occupera du fallback
+    } catch (e) {
+       console.warn("Could not save to firestore, auth only.");
     }
-    
-    // L'état 'user' sera mis à jour par le listener
   };
 
   const logout = async () => {
@@ -221,7 +199,7 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
       setBookingDetails,
       user,
       setUser,
-      loading,
+      authLoading,
       login,
       signup,
       logout
