@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { auth, db } from '../firebase/config';
 import { 
@@ -5,7 +6,7 @@ import {
   createUserWithEmailAndPassword, 
   signOut, 
   onAuthStateChanged,
-  User as FirebaseUser
+  type User as FirebaseUser
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
@@ -20,7 +21,8 @@ export interface SearchParams {
   tripType: 'one-way' | 'round-trip';
 }
 
-export interface SelectedTrip {
+// Renamed from SelectedTrip to Trip to match usages in results page and fix import errors
+export interface Trip {
   id: number;
   agencyName: string;
   agencyLogo: string;
@@ -36,8 +38,8 @@ export interface SelectedTrip {
 }
 
 export interface BookingDetails {
-  outbound: SelectedTrip;
-  returnTrip: SelectedTrip | null;
+  outbound: Trip;
+  returnTrip: Trip | null;
   totalPrice: number;
   passengers: { adults: number; children: number };
 }

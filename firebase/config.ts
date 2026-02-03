@@ -1,10 +1,9 @@
+
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { 
-  initializeFirestore, 
-  persistentLocalCache, 
-  persistentMultipleTabManager 
+  getFirestore
 } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
@@ -21,15 +20,8 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore with specific settings for reliability
-// 1. Force Long Polling:évite les erreurs de connexion gRPC/WebSocket dans certains environnements
-// 2. Local Cache: permet le fonctionnement hors-ligne
-export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true,
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  })
-});
+// Initialize Firestore using standard getFirestore for broad compatibility
+export const db = getFirestore(app);
 
 // Export services for use in the app
 export const auth = getAuth(app);
