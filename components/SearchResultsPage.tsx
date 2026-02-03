@@ -185,6 +185,11 @@ const SearchResultsPage: React.FC = () => {
     }
   }, [sortedTrips, hoveredTripId]);
 
+  const toggleFilter = (state: string[], setState: (v: string[]) => void, value: string) => {
+    if (state.includes(value)) setState(state.filter(v => v !== value));
+    else setState([...state, value]);
+  };
+
   const handleTripSelect = (trip: TripExtended) => {
     if (currentStep === 'outbound') setSelectedOutbound(trip);
     else if (currentStep === 'return') setSelectedReturn(trip);
@@ -333,10 +338,24 @@ const SearchResultsPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="space-y-6">
-                   <div className="flex items-center justify-between mb-8">
-                      <h2 className="text-xl font-black text-text-main dark:text-white uppercase tracking-tighter">
-                        {sortedTrips.length} {t('results.found')}
-                      </h2>
+                   <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-4">
+                        <button 
+                          onClick={() => setIsFilterOpen(!isFilterOpen)}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase transition-all ${isFilterOpen ? 'bg-primary text-black' : 'bg-gray-100 dark:bg-gray-800 text-text-muted'}`}
+                        >
+                          <span className="material-symbols-outlined text-lg">tune</span>
+                          {t('results.filter.open')}
+                          {(selectedTimes.length + selectedAgencies.length + selectedAmenities.length) > 0 && (
+                            <span className="size-5 rounded-full bg-black/10 dark:bg-white/10 flex items-center justify-center text-[10px]">
+                              {selectedTimes.length + selectedAgencies.length + selectedAmenities.length}
+                            </span>
+                          )}
+                        </button>
+                        <h2 className="text-sm font-black text-text-main dark:text-white uppercase tracking-tighter hidden sm:block">
+                          {sortedTrips.length} {t('results.found')}
+                        </h2>
+                      </div>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-black uppercase text-gray-500">{t('results.sort_by')} :</span>
                         <select value={sortOption} onChange={(e) => setSortOption(e.target.value as any)} className="bg-transparent border-none text-xs font-black uppercase focus:ring-0 cursor-pointer text-primary">
@@ -346,6 +365,85 @@ const SearchResultsPage: React.FC = () => {
                         </select>
                       </div>
                    </div>
+
+                   {isFilterOpen && (
+                     <div className="bg-gray-50 dark:bg-white/5 rounded-3xl p-6 mb-8 border border-gray-100 dark:border-gray-800 animate-slideDown overflow-hidden">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                          {/* Heure de départ */}
+                          <div>
+                            <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-4">{t('results.filter.departure_time')}</h4>
+                            <div className="space-y-2">
+                              {['morning', 'afternoon', 'evening'].map(time => (
+                                <label key={time} className="flex items-center gap-3 cursor-pointer group">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={selectedTimes.includes(time)}
+                                    onChange={() => toggleFilter(selectedTimes, setSelectedTimes, time)}
+                                    className="size-5 rounded-lg border-gray-300 dark:border-gray-700 text-primary focus:ring-primary bg-transparent"
+                                  />
+                                  <span className="text-xs font-bold text-text-muted group-hover:text-text-main dark:group-hover:text-white transition-colors">
+                                    {t(`results.filter.${time}`)}
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Opérateurs */}
+                          <div>
+                            <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-4">{t('results.filter.agencies')}</h4>
+                            <div className="space-y-2">
+                              {['Express Voyage', 'GreenLines', 'Royal Road', 'CityLink'].map(agency => (
+                                <label key={agency} className="flex items-center gap-3 cursor-pointer group">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={selectedAgencies.includes(agency)}
+                                    onChange={() => toggleFilter(selectedAgencies, setSelectedAgencies, agency)}
+                                    className="size-5 rounded-lg border-gray-300 dark:border-gray-700 text-primary focus:ring-primary bg-transparent"
+                                  />
+                                  <span className="text-xs font-bold text-text-muted group-hover:text-text-main dark:group-hover:text-white transition-colors">{agency}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Services */}
+                          <div>
+                            <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-4">{t('results.filter.amenities')}</h4>
+                            <div className="space-y-2">
+                              {['wifi', 'ac', 'power', 'snack', 'tv'].map(amenity => (
+                                <label key={amenity} className="flex items-center gap-3 cursor-pointer group">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={selectedAmenities.includes(amenity)}
+                                    onChange={() => toggleFilter(selectedAmenities, setSelectedAmenities, amenity)}
+                                    className="size-5 rounded-lg border-gray-300 dark:border-gray-700 text-primary focus:ring-primary bg-transparent"
+                                  />
+                                  <span className="text-xs font-bold text-text-muted group-hover:text-text-main dark:group-hover:text-white transition-colors uppercase tracking-tight">
+                                    {t(`amenity.${amenity}`)}
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                           <button 
+                             onClick={() => { setSelectedTimes([]); setSelectedAgencies([]); setSelectedAmenities([]); }}
+                             className="text-[10px] font-black uppercase text-red-500 hover:underline"
+                           >
+                             {t('results.filter.clear')}
+                           </button>
+                           <button 
+                             onClick={() => setIsFilterOpen(false)}
+                             className="px-6 py-2 bg-text-main dark:bg-white text-white dark:text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:opacity-90"
+                           >
+                             {t('results.filter.apply')}
+                           </button>
+                        </div>
+                     </div>
+                   )}
 
                    <div className="flex flex-col gap-2">
                       {sortedTrips.map(trip => renderTripCard(trip))}
