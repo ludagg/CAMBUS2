@@ -8,6 +8,7 @@ declare const L: any;
 
 interface TripExtended extends Trip {
   amenities: string[];
+  distanceToUser?: number;
 }
 
 // Coordonnées des gares pour la démo
@@ -20,6 +21,17 @@ const stationLocations: Record<string, { lat: number, lng: number, address: stri
   "Yaoundé - Centre Ville": { lat: 3.8667, lng: 11.5167, address: "Poste Centrale, Yaoundé (Royal Road)" },
   "Douala - Bali": { lat: 4.0400, lng: 9.6900, address: "Bali, Douala (CityLink)" },
   "Yaoundé - Nsam": { lat: 3.8200, lng: 11.5000, address: "Nsam, Yaoundé (CityLink)" }
+};
+
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const R = 6371; // Rayon de la terre en km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 };
 
 const generateTrips = (from: string, to: string, date: string): TripExtended[] => {
@@ -95,10 +107,25 @@ const SearchResultsPage: React.FC = () => {
   const [selectedOutbound, setSelectedOutbound] = useState<TripExtended | null>(null);
   const [selectedReturn, setSelectedReturn] = useState<TripExtended | null>(null);
   const [hoveredTripId, setHoveredTripId] = useState<number | null>(null);
+  
+  // New: Geolocation & Mobile View switcher
+  const [userCoords, setUserCoords] = useState<{lat: number, lng: number} | null>(null);
+  const [mobileView, setMobileView] = useState<'list' | 'map'>('list');
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const mapLayerGroupRef = useRef<any>(null);
+
+  // Initialize Geolocation
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setUserCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (err) => console.warn("Geolocation denied or unavailable", err),
+        { enableHighAccuracy: true }
+      );
+    }
+  }, []);
 
   if (!searchParams) {
     setTimeout(() => navigateTo('home'), 100);
@@ -113,10 +140,19 @@ const SearchResultsPage: React.FC = () => {
   }
 
   const initialTrips = useMemo(() => {
-    if (currentStep === 'outbound') return generateTrips(searchParams.from, searchParams.to, searchParams.date);
-    if (currentStep === 'return') return generateTrips(searchParams.to, searchParams.from, searchParams.returnDate || searchParams.date);
-    return [];
-  }, [currentStep, searchParams]);
+    let trips: TripExtended[] = [];
+    if (currentStep === 'outbound') trips = generateTrips(searchParams.from, searchParams.to, searchParams.date);
+    else if (currentStep === 'return') trips = generateTrips(searchParams.to, searchParams.from, searchParams.returnDate || searchParams.date);
+
+    if (userCoords) {
+      return trips.map(trip => {
+        const station = stationLocations[trip.departureLocation];
+        const dist = station ? calculateDistance(userCoords.lat, userCoords.lng, station.lat, station.lng) : undefined;
+        return { ...trip, distanceToUser: dist };
+      });
+    }
+    return trips;
+  }, [currentStep, searchParams, userCoords]);
 
   const filteredTrips = useMemo(() => {
     return initialTrips.filter(trip => {
@@ -140,6 +176,15 @@ const SearchResultsPage: React.FC = () => {
     });
   }, [filteredTrips, sortOption]);
 
+  // Handle selection from map
+  const selectFromMap = (tripId: number) => {
+    const trip = initialTrips.find(t => t.id === tripId);
+    if (trip) {
+      handleTripSelect(trip);
+      if (window.innerWidth < 1024) setMobileView('list');
+    }
+  };
+
   // Initialisation Map
   useEffect(() => {
     if (mapContainerRef.current && typeof L !== 'undefined' && !mapInstanceRef.current) {
@@ -148,34 +193,79 @@ const SearchResultsPage: React.FC = () => {
       L.control.zoom({ position: 'bottomright' }).addTo(map);
       mapInstanceRef.current = map;
       mapLayerGroupRef.current = L.featureGroup().addTo(map);
+      
+      // Global click handler to allow selection from popup
+      window.addEventListener('click', (e: any) => {
+        if (e.target && e.target.classList.contains('map-select-btn')) {
+          const tid = parseInt(e.target.dataset.tripId);
+          selectFromMap(tid);
+        }
+      });
     }
   }, []);
 
-  // Update Map Markers based on trips
+  // Update Map Markers based on trips & User Position
   useEffect(() => {
     if (mapInstanceRef.current && mapLayerGroupRef.current) {
       mapLayerGroupRef.current.clearLayers();
       const bounds: any[] = [];
 
+      // User Position Marker
+      if (userCoords) {
+        L.circleMarker([userCoords.lat, userCoords.lng], { 
+          radius: 8, 
+          color: '#2563eb', 
+          fillColor: '#3b82f6', 
+          fillOpacity: 1,
+          weight: 4
+        }).addTo(mapLayerGroupRef.current).bindPopup("Vous êtes ici");
+        bounds.push([userCoords.lat, userCoords.lng]);
+      }
+
       const tripsToMark = hoveredTripId 
         ? sortedTrips.filter(t => t.id === hoveredTripId) 
-        : sortedTrips.slice(0, 10); // Show top 10 to avoid clutter
+        : sortedTrips.slice(0, 15);
 
       tripsToMark.forEach(trip => {
         const start = stationLocations[trip.departureLocation];
         const end = stationLocations[trip.arrivalLocation];
 
-        if (start && end) {
-          const startMarker = L.circleMarker([start.lat, start.lng], { radius: 6, color: '#13ec5b', fillOpacity: 1 }).addTo(mapLayerGroupRef.current);
-          const endMarker = L.circleMarker([end.lat, end.lng], { radius: 6, color: '#f59e0b', fillOpacity: 1 }).addTo(mapLayerGroupRef.current);
+        if (start) {
+          const distText = trip.distanceToUser ? `<div class="text-[10px] text-primary font-bold">À ${trip.distanceToUser.toFixed(1)} km de vous</div>` : '';
           
-          L.polyline([[start.lat, start.lng], [end.lat, end.lng]], { 
-            color: hoveredTripId === trip.id ? '#13ec5b' : '#cbd5e1', 
-            weight: hoveredTripId === trip.id ? 4 : 2,
-            dashArray: hoveredTripId === trip.id ? '' : '5, 10'
+          const marker = L.circleMarker([start.lat, start.lng], { 
+            radius: hoveredTripId === trip.id ? 10 : 7, 
+            color: '#13ec5b', 
+            fillOpacity: 1,
+            weight: 2
           }).addTo(mapLayerGroupRef.current);
+          
+          marker.bindPopup(`
+            <div class="p-2 font-display min-w-[150px]">
+              <div class="text-[9px] uppercase font-black text-gray-500 mb-1">${trip.agencyName}</div>
+              <div class="font-bold text-sm text-text-main">${trip.departureLocation}</div>
+              ${distText}
+              <div class="mt-2 flex items-center justify-between border-t border-gray-100 pt-2">
+                <span class="font-black text-primary">${trip.price} <span class="text-[10px]">CFA</span></span>
+                <button 
+                  data-trip-id="${trip.id}"
+                  class="map-select-btn bg-black text-white px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-primary hover:text-black transition-all"
+                >
+                  Choisir
+                </button>
+              </div>
+            </div>
+          `, { className: 'custom-map-popup' });
 
-          bounds.push([start.lat, start.lng], [end.lat, end.lng]);
+          if (end) {
+            L.polyline([[start.lat, start.lng], [end.lat, end.lng]], { 
+              color: hoveredTripId === trip.id ? '#13ec5b' : '#cbd5e1', 
+              weight: hoveredTripId === trip.id ? 4 : 2,
+              dashArray: hoveredTripId === trip.id ? '' : '5, 10'
+            }).addTo(mapLayerGroupRef.current);
+            bounds.push([end.lat, end.lng]);
+          }
+          bounds.push([start.lat, start.lng]);
         }
       });
 
@@ -183,7 +273,7 @@ const SearchResultsPage: React.FC = () => {
         mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
       }
     }
-  }, [sortedTrips, hoveredTripId]);
+  }, [sortedTrips, hoveredTripId, userCoords]);
 
   const toggleFilter = (state: string[], setState: (v: string[]) => void, value: string) => {
     if (state.includes(value)) setState(state.filter(v => v !== value));
@@ -234,6 +324,12 @@ const SearchResultsPage: React.FC = () => {
         <div className="text-left md:text-center">
           <h3 className="font-black text-text-main dark:text-white">{trip.agencyName}</h3>
           {isSummary && <div className="text-[10px] font-bold text-text-muted mt-1 uppercase tracking-widest">{trip.date}</div>}
+          {!isSummary && trip.distanceToUser && (
+            <div className="text-[9px] font-black text-primary mt-1 flex items-center gap-1 md:justify-center">
+              <span className="material-symbols-outlined text-[12px]">my_location</span>
+              À {trip.distanceToUser.toFixed(1)} km
+            </div>
+          )}
         </div>
       </div>
 
@@ -279,8 +375,19 @@ const SearchResultsPage: React.FC = () => {
   );
 
   return (
-    <div className="flex flex-col h-[calc(100vh-72px)] bg-background-light dark:bg-background-dark overflow-hidden font-display">
+    <div className="flex flex-col h-[calc(100vh-72px)] bg-background-light dark:bg-background-dark overflow-hidden font-display relative">
       
+      {/* Mobile Switcher FAB */}
+      <button 
+        onClick={() => setMobileView(mobileView === 'list' ? 'map' : 'list')}
+        className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] bg-black dark:bg-white text-white dark:text-black h-12 px-6 rounded-full font-black shadow-2xl flex items-center gap-2 border border-white/20 active:scale-95 transition-transform uppercase tracking-widest text-[10px]"
+      >
+        <span className="material-symbols-outlined text-lg">
+          {mobileView === 'list' ? 'map' : 'list'}
+        </span>
+        {mobileView === 'list' ? 'Voir Carte' : 'Voir Liste'}
+      </button>
+
       {/* Dynamic Header */}
       <div className="bg-white dark:bg-surface-dark border-b border-gray-100 dark:border-gray-800 z-20 px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm">
         <div className="flex flex-col">
@@ -303,7 +410,7 @@ const SearchResultsPage: React.FC = () => {
       <div className="flex-1 flex overflow-hidden">
         
         {/* Left Side: Results & Filters */}
-        <div className="w-full lg:w-[600px] xl:w-[700px] flex flex-col border-r border-gray-100 dark:border-gray-800 bg-white dark:bg-background-dark z-10 overflow-y-auto custom-scrollbar">
+        <div className={`w-full lg:w-[600px] xl:w-[700px] flex flex-col border-r border-gray-100 dark:border-gray-800 bg-white dark:bg-background-dark z-10 overflow-y-auto custom-scrollbar transition-all ${mobileView === 'map' ? 'hidden lg:flex' : 'flex'}`}>
            <div className="p-6 md:p-8">
               {currentStep === 'summary' ? (
                 <div className="space-y-8 animate-fadeIn">
@@ -369,7 +476,6 @@ const SearchResultsPage: React.FC = () => {
                    {isFilterOpen && (
                      <div className="bg-gray-50 dark:bg-white/5 rounded-3xl p-6 mb-8 border border-gray-100 dark:border-gray-800 animate-slideDown overflow-hidden">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                          {/* Heure de départ */}
                           <div>
                             <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-4">{t('results.filter.departure_time')}</h4>
                             <div className="space-y-2">
@@ -388,8 +494,6 @@ const SearchResultsPage: React.FC = () => {
                               ))}
                             </div>
                           </div>
-
-                          {/* Opérateurs */}
                           <div>
                             <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-4">{t('results.filter.agencies')}</h4>
                             <div className="space-y-2">
@@ -406,8 +510,6 @@ const SearchResultsPage: React.FC = () => {
                               ))}
                             </div>
                           </div>
-
-                          {/* Services */}
                           <div>
                             <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-4">{t('results.filter.amenities')}</h4>
                             <div className="space-y-2">
@@ -427,7 +529,6 @@ const SearchResultsPage: React.FC = () => {
                             </div>
                           </div>
                         </div>
-
                         <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
                            <button 
                              onClick={() => { setSelectedTimes([]); setSelectedAgencies([]); setSelectedAmenities([]); }}
@@ -435,10 +536,7 @@ const SearchResultsPage: React.FC = () => {
                            >
                              {t('results.filter.clear')}
                            </button>
-                           <button 
-                             onClick={() => setIsFilterOpen(false)}
-                             className="px-6 py-2 bg-text-main dark:bg-white text-white dark:text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:opacity-90"
-                           >
+                           <button onClick={() => setIsFilterOpen(false)} className="px-6 py-2 bg-text-main dark:bg-white text-white dark:text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:opacity-90">
                              {t('results.filter.apply')}
                            </button>
                         </div>
@@ -451,7 +549,6 @@ const SearchResultsPage: React.FC = () => {
                         <div className="text-center py-20 bg-gray-50 dark:bg-white/5 rounded-[2rem] border-2 border-dashed border-gray-100 dark:border-gray-800">
                            <span className="material-symbols-outlined text-6xl text-gray-300 dark:text-gray-700 mb-4">search_off</span>
                            <h3 className="text-lg font-black text-text-muted">Aucun trajet disponible</h3>
-                           <button onClick={() => { setSelectedAgencies([]); setSelectedTimes([]); setSelectedAmenities([]); }} className="mt-4 text-xs font-black text-primary uppercase underline tracking-widest">Réinitialiser les filtres</button>
                         </div>
                       )}
                    </div>
@@ -461,7 +558,7 @@ const SearchResultsPage: React.FC = () => {
         </div>
 
         {/* Right Side: Interactive Map */}
-        <div className="hidden lg:block flex-1 relative bg-gray-100 dark:bg-gray-900 z-0">
+        <div className={`flex-1 relative bg-gray-100 dark:bg-gray-900 z-0 transition-all ${mobileView === 'list' ? 'hidden lg:block' : 'block'}`}>
            <div ref={mapContainerRef} className="absolute inset-0 z-0" />
            <div className="absolute top-6 left-6 z-10 flex flex-col gap-3">
               <div className="bg-white/90 dark:bg-black/90 backdrop-blur-md px-5 py-3 rounded-2xl shadow-2xl border border-white/20 flex items-center gap-3">
@@ -469,6 +566,16 @@ const SearchResultsPage: React.FC = () => {
                  <span className="text-[10px] font-black uppercase tracking-widest text-text-main dark:text-white">Réseau CamBus Live</span>
               </div>
            </div>
+           {userCoords && (
+             <div className="absolute bottom-6 right-6 lg:bottom-12 lg:right-12 z-10">
+                <button 
+                  onClick={() => mapInstanceRef.current.flyTo([userCoords.lat, userCoords.lng], 13)}
+                  className="size-12 bg-white dark:bg-surface-dark rounded-full shadow-2xl flex items-center justify-center text-primary border border-gray-100 dark:border-gray-800 active:scale-95 transition-transform"
+                >
+                  <span className="material-symbols-outlined">my_location</span>
+                </button>
+             </div>
+           )}
         </div>
 
       </div>
