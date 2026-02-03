@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
@@ -29,7 +30,8 @@ const SearchWidget: React.FC = () => {
         try {
             const q = query(collection(db, 'cities'), where('status', '==', 'active'));
             const snapshot = await getDocs(q);
-            const cityNames = snapshot.docs.map(doc => doc.data().name);
+            // Fix: Cast doc.data() to any to access the 'name' property which is typed as unknown
+            const cityNames = snapshot.docs.map(doc => (doc.data() as any).name);
             setAvailableCities(cityNames.sort());
         } catch (error) {
             console.error("Error fetching cities for search:", error);

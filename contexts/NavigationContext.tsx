@@ -1,13 +1,5 @@
+
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { auth, db } from '../firebase/config';
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut, 
-  onAuthStateChanged,
-  User as FirebaseUser
-} from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 export type Page = 'home' | 'agencies' | 'results' | 'checkout' | 'login' | 'signup' | 'bookings' | 'super_admin' | 'agency_admin' | 'station_manager';
 
@@ -49,8 +41,8 @@ export interface User {
   name: string;
   email: string;
   role?: UserRole;
-  agencyId?: number;
-  stationId?: number;
+  agencyId?: string;
+  stationId?: string;
   avatar?: string;
 }
 
@@ -76,79 +68,17 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
   const [searchParams, setSearchParams] = useState<SearchParams | null>(null);
   const [bookingDetails, setBookingDetails] = useState<BookingDetails | null>(null);
   
-  // Auth State
+  // Auth State (Simulé avec localStorage pour Convex Demo)
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Écouter les changements d'état Firebase Auth
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setAuthLoading(true);
-      if (firebaseUser) {
-        try {
-          const docRef = doc(db, 'users', firebaseUser.uid);
-          const docSnap = await getDoc(docRef);
-
-          if (docSnap.exists()) {
-            setUser({ 
-              uid: firebaseUser.uid,
-              email: firebaseUser.email || '',
-              ...docSnap.data() 
-            } as User);
-          } else {
-            const email = firebaseUser.email || '';
-            let fallbackRole: UserRole = 'user';
-            let avatar = 'US';
-            
-            if (email.includes('admin')) { fallbackRole = 'super_admin'; avatar = 'SA'; }
-            else if (email.includes('express')) { fallbackRole = 'agency_admin'; avatar = 'AG'; }
-            else if (email.includes('station')) { fallbackRole = 'station_manager'; avatar = 'SM'; }
-
-            setUser({
-              uid: firebaseUser.uid,
-              name: firebaseUser.displayName || email.split('@')[0] || 'Utilisateur',
-              email: email,
-              role: fallbackRole,
-              avatar: avatar
-            });
-          }
-        } catch (error) {
-          console.error("Firestore error fallback:", error);
-          const email = firebaseUser.email || '';
-          let fallbackRole: UserRole = 'user';
-          if (email.includes('admin')) fallbackRole = 'super_admin';
-          else if (email.includes('express')) fallbackRole = 'agency_admin';
-          else if (email.includes('station')) fallbackRole = 'station_manager';
-
-          setUser({
-              uid: firebaseUser.uid,
-              name: email.split('@')[0] || 'Utilisateur',
-              email: email,
-              role: fallbackRole,
-              avatar: fallbackRole.charAt(0).toUpperCase()
-          });
-        }
-      } else {
-        setUser(null);
-      }
-      setAuthLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  // Gestion des redirections automatiques de connexion
-  useEffect(() => {
-    if (!authLoading && user) {
-        if (currentPage === 'login' || currentPage === 'signup') {
-            if (user.role === 'super_admin') navigateTo('super_admin');
-            else if (user.role === 'agency_admin') navigateTo('agency_admin');
-            else if (user.role === 'station_manager') navigateTo('station_manager');
-            else if (bookingDetails) navigateTo('checkout');
-            else navigateTo('home');
-        }
+    const savedUser = localStorage.getItem('cambus_user');
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
     }
-  }, [user, authLoading, currentPage, bookingDetails]);
+    setAuthLoading(false);
+  }, []);
 
   const navigateTo = (page: Page) => {
     window.scrollTo(0, 0);
@@ -156,36 +86,42 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
   };
 
   const login = async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email, password);
+    // Dans une version réelle, on appellerait une query Convex pour vérifier les credentials
+    // Ici on simule pour la structure
+    setAuthLoading(true);
+    let role: UserRole = 'user';
+    if (email.includes('admin')) role = 'super_admin';
+    else if (email.includes('express')) role = 'agency_admin';
+
+    const newUser = {
+      uid: 'convex_user_' + Date.now(),
+      name: email.split('@')[0],
+      email: email,
+      role: role,
+      avatar: role === 'super_admin' ? 'SA' : 'US'
+    };
+    setUser(newUser);
+    localStorage.setItem('cambus_user', JSON.stringify(newUser));
+    setAuthLoading(false);
   };
 
   const signup = async (name: string, email: string, password: string) => {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const uid = userCredential.user.uid;
-
-    let role: UserRole = 'user';
-    let avatar = 'US';
-    
-    if (email.includes('admin')) { role = 'super_admin'; avatar = 'SA'; }
-    else if (email.includes('express')) { role = 'agency_admin'; avatar = 'AG'; }
-    else if (email.includes('station')) { role = 'station_manager'; avatar = 'SM'; }
-
-    try {
-      await setDoc(doc(db, 'users', uid), {
-        name,
-        email,
-        role,
-        avatar,
-        createdAt: serverTimestamp()
-      });
-    } catch (e) {
-       console.warn("Could not save to firestore, auth only.");
-    }
+    setAuthLoading(true);
+    const newUser = {
+      uid: 'convex_user_' + Date.now(),
+      name: name,
+      email: email,
+      role: 'user' as UserRole,
+      avatar: 'US'
+    };
+    setUser(newUser);
+    localStorage.setItem('cambus_user', JSON.stringify(newUser));
+    setAuthLoading(false);
   };
 
   const logout = async () => {
-    await signOut(auth);
     setUser(null);
+    localStorage.removeItem('cambus_user');
     navigateTo('home');
   };
 
