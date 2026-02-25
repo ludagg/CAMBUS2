@@ -23,7 +23,7 @@ export interface SearchParams {
 
 // Renamed from SelectedTrip to Trip to match usages in results page and fix import errors
 export interface Trip {
-  id: number;
+  id: string | number;
   agencyName: string;
   agencyLogo: string;
   departureTime: string;

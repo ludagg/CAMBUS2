@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
+import { db } from '../firebase/config';
+import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 
 interface Booking {
   id: string;
@@ -21,6 +23,8 @@ const BookingsPage: React.FC = () => {
   const { t } = useLanguage();
   const { user, navigateTo } = useNavigation();
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Redirect if not logged in
   useEffect(() => {
@@ -29,53 +33,34 @@ const BookingsPage: React.FC = () => {
     }
   }, [user, navigateTo]);
 
-  if (!user) return null;
+  useEffect(() => {
+    const fetchBookings = async () => {
+      if (!user) return;
+      setIsLoading(true);
+      try {
+        const q = query(
+          collection(db, 'bookings'),
+          where("userId", "==", user.uid)
+        );
+        const querySnapshot = await getDocs(q);
+        const bookingsData: Booking[] = [];
+        querySnapshot.forEach((doc) => {
+          bookingsData.push({ id: doc.id, ...doc.data() } as Booking);
+        });
+        // Sort by date descending
+        bookingsData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setBookings(bookingsData);
+      } catch (error) {
+        console.error("Error fetching bookings:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-  // Mock Data
-  const bookings: Booking[] = [
-    {
-      id: 'CB-94821',
-      agencyName: 'Express Voyage',
-      agencyLogo: 'directions_bus',
-      color: 'bg-blue-600',
-      from: 'Douala - Gare Centrale',
-      to: 'Yaoundé - Mvan',
-      departureTime: '07:30',
-      date: new Date(Date.now() + 86400000 * 2).toISOString(), // 2 days from now
-      price: 9000,
-      currency: 'FCFA',
-      passengers: 2,
-      status: 'confirmed'
-    },
-    {
-      id: 'CB-88210',
-      agencyName: 'GreenLines',
-      agencyLogo: 'eco',
-      color: 'bg-green-600',
-      from: 'Yaoundé - Biyem-Assi',
-      to: 'Bamenda - Green Park',
-      departureTime: '09:00',
-      date: '2023-11-15',
-      price: 3500,
-      currency: 'FCFA',
-      passengers: 1,
-      status: 'completed'
-    },
-    {
-      id: 'CB-77432',
-      agencyName: 'CityLink',
-      agencyLogo: 'apartment',
-      color: 'bg-purple-600',
-      from: 'Douala - Bali',
-      to: 'Kribi - Plage',
-      departureTime: '13:00',
-      date: '2023-10-22',
-      price: 8000,
-      currency: 'FCFA',
-      passengers: 2,
-      status: 'completed'
-    }
-  ];
+    fetchBookings();
+  }, [user]);
+
+  if (!user) return null;
 
   const now = new Date();
   const upcomingBookings = bookings.filter(b => new Date(b.date) > now || b.status === 'confirmed');

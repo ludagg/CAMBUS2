@@ -83,7 +83,7 @@ const SuperAdminDashboard: React.FC = () => {
   // --- ACTIONS ---
 
   const handleSeedData = async () => {
-    if (!confirm("Voulez-vous injecter les données de démonstration ?")) return;
+    if (!confirm("Voulez-vous injecter les données de démonstration (Agences, Villes, Trajets) ?")) return;
     const batch = writeBatch(db);
     
     const demoCities = [
@@ -95,6 +95,58 @@ const SuperAdminDashboard: React.FC = () => {
     demoCities.forEach(city => {
       const ref = doc(collection(db, 'cities'));
       batch.set(ref, { ...city, createdAt: serverTimestamp() });
+    });
+
+    const demoAgencies = [
+      { name: "Express Voyage", logo: "directions_bus", color: "bg-blue-600", colorHex: "#2563eb", email: "contact@express.cm", status: "active" },
+      { name: "GreenLines", logo: "eco", color: "bg-green-600", colorHex: "#16a34a", email: "contact@greenlines.cm", status: "active" },
+      { name: "Royal Road", logo: "diamond", color: "bg-amber-600", colorHex: "#d97706", email: "contact@royalroad.cm", status: "active" },
+      { name: "CityLink", logo: "apartment", color: "bg-purple-600", colorHex: "#9333ea", email: "contact@citylink.cm", status: "active" }
+    ];
+
+    demoAgencies.forEach(agency => {
+      const ref = doc(collection(db, 'agencies'));
+      batch.set(ref, { ...agency, createdAt: serverTimestamp() });
+    });
+
+    const demoTrips = [
+      {
+        agencyName: "Express Voyage", agencyLogo: "directions_bus", color: "bg-blue-600",
+        departureTime: "07:30", departureLocation: "Douala - Gare Centrale",
+        arrivalTime: "11:30", arrivalLocation: "Yaoundé - Mvan",
+        duration: "4h 00m", price: 4500, currency: "FCFA",
+        amenities: ["wifi", "ac", "power"], origin: "Douala", destination: "Yaoundé",
+        date: new Date().toISOString().split('T')[0], seatsAvailable: 70
+      },
+      {
+        agencyName: "GreenLines", agencyLogo: "eco", color: "bg-green-600",
+        departureTime: "09:00", departureLocation: "Douala - Akwa",
+        arrivalTime: "13:15", arrivalLocation: "Yaoundé - Biyem-Assi",
+        duration: "4h 15m", price: 3500, currency: "FCFA",
+        amenities: ["ac", "snack"], origin: "Douala", destination: "Yaoundé",
+        date: new Date().toISOString().split('T')[0], seatsAvailable: 50
+      },
+      {
+        agencyName: "Royal Road", agencyLogo: "diamond", color: "bg-amber-600",
+        departureTime: "13:00", departureLocation: "Douala - Bonabéri",
+        arrivalTime: "17:00", arrivalLocation: "Yaoundé - Centre Ville",
+        duration: "4h 00m", price: 6000, currency: "FCFA",
+        amenities: ["wifi", "ac", "power", "tv", "snack"], origin: "Douala", destination: "Yaoundé",
+        date: new Date().toISOString().split('T')[0], seatsAvailable: 30
+      },
+      {
+        agencyName: "CityLink", agencyLogo: "apartment", color: "bg-purple-600",
+        departureTime: "15:30", departureLocation: "Douala - Bali",
+        arrivalTime: "19:45", arrivalLocation: "Yaoundé - Nsam",
+        duration: "4h 15m", price: 4000, currency: "FCFA",
+        amenities: ["ac", "tv"], origin: "Douala", destination: "Yaoundé",
+        date: new Date().toISOString().split('T')[0], seatsAvailable: 45
+      }
+    ];
+
+    demoTrips.forEach(trip => {
+      const ref = doc(collection(db, 'trips'));
+      batch.set(ref, { ...trip, createdAt: serverTimestamp() });
     });
 
     await batch.commit();

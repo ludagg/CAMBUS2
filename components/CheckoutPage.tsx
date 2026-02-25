@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
+import { db } from '../firebase/config';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 const SEAT_FEE = 1000; // Extra cost per seat selection
 
@@ -71,15 +73,63 @@ const CheckoutPage: React.FC = () => {
     }
   };
 
-  const handlePayment = (e: React.FormEvent) => {
+  const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user || !bookingDetails) return;
     setIsProcessing(true);
     
-    // Simulate API call
-    setTimeout(() => {
-      setIsProcessing(false);
+    try {
+      const bookingData = {
+        userId: user.uid,
+        tripId: bookingDetails.outbound.id,
+        tripDate: bookingDetails.outbound.date,
+        tripRoute: `${bookingDetails.outbound.departureLocation} - ${bookingDetails.outbound.arrivalLocation}`,
+        agencyName: bookingDetails.outbound.agencyName,
+        agencyLogo: bookingDetails.outbound.agencyLogo,
+        color: bookingDetails.outbound.color,
+        from: bookingDetails.outbound.departureLocation,
+        to: bookingDetails.outbound.arrivalLocation,
+        departureTime: bookingDetails.outbound.departureTime,
+        date: bookingDetails.outbound.date,
+        price: calculateTotal(),
+        currency: 'FCFA',
+        passengers: totalSeatsNeeded,
+        seats: outboundSeats,
+        status: 'confirmed',
+        paymentMethod: paymentMethod,
+        contactEmail: email,
+        contactPhone: phone,
+        passengersInfo: passengersInfo,
+        createdAt: serverTimestamp()
+      };
+
+      await addDoc(collection(db, 'bookings'), bookingData);
+
+      if (bookingDetails.returnTrip) {
+        const returnBookingData = {
+          ...bookingData,
+          tripId: bookingDetails.returnTrip.id,
+          tripDate: bookingDetails.returnTrip.date,
+          tripRoute: `${bookingDetails.returnTrip.departureLocation} - ${bookingDetails.returnTrip.arrivalLocation}`,
+          agencyName: bookingDetails.returnTrip.agencyName,
+          agencyLogo: bookingDetails.returnTrip.agencyLogo,
+          color: bookingDetails.returnTrip.color,
+          from: bookingDetails.returnTrip.departureLocation,
+          to: bookingDetails.returnTrip.arrivalLocation,
+          departureTime: bookingDetails.returnTrip.departureTime,
+          date: bookingDetails.returnTrip.date,
+          seats: returnSeats,
+        };
+        await addDoc(collection(db, 'bookings'), returnBookingData);
+      }
+
       setIsSuccess(true);
-    }, 2000);
+    } catch (error) {
+      console.error("Error saving booking:", error);
+      alert("Une erreur est survenue lors de la réservation.");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const formatDate = (dateString: string) => {

@@ -1,9 +1,64 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
+import { db } from '../firebase/config';
+import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 
 const StationManagerDashboard: React.FC = () => {
   const { user, logout } = useNavigation();
   const [activeTab, setActiveTab] = useState('checkin');
+  const [scanCode, setScanCode] = useState('');
+  const [scanResult, setScanResult] = useState<{ success: boolean; message: string; passenger?: string; seat?: string } | null>(null);
+  const [recentScans, setRecentScans] = useState<any[]>([]);
+
+  const handleScan = async () => {
+    if (!scanCode) return;
+    
+    try {
+      // Assuming scanCode is the booking ID
+      const q = query(collection(db, 'bookings'), where('__name__', '==', scanCode));
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty) {
+        setScanResult({ success: false, message: 'Billet introuvable.' });
+        return;
+      }
+
+      const bookingDoc = querySnapshot.docs[0];
+      const bookingData = bookingDoc.data();
+
+      if (bookingData.status === 'boarded') {
+        setScanResult({ success: false, message: 'Billet déjà validé.' });
+        return;
+      }
+
+      if (bookingData.status !== 'confirmed') {
+        setScanResult({ success: false, message: `Statut invalide: ${bookingData.status}` });
+        return;
+      }
+
+      // Update status to boarded
+      await updateDoc(doc(db, 'bookings', bookingDoc.id), {
+        status: 'boarded'
+      });
+
+      const passengerName = bookingData.passengersInfo?.[0]?.name || 'Passager';
+      const seat = bookingData.seats?.[0] || 'N/A';
+
+      setScanResult({ success: true, message: 'Billet validé avec succès.', passenger: passengerName, seat: seat });
+      
+      setRecentScans(prev => [{
+        id: bookingDoc.id,
+        name: passengerName,
+        seat: seat,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }, ...prev].slice(0, 5));
+
+      setScanCode('');
+    } catch (error) {
+      console.error("Error scanning ticket:", error);
+      setScanResult({ success: false, message: 'Erreur lors de la validation.' });
+    }
+  };
 
   return (
     <div className="flex flex-col h-screen bg-gray-100 dark:bg-black font-display overflow-hidden">
@@ -15,7 +70,7 @@ const StationManagerDashboard: React.FC = () => {
                 <span className="material-symbols-outlined">confirmation_number</span>
              </div>
              <div>
-                <div className="font-black text-text-main dark:text-white leading-tight">Gare Centrale Douala</div>
+                <div className="font-black text-text-main dark:text-white leading-tight">Gare Centrale</div>
                 <div className="text-xs text-gray-500 font-medium">Terminal Manager: {user?.name}</div>
              </div>
           </div>
@@ -73,13 +128,21 @@ const StationManagerDashboard: React.FC = () => {
                          <h2 className="text-xl font-bold text-text-main dark:text-white mt-8 mb-2">Validation Billet</h2>
                          <p className="text-gray-500 text-sm mb-6">Pointez la caméra vers le QR Code du passager ou entrez le code manuellement.</p>
 
+                         {scanResult && (
+                           <div className={`mb-4 p-3 rounded-lg text-sm font-bold ${scanResult.success ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                             {scanResult.message}
+                           </div>
+                         )}
+
                          <div className="flex gap-2">
                             <input 
                               type="text" 
-                              placeholder="CODE-12345" 
-                              className="flex-1 bg-gray-100 dark:bg-black border-none rounded-xl px-4 font-mono text-center font-bold uppercase focus:ring-2 focus:ring-amber-500"
+                              value={scanCode}
+                              onChange={(e) => setScanCode(e.target.value)}
+                              placeholder="ID Billet" 
+                              className="flex-1 bg-gray-100 dark:bg-black border-none rounded-xl px-4 font-mono text-center font-bold focus:ring-2 focus:ring-amber-500"
                             />
-                            <button className="bg-gray-900 text-white size-12 rounded-xl flex items-center justify-center shadow-lg active:scale-95 transition-transform">
+                            <button onClick={handleScan} className="bg-gray-900 text-white size-12 rounded-xl flex items-center justify-center shadow-lg active:scale-95 transition-transform">
                                <span className="material-symbols-outlined">arrow_forward</span>
                             </button>
                          </div>
@@ -88,18 +151,20 @@ const StationManagerDashboard: React.FC = () => {
                      {/* Recent Scans */}
                      <div className="w-full mt-6 space-y-3">
                         <div className="text-xs font-bold text-gray-500 uppercase ml-2">Validés Récemment</div>
-                        <div className="bg-white dark:bg-surface-dark p-4 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center justify-between shadow-sm">
-                           <div className="flex items-center gap-3">
-                              <div className="size-8 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
-                                 <span className="material-symbols-outlined text-sm">check</span>
-                              </div>
-                              <div>
-                                 <div className="font-bold text-sm dark:text-white">Jeanne Doe</div>
-                                 <div className="text-xs text-gray-500">Siège 4A • Yaoundé</div>
-                              </div>
-                           </div>
-                           <div className="text-xs font-mono text-gray-400">14:02</div>
-                        </div>
+                        {recentScans.map((scan, i) => (
+                          <div key={i} className="bg-white dark:bg-surface-dark p-4 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center justify-between shadow-sm">
+                             <div className="flex items-center gap-3">
+                                <div className="size-8 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
+                                   <span className="material-symbols-outlined text-sm">check</span>
+                                </div>
+                                <div>
+                                   <div className="font-bold text-sm dark:text-white">{scan.name}</div>
+                                   <div className="text-xs text-gray-500">Siège {scan.seat} • {scan.id.substring(0, 8)}...</div>
+                                </div>
+                             </div>
+                             <div className="text-xs font-mono text-gray-400">{scan.time}</div>
+                          </div>
+                        ))}
                      </div>
                  </div>
              )}

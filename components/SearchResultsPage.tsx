@@ -2,6 +2,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation, Trip } from '../contexts/NavigationContext';
+import { db } from '../firebase/config';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 // Leaflet global declaration
 declare const L: any;
@@ -34,66 +36,6 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c;
 };
 
-const generateTrips = (from: string, to: string, date: string): TripExtended[] => {
-  const getStations = (agency: string) => {
-    switch (agency) {
-      case "Express Voyage": return { douala: "Gare Centrale", yaounde: "Mvan" };
-      case "GreenLines": return { douala: "Akwa", yaounde: "Biyem-Assi" };
-      case "Royal Road": return { douala: "Bonabéri", yaounde: "Centre Ville" };
-      case "CityLink": return { douala: "Bali", yaounde: "Nsam" };
-      default: return { douala: "Gare", yaounde: "Station" };
-    }
-  };
-
-  const getStationName = (city: string, agency: string) => {
-    const stations = getStations(agency);
-    const cityLower = city.toLowerCase();
-    if (cityLower.includes("douala")) return `${city} - ${stations.douala}`;
-    if (cityLower.includes("yaoundé") || cityLower.includes("yaounde")) return `${city} - ${stations.yaounde}`;
-    return `${city} - Agence`;
-  };
-
-  const agencies = [
-    { name: "Express Voyage", logo: "directions_bus", color: "bg-blue-600", colorHex: "#2563eb", price: 4500, amenities: ["wifi", "ac", "power"] },
-    { name: "GreenLines", logo: "eco", color: "bg-green-600", colorHex: "#16a34a", price: 3500, amenities: ["ac", "snack"] },
-    { name: "Royal Road", logo: "diamond", color: "bg-amber-600", colorHex: "#d97706", price: 6000, amenities: ["wifi", "ac", "power", "tv", "snack"] },
-    { name: "CityLink", logo: "apartment", color: "bg-purple-600", colorHex: "#9333ea", price: 4000, amenities: ["ac", "tv"] }
-  ];
-
-  const times = [
-    { dep: "07:30", arr: "11:30", dur: "4h 00m" },
-    { dep: "09:00", arr: "13:15", dur: "4h 15m" },
-    { dep: "13:00", arr: "17:00", dur: "4h 00m" },
-    { dep: "15:30", arr: "19:45", dur: "4h 15m" }
-  ];
-
-  let trips: TripExtended[] = [];
-  let idCounter = 1;
-  const dateStr = date ? date.replace(/-/g, '') : '20240101';
-
-  agencies.forEach((agency, index) => {
-    times.forEach((time, timeIndex) => {
-       trips.push({
-         id: parseInt(`${dateStr}${index}${timeIndex}${idCounter++}`),
-         agencyName: agency.name,
-         agencyLogo: agency.logo,
-         departureTime: time.dep,
-         departureLocation: getStationName(from, agency.name),
-         arrivalTime: time.arr,
-         arrivalLocation: getStationName(to, agency.name),
-         duration: time.dur,
-         price: agency.price,
-         currency: "FCFA",
-         amenities: agency.amenities,
-         color: agency.color,
-         date: date || new Date().toISOString().split('T')[0]
-       });
-    });
-  });
-
-  return trips;
-};
-
 const SearchResultsPage: React.FC = () => {
   const { t } = useLanguage();
   const { searchParams, navigateTo, setBookingDetails } = useNavigation();
@@ -106,11 +48,14 @@ const SearchResultsPage: React.FC = () => {
 
   const [selectedOutbound, setSelectedOutbound] = useState<TripExtended | null>(null);
   const [selectedReturn, setSelectedReturn] = useState<TripExtended | null>(null);
-  const [hoveredTripId, setHoveredTripId] = useState<number | null>(null);
+  const [hoveredTripId, setHoveredTripId] = useState<number | string | null>(null);
   
   // New: Geolocation & Mobile View switcher
   const [userCoords, setUserCoords] = useState<{lat: number, lng: number} | null>(null);
   const [mobileView, setMobileView] = useState<'list' | 'map'>('list');
+
+  const [fetchedTrips, setFetchedTrips] = useState<TripExtended[]>([]);
+  const [isLoadingTrips, setIsLoadingTrips] = useState(false);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
@@ -139,20 +84,49 @@ const SearchResultsPage: React.FC = () => {
     else currentStep = 'summary';
   }
 
-  const initialTrips = useMemo(() => {
-    let trips: TripExtended[] = [];
-    if (currentStep === 'outbound') trips = generateTrips(searchParams.from, searchParams.to, searchParams.date);
-    else if (currentStep === 'return') trips = generateTrips(searchParams.to, searchParams.from, searchParams.returnDate || searchParams.date);
+  useEffect(() => {
+    const fetchTrips = async () => {
+      setIsLoadingTrips(true);
+      try {
+        const origin = currentStep === 'outbound' ? searchParams.from : searchParams.to;
+        const destination = currentStep === 'outbound' ? searchParams.to : searchParams.from;
+        const date = currentStep === 'outbound' ? searchParams.date : (searchParams.returnDate || searchParams.date);
 
+        const q = query(
+          collection(db, 'trips'),
+          where("origin", "==", origin),
+          where("destination", "==", destination),
+          where("date", "==", date)
+        );
+
+        const querySnapshot = await getDocs(q);
+        const tripsData: TripExtended[] = [];
+        querySnapshot.forEach((doc) => {
+          tripsData.push({ id: doc.id, ...doc.data() } as TripExtended);
+        });
+        setFetchedTrips(tripsData);
+      } catch (error) {
+        console.error("Error fetching trips:", error);
+      } finally {
+        setIsLoadingTrips(false);
+      }
+    };
+
+    if (currentStep !== 'summary') {
+      fetchTrips();
+    }
+  }, [currentStep, searchParams]);
+
+  const initialTrips = useMemo(() => {
     if (userCoords) {
-      return trips.map(trip => {
+      return fetchedTrips.map(trip => {
         const station = stationLocations[trip.departureLocation];
         const dist = station ? calculateDistance(userCoords.lat, userCoords.lng, station.lat, station.lng) : undefined;
         return { ...trip, distanceToUser: dist };
       });
     }
-    return trips;
-  }, [currentStep, searchParams, userCoords]);
+    return fetchedTrips;
+  }, [fetchedTrips, userCoords]);
 
   const filteredTrips = useMemo(() => {
     return initialTrips.filter(trip => {
@@ -177,8 +151,8 @@ const SearchResultsPage: React.FC = () => {
   }, [filteredTrips, sortOption]);
 
   // Handle selection from map
-  const selectFromMap = (tripId: number) => {
-    const trip = initialTrips.find(t => t.id === tripId);
+  const selectFromMap = (tripId: string | number) => {
+    const trip = initialTrips.find(t => String(t.id) === String(tripId));
     if (trip) {
       handleTripSelect(trip);
       if (window.innerWidth < 1024) setMobileView('list');
@@ -197,7 +171,7 @@ const SearchResultsPage: React.FC = () => {
       // Global click handler to allow selection from popup
       window.addEventListener('click', (e: any) => {
         if (e.target && e.target.classList.contains('map-select-btn')) {
-          const tid = parseInt(e.target.dataset.tripId);
+          const tid = e.target.dataset.tripId;
           selectFromMap(tid);
         }
       });
