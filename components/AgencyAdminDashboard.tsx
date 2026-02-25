@@ -1,9 +1,40 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
+import { db } from '../firebase/config';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 const AgencyAdminDashboard: React.FC = () => {
-  const { logout } = useNavigation();
+  const { user, logout } = useNavigation();
   const [activeTab, setActiveTab] = useState('fleet');
+  const [fleet, setFleet] = useState<any[]>([]);
+  const [routes, setRoutes] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchAgencyData = async () => {
+      if (!user?.agencyId) return;
+      setIsLoading(true);
+      try {
+        // Fetch Fleet
+        const fleetQuery = query(collection(db, 'fleet'), where('agencyId', '==', user.agencyId));
+        const fleetSnapshot = await getDocs(fleetQuery);
+        const fleetData = fleetSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setFleet(fleetData);
+
+        // Fetch Routes
+        const routesQuery = query(collection(db, 'trips'), where('agencyId', '==', user.agencyId));
+        const routesSnapshot = await getDocs(routesQuery);
+        const routesData = routesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setRoutes(routesData);
+      } catch (error) {
+        console.error("Error fetching agency data:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchAgencyData();
+  }, [user]);
 
   // Sidebar item
   const NavItem = ({ id, icon, label }: any) => (
@@ -24,7 +55,7 @@ const AgencyAdminDashboard: React.FC = () => {
          <div className="p-6 border-b border-gray-100 dark:border-gray-800">
              <div className="flex items-center gap-2 font-black text-lg text-text-main dark:text-white">
                  <span className="material-symbols-outlined text-blue-600">directions_bus</span>
-                 Express Voyage
+                 {user?.name || 'Agency Admin'}
              </div>
              <div className="text-xs text-gray-500 mt-1 uppercase font-bold tracking-wider">Administration</div>
          </div>
@@ -68,73 +99,80 @@ const AgencyAdminDashboard: React.FC = () => {
             )}
          </div>
 
-         {/* FLEET VIEW */}
-         {activeTab === 'fleet' && (
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fadeIn">
-                 {[
-                     { plate: 'LT 192 AF', status: 'active', km: '120k', model: 'Yutong VIP' },
-                     { plate: 'CE 200 BB', status: 'transit', km: '45k', model: 'Coaster' },
-                     { plate: 'LT 999 XX', status: 'maintenance', km: '340k', model: 'Mercedes' },
-                     { plate: 'OU 123 AA', status: 'active', km: '12k', model: 'Yutong VIP' },
-                 ].map((bus, i) => (
-                     <div key={i} className="bg-white dark:bg-surface-dark p-5 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm relative overflow-hidden">
-                         <div className={`absolute top-0 right-0 px-3 py-1 rounded-bl-xl text-xs font-bold uppercase ${
-                             bus.status === 'active' ? 'bg-green-100 text-green-700' : 
-                             bus.status === 'maintenance' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
-                         }`}>
-                             {bus.status}
-                         </div>
-                         <div className="flex items-center gap-4 mb-4">
-                             <div className="size-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center text-gray-500">
-                                 <span className="material-symbols-outlined text-2xl">directions_bus</span>
+         {isLoading ? (
+            <div className="flex justify-center items-center h-64">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            </div>
+         ) : (
+             <>
+                 {/* FLEET VIEW */}
+                 {activeTab === 'fleet' && (
+                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fadeIn">
+                         {fleet.length > 0 ? fleet.map((bus, i) => (
+                             <div key={i} className="bg-white dark:bg-surface-dark p-5 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm relative overflow-hidden">
+                                 <div className={`absolute top-0 right-0 px-3 py-1 rounded-bl-xl text-xs font-bold uppercase ${
+                                     bus.status === 'active' ? 'bg-green-100 text-green-700' : 
+                                     bus.status === 'maintenance' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
+                                 }`}>
+                                     {bus.status || 'active'}
+                                 </div>
+                                 <div className="flex items-center gap-4 mb-4">
+                                     <div className="size-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center text-gray-500">
+                                         <span className="material-symbols-outlined text-2xl">directions_bus</span>
+                                     </div>
+                                     <div>
+                                         <div className="font-black text-lg text-text-main dark:text-white">{bus.plate || `Bus ${i+1}`}</div>
+                                         <div className="text-xs text-gray-500">{bus.model || 'Standard'}</div>
+                                     </div>
+                                 </div>
+                                 <div className="flex justify-between items-center text-sm border-t border-gray-100 dark:border-gray-800 pt-3">
+                                     <div className="text-gray-500">Kilométrage: <span className="text-text-main dark:text-white font-bold">{bus.km || 'N/A'}</span></div>
+                                     <button className="text-blue-600 font-bold hover:underline">Détails</button>
+                                 </div>
                              </div>
-                             <div>
-                                 <div className="font-black text-lg text-text-main dark:text-white">{bus.plate}</div>
-                                 <div className="text-xs text-gray-500">{bus.model}</div>
+                         )) : (
+                             <div className="col-span-full text-center py-12 text-gray-500">
+                                 Aucun bus enregistré pour le moment.
                              </div>
-                         </div>
-                         <div className="flex justify-between items-center text-sm border-t border-gray-100 dark:border-gray-800 pt-3">
-                             <div className="text-gray-500">Kilométrage: <span className="text-text-main dark:text-white font-bold">{bus.km}</span></div>
-                             <button className="text-blue-600 font-bold hover:underline">Détails</button>
-                         </div>
+                         )}
                      </div>
-                 ))}
-             </div>
-         )}
+                 )}
 
-         {/* ROUTES VIEW */}
-         {activeTab === 'routes' && (
-             <div className="space-y-4 animate-fadeIn">
-                 {[
-                     { from: 'Douala', to: 'Yaoundé', price: 4500, time: '07:30', bus: 'LT 192 AF' },
-                     { from: 'Douala', to: 'Bafoussam', price: 6000, time: '09:00', bus: 'LT 999 XX' },
-                     { from: 'Yaoundé', to: 'Douala', price: 4500, time: '14:00', bus: 'TBD' },
-                 ].map((route, i) => (
-                     <div key={i} className="bg-white dark:bg-surface-dark p-6 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center justify-between shadow-sm">
-                         <div className="flex items-center gap-6">
-                             <div className="text-center w-20">
-                                 <div className="text-2xl font-black text-text-main dark:text-white">{route.time}</div>
-                                 <div className="text-xs text-gray-500 uppercase font-bold">Départ</div>
-                             </div>
-                             <div className="flex flex-col gap-1">
-                                 <div className="flex items-center gap-2 font-bold text-lg text-text-main dark:text-white">
-                                     {route.from} <span className="material-symbols-outlined text-gray-400">arrow_forward</span> {route.to}
+                 {/* ROUTES VIEW */}
+                 {activeTab === 'routes' && (
+                     <div className="space-y-4 animate-fadeIn">
+                         {routes.length > 0 ? routes.map((route, i) => (
+                             <div key={i} className="bg-white dark:bg-surface-dark p-6 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center justify-between shadow-sm">
+                                 <div className="flex items-center gap-6">
+                                     <div className="text-center w-20">
+                                         <div className="text-2xl font-black text-text-main dark:text-white">{route.departureTime}</div>
+                                         <div className="text-xs text-gray-500 uppercase font-bold">Départ</div>
+                                     </div>
+                                     <div className="flex flex-col gap-1">
+                                         <div className="flex items-center gap-2 font-bold text-lg text-text-main dark:text-white">
+                                             {route.departureLocation} <span className="material-symbols-outlined text-gray-400">arrow_forward</span> {route.arrivalLocation}
+                                         </div>
+                                         <div className="flex items-center gap-2 text-xs text-gray-500">
+                                             <span className="material-symbols-outlined text-sm">directions_bus</span>
+                                             Bus: {route.busId || 'Non assigné'}
+                                         </div>
+                                     </div>
                                  </div>
-                                 <div className="flex items-center gap-2 text-xs text-gray-500">
-                                     <span className="material-symbols-outlined text-sm">directions_bus</span>
-                                     Bus: {route.bus}
+                                 <div className="text-right">
+                                     <div className="text-xl font-black text-blue-600">{route.price?.toLocaleString()} FCFA</div>
+                                     <button className="text-xs font-bold text-gray-400 hover:text-text-main mt-1 flex items-center gap-1 justify-end">
+                                         <span className="material-symbols-outlined text-sm">edit</span> Modifier
+                                     </button>
                                  </div>
                              </div>
-                         </div>
-                         <div className="text-right">
-                             <div className="text-xl font-black text-blue-600">{route.price.toLocaleString()} FCFA</div>
-                             <button className="text-xs font-bold text-gray-400 hover:text-text-main mt-1 flex items-center gap-1 justify-end">
-                                 <span className="material-symbols-outlined text-sm">edit</span> Modifier
-                             </button>
-                         </div>
+                         )) : (
+                             <div className="text-center py-12 text-gray-500">
+                                 Aucun trajet configuré pour le moment.
+                             </div>
+                         )}
                      </div>
-                 ))}
-             </div>
+                 )}
+             </>
          )}
       </main>
     </div>
