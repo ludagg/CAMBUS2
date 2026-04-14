@@ -1,5 +1,7 @@
+'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { auth, db } from '../firebase/config';
 import { 
   signInWithEmailAndPassword, 
@@ -12,6 +14,32 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 export type Page = 'home' | 'agencies' | 'results' | 'checkout' | 'login' | 'signup' | 'bookings' | 'super_admin' | 'agency_admin' | 'station_manager';
 
+const pageToPath: Record<Page, string> = {
+  home: '/',
+  agencies: '/agencies',
+  results: '/results',
+  checkout: '/checkout',
+  bookings: '/bookings',
+  login: '/login',
+  signup: '/signup',
+  super_admin: '/admin/super',
+  agency_admin: '/admin/agency',
+  station_manager: '/admin/station',
+};
+
+const pathToPage: Record<string, Page> = {
+  '/': 'home',
+  '/agencies': 'agencies',
+  '/results': 'results',
+  '/checkout': 'checkout',
+  '/bookings': 'bookings',
+  '/login': 'login',
+  '/signup': 'signup',
+  '/admin/super': 'super_admin',
+  '/admin/agency': 'agency_admin',
+  '/admin/station': 'station_manager',
+};
+
 export interface SearchParams {
   from: string;
   to: string;
@@ -21,7 +49,6 @@ export interface SearchParams {
   tripType: 'one-way' | 'round-trip';
 }
 
-// Renamed from SelectedTrip to Trip to match usages in results page and fix import errors
 export interface Trip {
   id: string | number;
   agencyName: string;
@@ -74,17 +101,23 @@ interface NavigationContextType {
 const NavigationContext = createContext<NavigationContextType | undefined>(undefined);
 
 export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [currentPage, setCurrentPage] = useState<Page>('home');
+  const router = useRouter();
+  const pathname = usePathname();
   const [searchParams, setSearchParams] = useState<SearchParams | null>(null);
   const [bookingDetails, setBookingDetails] = useState<BookingDetails | null>(null);
   
-  // Auth State
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Écouter les changements d'état Firebase Auth
+  const currentPage: Page = pathToPage[pathname] ?? 'home';
+
+  const navigateTo = (page: Page) => {
+    window.scrollTo(0, 0);
+    router.push(pageToPath[page]);
+  };
+
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       setAuthLoading(true);
       if (firebaseUser) {
         try {
@@ -139,7 +172,6 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  // Gestion des redirections automatiques de connexion
   useEffect(() => {
     if (!authLoading && user) {
         if (currentPage === 'login' || currentPage === 'signup') {
@@ -150,12 +182,8 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
             else navigateTo('home');
         }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading, currentPage, bookingDetails]);
-
-  const navigateTo = (page: Page) => {
-    window.scrollTo(0, 0);
-    setCurrentPage(page);
-  };
 
   const login = async (email: string, password: string) => {
     await signInWithEmailAndPassword(auth, email, password);
