@@ -14,7 +14,7 @@ const Footer: React.FC = () => {
     setUser({ 
         uid: 'demo-super-admin', 
         name: 'Super Admin', 
-        email: 'admin@cambus.cm', 
+        email: 'admin@easytravel.cm', 
         role: 'super_admin', 
         avatar: 'SA' 
     });
@@ -29,7 +29,7 @@ const Footer: React.FC = () => {
             <div className="size-6 flex items-center justify-center rounded bg-primary text-text-main">
               <span className="material-symbols-outlined text-lg">directions_bus</span>
             </div>
-            <span className="font-bold text-lg dark:text-white">CamBus</span>
+            <span className="font-bold text-lg dark:text-white">EasyTravel</span>
           </div>
           <p className="text-sm text-text-muted dark:text-gray-500 mb-6">
             {t('footer.slogan')}

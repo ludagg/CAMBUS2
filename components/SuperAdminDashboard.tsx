@@ -210,7 +210,7 @@ const SuperAdminDashboard: React.FC = () => {
               <span className="material-symbols-outlined font-black">shield_person</span>
            </div>
            <div>
-              <div className="font-black text-lg tracking-tight leading-none">CamBus</div>
+              <div className="font-black text-lg tracking-tight leading-none">EasyTravel</div>
               <div className="text-[10px] text-primary font-black uppercase tracking-widest mt-1">Super Admin</div>
            </div>
         </div>

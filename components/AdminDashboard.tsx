@@ -136,7 +136,7 @@ const AdminDashboard: React.FC = () => {
     let mockUser: User = { uid: 'demo-admin', name: "Admin", email: "admin@test.com", role: role };
     
     if (role === 'super_admin') {
-      mockUser = { uid: 'demo-super-admin', name: "Super Admin", email: "admin@cambus.cm", role: 'super_admin', avatar: "SA" };
+      mockUser = { uid: 'demo-super-admin', name: "Super Admin", email: "admin@easytravel.cm", role: 'super_admin', avatar: "SA" };
     } else if (role === 'agency_admin') {
       mockUser = { uid: 'demo-agency-admin', name: "Boss Express", email: "ceo@express.cm", role: 'agency_admin', agencyId: 1, avatar: "BE" };
     } else if (role === 'station_manager') {
@@ -549,7 +549,7 @@ const AdminDashboard: React.FC = () => {
           <div className="size-8 rounded-lg bg-primary text-text-main flex items-center justify-center mr-3">
             <span className="material-symbols-outlined text-xl">admin_panel_settings</span>
           </div>
-          <span className="font-black text-xl text-text-main dark:text-white">CamBus</span>
+          <span className="font-black text-xl text-text-main dark:text-white">EasyTravel</span>
           <button onClick={() => setIsSidebarOpen(false)} className="ml-auto lg:hidden text-text-muted">
               <span className="material-symbols-outlined">close</span>
           </button>

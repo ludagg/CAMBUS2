@@ -21,7 +21,7 @@ const Header: React.FC = () => {
         <div className="size-9 flex items-center justify-center rounded-xl bg-primary text-text-main shadow-lg shadow-primary/20 transition-transform group-hover:scale-105">
           <span className="material-symbols-outlined text-2xl font-black">directions_bus</span>
         </div>
-        <h2 className="text-text-main dark:text-white text-xl font-black tracking-tight">CamBus</h2>
+        <h2 className="text-text-main dark:text-white text-xl font-black tracking-tight">EasyTravel</h2>
       </div>
       
       <nav className="hidden md:flex items-center gap-8">
