@@ -1,3 +1,4 @@
+'use client';
 import React from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';

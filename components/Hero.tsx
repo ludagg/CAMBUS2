@@ -1,3 +1,4 @@
+'use client';
 import React from 'react';
 import SearchWidget from './SearchWidget';
 import { useLanguage } from '../contexts/LanguageContext';
