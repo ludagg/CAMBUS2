@@ -38,31 +38,42 @@ const Destinations: React.FC = () => {
   const { t } = useLanguage();
 
   return (
-    <div className="bg-white dark:bg-surface-dark py-16 px-6 md:px-10 border-t border-gray-100 dark:border-gray-800">
+    <div className="bg-white dark:bg-surface-dark py-20 px-6 md:px-10 border-t border-gray-100 dark:border-gray-800">
       <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-10">
-          <h2 className="text-2xl md:text-3xl font-bold text-text-main dark:text-white">{t('dest.title')}</h2>
-          <a href="#" className="hidden sm:flex items-center gap-1 text-primary font-bold hover:underline">
+        <div className="flex items-end justify-between mb-12">
+          <div>
+            <div className="inline-flex items-center gap-2 bg-primary/10 text-teal-accent dark:text-primary text-xs font-black uppercase tracking-widest px-4 py-2 rounded-full mb-4">
+              <span className="material-symbols-outlined text-sm">explore</span>
+              Destinations
+            </div>
+            <h2 className="text-2xl md:text-3xl font-black text-text-main dark:text-white">{t('dest.title')}</h2>
+          </div>
+          <a href="#" className="hidden sm:flex items-center gap-1 text-primary font-black text-sm hover:gap-2 transition-all">
             {t('dest.view_all')}
             <span className="material-symbols-outlined text-sm">arrow_forward</span>
           </a>
         </div>
         
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {destinationsData.map((dest) => (
-            <div key={dest.id} className="group relative overflow-hidden rounded-xl aspect-[4/5] cursor-pointer">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {destinationsData.map((dest, idx) => (
+            <div key={dest.id} className={`group relative overflow-hidden rounded-2xl cursor-pointer ${idx === 0 ? 'sm:col-span-2 aspect-[16/9]' : 'aspect-[4/5]'}`}>
               <div 
-                className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110"
+                className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-110"
                 style={{
-                  backgroundImage: `linear-gradient(to top, rgba(0,0,0,0.8), transparent), url('${dest.image}')`
+                  backgroundImage: `url('${dest.image}')`
                 }}
               />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent group-hover:from-black/90 transition-all" />
               <div className="absolute bottom-0 left-0 w-full p-5">
-                <span className="inline-block px-2 py-1 rounded bg-primary text-text-main text-xs font-bold mb-2">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary text-text-main text-xs font-black mb-2">
                   {t('dest.from')} ${dest.price}
                 </span>
-                <h3 className="text-white text-xl font-bold">{dest.name}</h3>
-                <p className="text-gray-300 text-sm">{dest.connections} {t('dest.connections')}</p>
+                <h3 className="text-white text-xl font-black leading-tight">{dest.name}</h3>
+                <p className="text-gray-300 text-xs mt-1">{dest.connections} {t('dest.connections')}</p>
+              </div>
+              {/* Hover badge */}
+              <div className="absolute top-4 right-4 size-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 -translate-y-2 group-hover:translate-y-0">
+                <span className="material-symbols-outlined text-white text-lg">arrow_outward</span>
               </div>
             </div>
           ))}
