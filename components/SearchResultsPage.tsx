@@ -5,6 +5,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation, Trip } from '../contexts/NavigationContext';
 import { db } from '../firebase/config';
 import { collection, query, where, getDocs } from 'firebase/firestore';
+import { TripCardSkeleton } from './Skeleton';
 
 // Leaflet global declaration
 declare const L: any;
@@ -519,8 +520,16 @@ const SearchResultsPage: React.FC = () => {
                    )}
 
                    <div className="flex flex-col gap-2">
-                      {sortedTrips.map(trip => renderTripCard(trip))}
-                      {sortedTrips.length === 0 && (
+                      {isLoadingTrips ? (
+                        <>
+                          <TripCardSkeleton />
+                          <TripCardSkeleton />
+                          <TripCardSkeleton />
+                          <TripCardSkeleton />
+                        </>
+                      ) : sortedTrips.length > 0 ? (
+                        sortedTrips.map(trip => renderTripCard(trip))
+                      ) : (
                         <div className="text-center py-20 bg-gray-50 dark:bg-white/5 rounded-[2rem] border-2 border-dashed border-gray-100 dark:border-gray-800">
                            <span className="material-symbols-outlined text-6xl text-gray-300 dark:text-gray-700 mb-4">search_off</span>
                            <h3 className="text-lg font-black text-text-muted">Aucun trajet disponible</h3>
@@ -538,7 +547,7 @@ const SearchResultsPage: React.FC = () => {
            <div className="absolute top-6 left-6 z-10 flex flex-col gap-3">
               <div className="bg-white/90 dark:bg-black/90 backdrop-blur-md px-5 py-3 rounded-2xl shadow-2xl border border-white/20 flex items-center gap-3">
                  <div className="size-3 rounded-full bg-primary animate-pulse"></div>
-                 <span className="text-[10px] font-black uppercase tracking-widest text-text-main dark:text-white">Réseau CamBus Live</span>
+                 <span className="text-[10px] font-black uppercase tracking-widest text-text-main dark:text-white">Réseau EasyTravel Live</span>
               </div>
            </div>
            {userCoords && (

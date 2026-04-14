@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { AgencyCardSkeleton } from './Skeleton';
 
 // Defining types for typescript since we're using CDN for Leaflet
 declare const L: any;
@@ -90,8 +91,15 @@ const agenciesData: Agency[] = [
 const AgenciesPage: React.FC = () => {
   const { t } = useLanguage();
   const [selectedAgency, setSelectedAgency] = useState<Agency | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
+
+  // Simulate initial load for better UX
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 800);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Initialize Map when an agency is selected
   useEffect(() => {
@@ -241,7 +249,14 @@ const AgenciesPage: React.FC = () => {
         </div>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {agenciesData.map((agency) => (
+          {isLoading ? (
+            <>
+              <AgencyCardSkeleton />
+              <AgencyCardSkeleton />
+              <AgencyCardSkeleton />
+              <AgencyCardSkeleton />
+            </>
+          ) : agenciesData.map((agency) => (
             <div key={agency.id} className="bg-surface-light dark:bg-surface-dark rounded-2xl overflow-hidden shadow-lg border border-gray-100 dark:border-gray-800 hover:shadow-xl transition-shadow group">
               <div className={`h-24 ${agency.color} relative flex items-center justify-center`}>
                 <div className="absolute -bottom-10 size-20 rounded-2xl bg-white dark:bg-surface-dark p-1 shadow-md">

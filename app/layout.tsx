@@ -4,8 +4,8 @@ import { LanguageProvider } from '../contexts/LanguageContext'
 import { NavigationProvider } from '../contexts/NavigationContext'
 
 export const metadata: Metadata = {
-  title: 'CamBus - Book Your Trip',
-  description: 'Book your bus tickets online',
+  title: 'EasyTravel - Book Your Trip',
+  description: 'Book your bus tickets online with EasyTravel',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

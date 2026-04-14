@@ -1,10 +1,11 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
 
 const Header: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
   const { t, language, setLanguage } = useLanguage();
   const { navigateTo, user, logout, authLoading } = useNavigation();
 
@@ -12,16 +13,25 @@ const Header: React.FC = () => {
     setLanguage(language === 'en' ? 'fr' : 'en');
   };
 
+  useEffect(() => {
+    const handleScroll = () => setIsScrolled(window.scrollY > 10);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   return (
-    <header className="sticky top-0 z-50 flex items-center justify-between border-b border-[#f0f4f2] dark:border-[#1e3a29] bg-surface-light dark:bg-background-dark px-6 py-4 lg:px-10 transition-colors duration-200 shadow-sm">
+    <header className={`sticky top-0 z-50 flex items-center justify-between border-b bg-white/95 dark:bg-background-dark/95 backdrop-blur-md px-6 py-3 lg:px-10 transition-all duration-300 ${isScrolled ? 'border-gray-200 dark:border-gray-800 shadow-lg shadow-black/5' : 'border-transparent'}`}>
       <div 
-        className="flex items-center gap-4 cursor-pointer group"
+        className="flex items-center gap-3 cursor-pointer group"
         onClick={() => navigateTo('home')}
       >
-        <div className="size-9 flex items-center justify-center rounded-xl bg-primary text-text-main shadow-lg shadow-primary/20 transition-transform group-hover:scale-105">
-          <span className="material-symbols-outlined text-2xl font-black">directions_bus</span>
+        <div className="size-9 flex items-center justify-center rounded-xl bg-gradient-to-br from-primary to-emerald-400 text-text-main shadow-lg shadow-primary/30 transition-all group-hover:shadow-primary/50 group-hover:scale-105">
+          <span className="material-symbols-outlined text-xl font-black">directions_bus</span>
         </div>
-        <h2 className="text-text-main dark:text-white text-xl font-black tracking-tight">CamBus</h2>
+        <div>
+          <h2 className="text-text-main dark:text-white text-xl font-black tracking-tight leading-none">EasyTravel</h2>
+          <div className="text-[9px] font-bold text-primary/70 uppercase tracking-[0.2em] leading-none mt-0.5">Bus Tickets</div>
+        </div>
       </div>
       
       <nav className="hidden md:flex items-center gap-8">
@@ -39,7 +49,7 @@ const Header: React.FC = () => {
       <div className="flex items-center gap-4">
         <button 
           onClick={toggleLanguage}
-          className="text-text-muted hover:text-primary text-xs font-black uppercase border border-gray-200 dark:border-gray-700 px-2 py-1 rounded"
+          className="text-text-muted hover:text-primary text-xs font-black uppercase border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 rounded-lg hover:border-primary/30 transition-all"
         >
           {language}
         </button>
@@ -59,7 +69,7 @@ const Header: React.FC = () => {
                   onClick={() => {
                     if (user.role && user.role !== 'user') navigateTo(user.role);
                   }}
-                  className="size-10 bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center text-primary font-black border-2 border-white dark:border-gray-700 shadow-sm cursor-pointer hover:border-primary transition-colors"
+                  className="size-10 bg-gradient-to-br from-primary/20 to-emerald-100 dark:from-primary/20 dark:to-emerald-900/30 rounded-xl flex items-center justify-center text-primary font-black border-2 border-white dark:border-gray-700 shadow-sm cursor-pointer hover:border-primary transition-all hover:shadow-md"
                 >
                     {user.avatar || user.name.charAt(0).toUpperCase()}
                 </div>
@@ -67,7 +77,7 @@ const Header: React.FC = () => {
         ) : (
             <button 
               onClick={() => navigateTo('login')}
-              className="hidden md:flex items-center justify-center rounded-xl h-10 px-6 bg-text-main dark:bg-white text-white dark:text-black text-sm font-black hover:opacity-90 transition-all active:scale-95"
+              className="hidden md:flex items-center justify-center rounded-xl h-10 px-6 bg-gradient-to-r from-text-main to-gray-800 dark:from-white dark:to-gray-100 text-white dark:text-black text-sm font-black hover:opacity-90 transition-all active:scale-95 shadow-lg shadow-black/10"
             >
             {t('nav.login')}
             </button>
@@ -83,10 +93,10 @@ const Header: React.FC = () => {
 
       {/* Mobile Menu Dropdown */}
       {isMobileMenuOpen && (
-        <div className="absolute top-full left-0 w-full bg-surface-light dark:bg-background-dark border-b border-gray-200 dark:border-gray-800 md:hidden flex flex-col p-6 shadow-2xl animate-slideDown">
-           <a href="#" onClick={(e) => { e.preventDefault(); navigateTo('home'); setIsMobileMenuOpen(false); }} className="py-3 px-4 text-text-main dark:text-gray-200 font-bold hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl mb-1">{t('nav.routes')}</a>
-           <a href="#" className="py-3 px-4 text-text-main dark:text-gray-200 font-bold hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl mb-1">{t('nav.service')}</a>
-           <a href="#" className="py-3 px-4 text-text-main dark:text-gray-200 font-bold hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl mb-1">{t('nav.help')}</a>
+        <div className="absolute top-full left-0 w-full bg-white dark:bg-background-dark border-b border-gray-200 dark:border-gray-800 md:hidden flex flex-col p-6 shadow-2xl animate-slideDown">
+           <a href="#" onClick={(e) => { e.preventDefault(); navigateTo('home'); setIsMobileMenuOpen(false); }} className="py-3 px-4 text-text-main dark:text-gray-200 font-bold hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl mb-1">{t('nav.routes')}</a>
+           <a href="#" className="py-3 px-4 text-text-main dark:text-gray-200 font-bold hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl mb-1">{t('nav.service')}</a>
+           <a href="#" className="py-3 px-4 text-text-main dark:text-gray-200 font-bold hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl mb-1">{t('nav.help')}</a>
            {user && (
               <a href="#" onClick={(e) => { e.preventDefault(); navigateTo('bookings'); setIsMobileMenuOpen(false); }} className="py-3 px-4 text-primary font-black hover:bg-primary/5 rounded-xl flex items-center gap-2">
                 <span className="material-symbols-outlined">confirmation_number</span>

@@ -3,7 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { db } from '../firebase/config';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { BookingCardSkeleton } from './Skeleton';
 
 interface Booking {
   id: string;
@@ -121,7 +122,13 @@ const BookingsPage: React.FC = () => {
 
         {/* List */}
         <div className="space-y-4">
-          {displayedBookings.length > 0 ? (
+          {isLoading ? (
+            <>
+              <BookingCardSkeleton />
+              <BookingCardSkeleton />
+              <BookingCardSkeleton />
+            </>
+          ) : displayedBookings.length > 0 ? (
             displayedBookings.map(booking => (
               <div key={booking.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 flex flex-col md:flex-row gap-6 hover:shadow-md transition-shadow">
                 
