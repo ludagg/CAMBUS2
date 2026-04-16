@@ -30,7 +30,7 @@ const Header: React.FC = () => {
         </div>
         <div>
           <h2 className="text-text-main dark:text-white text-xl font-black tracking-tight leading-none">EasyTravel</h2>
-          <div className="text-[9px] font-bold text-primary/70 uppercase tracking-[0.2em] leading-none mt-0.5">Bus Tickets</div>
+          <div className="text-[9px] font-bold text-primary/70 uppercase tracking-[0.2em] leading-none mt-0.5"></div>
         </div>
       </div>
       
