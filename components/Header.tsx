@@ -35,7 +35,7 @@ const Header: React.FC = () => {
       </div>
       
       <nav className="hidden md:flex items-center gap-8">
-        <a href="#" onClick={(e) => { e.preventDefault(); navigateTo('home'); }} className="text-text-main dark:text-gray-200 text-sm font-bold hover:text-primary transition-colors tracking-wide">{t('nav.routes')}</a>
+        <a href="#" onClick={(e) => { e.preventDefault(); navigateTo('agencies'); }} className="text-text-main dark:text-gray-200 text-sm font-bold hover:text-primary transition-colors tracking-wide">{t('nav.routes')}</a>
         <a href="#" className="text-text-main dark:text-gray-200 text-sm font-bold hover:text-primary transition-colors tracking-wide">{t('nav.service')}</a>
         <a href="#" className="text-text-main dark:text-gray-200 text-sm font-bold hover:text-primary transition-colors tracking-wide">{t('nav.help')}</a>
         {user && (
@@ -67,7 +67,8 @@ const Header: React.FC = () => {
                 </div>
                 <div 
                   onClick={() => {
-                    if (user.role && user.role !== 'user') navigateTo(user.role);
+                    if (user.role && user.role !== 'user') navigateTo(user.role as any);
+                    else navigateTo('profile');
                   }}
                   className="size-10 bg-gradient-to-br from-primary/20 to-emerald-100 dark:from-primary/20 dark:to-emerald-900/30 rounded-xl flex items-center justify-center text-primary font-black border-2 border-white dark:border-gray-700 shadow-sm cursor-pointer hover:border-primary transition-all hover:shadow-md"
                 >

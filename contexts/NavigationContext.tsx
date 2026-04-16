@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 
-export type Page = 'home' | 'agencies' | 'results' | 'checkout' | 'login' | 'signup' | 'bookings' | 'super_admin' | 'agency_admin' | 'station_manager';
+export type Page = 'home' | 'agencies' | 'results' | 'checkout' | 'login' | 'signup' | 'bookings' | 'super_admin' | 'agency_admin' | 'station_manager' | 'profile';
 
 const pageToPath: Record<Page, string> = {
   home: '/',
@@ -16,6 +16,7 @@ const pageToPath: Record<Page, string> = {
   super_admin: '/admin/super',
   agency_admin: '/admin/agency',
   station_manager: '/admin/station',
+  profile: '/profile',
 };
 
 const pathToPage: Record<string, Page> = {
@@ -29,6 +30,7 @@ const pathToPage: Record<string, Page> = {
   '/admin/super': 'super_admin',
   '/admin/agency': 'agency_admin',
   '/admin/station': 'station_manager',
+  '/profile': 'profile',
 };
 
 export interface SearchParams {
