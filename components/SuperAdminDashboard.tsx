@@ -2,19 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigation, UserRole } from '../contexts/NavigationContext';
-import { db } from '../firebase/config';
-import { 
-  collection, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  doc, 
-  onSnapshot, 
-  query, 
-  orderBy, 
-  serverTimestamp,
-  writeBatch
-} from 'firebase/firestore';
 
 interface City {
   id: string;
@@ -57,135 +44,116 @@ const SuperAdminDashboard: React.FC = () => {
   const [newCity, setNewCity] = useState({ name: '', region: 'Centre' });
   const [agencyForm, setAgencyForm] = useState({ name: '', email: '', color: '#13ec5b' });
 
-  useEffect(() => {
+  const fetchAll = async () => {
     setIsLoading(true);
-    
-    // Listeners Temps Réel via Firebase
-    const unsubCities = onSnapshot(query(collection(db, 'cities'), orderBy('name')), (snap) => {
-      setCities(snap.docs.map(d => ({ id: d.id, ...d.data() } as City)));
-    });
+    try {
+      const [citiesRes, agenciesRes, usersRes] = await Promise.all([
+        fetch('/api/cities'),
+        fetch('/api/agencies'),
+        fetch('/api/users'),
+      ]);
 
-    const unsubAgencies = onSnapshot(query(collection(db, 'agencies'), orderBy('name')), (snap) => {
-      setAgencies(snap.docs.map(d => ({ id: d.id, ...d.data() } as Agency)));
-    });
-
-    const unsubUsers = onSnapshot(query(collection(db, 'users')), (snap) => {
-      setUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as PlatformUser)));
+      if (citiesRes.ok) {
+        const data = await citiesRes.json();
+        setCities(data.cities.map((c: any) => ({ id: c.id, name: c.name, region: c.region || '', status: c.status as 'active' | 'inactive' })));
+      }
+      if (agenciesRes.ok) {
+        const data = await agenciesRes.json();
+        setAgencies(data.agencies.map((a: any) => ({ id: a.id, name: a.name, logo: a.logo || 'directions_bus', email: a.contactEmail || '', color: a.colorHex || '#2563eb', status: a.status as 'active' | 'inactive' })));
+      }
+      if (usersRes.ok) {
+        const data = await usersRes.json();
+        setUsers(data.users.map((u: any) => ({ uid: u.id, name: u.name, email: u.email, role: u.role.toLowerCase() as UserRole, avatar: u.avatar, createdAt: u.createdAt })));
+      }
+    } catch (err) {
+      console.error('Error fetching data:', err);
+    } finally {
       setIsLoading(false);
-    });
+    }
+  };
 
-    return () => {
-      unsubCities();
-      unsubAgencies();
-      unsubUsers();
-    };
-  }, []);
+  useEffect(() => { fetchAll(); }, []);
 
   // --- ACTIONS ---
 
   const handleSeedData = async () => {
     if (!confirm("Voulez-vous injecter les données de démonstration (Agences, Villes, Trajets) ?")) return;
-    const batch = writeBatch(db);
-    
-    const demoCities = [
-      { name: "Douala", region: "Littoral", status: "active" },
-      { name: "Yaoundé", region: "Centre", status: "active" },
-      { name: "Bafoussam", region: "Ouest", status: "active" }
-    ];
 
-    demoCities.forEach(city => {
-      const ref = doc(collection(db, 'cities'));
-      batch.set(ref, { ...city, createdAt: serverTimestamp() });
-    });
+    const demoCities = [
+      { name: "Douala", region: "Littoral" },
+      { name: "Yaoundé", region: "Centre" },
+      { name: "Bafoussam", region: "Ouest" },
+    ];
 
     const demoAgencies = [
-      { name: "Express Voyage", logo: "directions_bus", color: "bg-blue-600", colorHex: "#2563eb", email: "contact@express.cm", status: "active" },
-      { name: "GreenLines", logo: "eco", color: "bg-green-600", colorHex: "#16a34a", email: "contact@greenlines.cm", status: "active" },
-      { name: "Royal Road", logo: "diamond", color: "bg-amber-600", colorHex: "#d97706", email: "contact@royalroad.cm", status: "active" },
-      { name: "CityLink", logo: "apartment", color: "bg-purple-600", colorHex: "#9333ea", email: "contact@citylink.cm", status: "active" }
+      { name: "Express Voyage", logo: "directions_bus", colorHex: "#2563eb", contactEmail: "contact@express.cm" },
+      { name: "GreenLines", logo: "eco", colorHex: "#16a34a", contactEmail: "contact@greenlines.cm" },
+      { name: "Royal Road", logo: "diamond", colorHex: "#d97706", contactEmail: "contact@royalroad.cm" },
     ];
 
-    demoAgencies.forEach(agency => {
-      const ref = doc(collection(db, 'agencies'));
-      batch.set(ref, { ...agency, createdAt: serverTimestamp() });
-    });
+    for (const city of demoCities) {
+      await fetch('/api/cities', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(city) });
+    }
+    for (const agency of demoAgencies) {
+      await fetch('/api/agencies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(agency) });
+    }
 
-    const demoTrips = [
-      {
-        agencyName: "Express Voyage", agencyLogo: "directions_bus", color: "bg-blue-600",
-        departureTime: "07:30", departureLocation: "Douala - Gare Centrale",
-        arrivalTime: "11:30", arrivalLocation: "Yaoundé - Mvan",
-        duration: "4h 00m", price: 4500, currency: "FCFA",
-        amenities: ["wifi", "ac", "power"], origin: "Douala", destination: "Yaoundé",
-        date: new Date().toISOString().split('T')[0], seatsAvailable: 70
-      },
-      {
-        agencyName: "GreenLines", agencyLogo: "eco", color: "bg-green-600",
-        departureTime: "09:00", departureLocation: "Douala - Akwa",
-        arrivalTime: "13:15", arrivalLocation: "Yaoundé - Biyem-Assi",
-        duration: "4h 15m", price: 3500, currency: "FCFA",
-        amenities: ["ac", "snack"], origin: "Douala", destination: "Yaoundé",
-        date: new Date().toISOString().split('T')[0], seatsAvailable: 50
-      },
-      {
-        agencyName: "Royal Road", agencyLogo: "diamond", color: "bg-amber-600",
-        departureTime: "13:00", departureLocation: "Douala - Bonabéri",
-        arrivalTime: "17:00", arrivalLocation: "Yaoundé - Centre Ville",
-        duration: "4h 00m", price: 6000, currency: "FCFA",
-        amenities: ["wifi", "ac", "power", "tv", "snack"], origin: "Douala", destination: "Yaoundé",
-        date: new Date().toISOString().split('T')[0], seatsAvailable: 30
-      },
-      {
-        agencyName: "CityLink", agencyLogo: "apartment", color: "bg-purple-600",
-        departureTime: "15:30", departureLocation: "Douala - Bali",
-        arrivalTime: "19:45", arrivalLocation: "Yaoundé - Nsam",
-        duration: "4h 15m", price: 4000, currency: "FCFA",
-        amenities: ["ac", "tv"], origin: "Douala", destination: "Yaoundé",
-        date: new Date().toISOString().split('T')[0], seatsAvailable: 45
-      }
-    ];
-
-    demoTrips.forEach(trip => {
-      const ref = doc(collection(db, 'trips'));
-      batch.set(ref, { ...trip, createdAt: serverTimestamp() });
-    });
-
-    await batch.commit();
     alert("Données injectées avec succès !");
+    fetchAll();
   };
 
   const addCity = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCity.name) return;
-    await addDoc(collection(db, 'cities'), { ...newCity, status: 'active', createdAt: serverTimestamp() });
-    setNewCity({ name: '', region: 'Centre' });
+    const res = await fetch('/api/cities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newCity.name, region: newCity.region }),
+    });
+    if (res.ok) {
+      setNewCity({ name: '', region: 'Centre' });
+      fetchAll();
+    }
   };
 
   const saveAgency = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingAgency) {
-      await updateDoc(doc(db, 'agencies', editingAgency.id), { ...agencyForm });
+      await fetch(`/api/agencies/${editingAgency.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: agencyForm.name, contactEmail: agencyForm.email, colorHex: agencyForm.color }),
+      });
     } else {
-      await addDoc(collection(db, 'agencies'), { 
-        ...agencyForm, 
-        logo: 'directions_bus', 
-        status: 'active', 
-        createdAt: serverTimestamp() 
+      await fetch('/api/agencies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: agencyForm.name, contactEmail: agencyForm.email, colorHex: agencyForm.color, logo: 'directions_bus' }),
       });
     }
     setAgencyForm({ name: '', email: '', color: '#13ec5b' });
     setEditingAgency(null);
     setIsAgencyModalOpen(false);
+    fetchAll();
   };
 
   const updateUserRole = async (uid: string, newRole: UserRole) => {
-    await updateDoc(doc(db, 'users', uid), { role: newRole });
+    await fetch(`/api/users/${uid}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: newRole.toUpperCase() }),
+    });
+    fetchAll();
   };
 
   const deleteDocItem = async (col: string, id: string) => {
-    if (confirm("Supprimer définitivement ?")) {
-      await deleteDoc(doc(db, col, id));
+    if (!confirm("Supprimer définitivement ?")) return;
+    if (col === 'cities') {
+      await fetch(`/api/cities/${id}`, { method: 'DELETE' });
+    } else if (col === 'agencies') {
+      await fetch(`/api/agencies/${id}`, { method: 'DELETE' });
     }
+    fetchAll();
   };
 
   const SidebarItem = ({ id, icon, label }: any) => (

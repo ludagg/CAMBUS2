@@ -3,8 +3,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation, Trip } from '../contexts/NavigationContext';
-import { db } from '../firebase/config';
-import { collection, query, where, getDocs } from 'firebase/firestore';
 import { TripCardSkeleton } from './Skeleton';
 
 // Leaflet global declaration
@@ -94,18 +92,25 @@ const SearchResultsPage: React.FC = () => {
         const destination = currentStep === 'outbound' ? searchParams.to : searchParams.from;
         const date = currentStep === 'outbound' ? searchParams.date : (searchParams.returnDate || searchParams.date);
 
-        const q = query(
-          collection(db, 'trips'),
-          where("origin", "==", origin),
-          where("destination", "==", destination),
-          where("date", "==", date)
-        );
-
-        const querySnapshot = await getDocs(q);
-        const tripsData: TripExtended[] = [];
-        querySnapshot.forEach((doc) => {
-          tripsData.push({ id: doc.id, ...doc.data() } as TripExtended);
-        });
+        const params = new URLSearchParams({ origin, destination, date });
+        const res = await fetch(`/api/trips?${params}`);
+        if (!res.ok) throw new Error('Failed to fetch trips');
+        const data = await res.json();
+        const tripsData: TripExtended[] = (data.trips || []).map((t: any) => ({
+          id: t.id,
+          agencyName: t.agencyName,
+          agencyLogo: t.agencyLogo || 'directions_bus',
+          departureTime: t.departureTime,
+          departureLocation: t.origin,
+          arrivalTime: t.arrivalTime || '',
+          arrivalLocation: t.destination,
+          duration: t.duration || '',
+          price: t.price,
+          currency: t.currency,
+          color: t.agencyColor || 'bg-blue-600',
+          date: t.date,
+          amenities: t.amenities || [],
+        }));
         setFetchedTrips(tripsData);
       } catch (error) {
         console.error("Error fetching trips:", error);

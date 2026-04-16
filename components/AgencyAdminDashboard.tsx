@@ -1,8 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
-import { db } from '../firebase/config';
-import { collection, query, where, getDocs } from 'firebase/firestore';
 
 const AgencyAdminDashboard: React.FC = () => {
   const { user, logout } = useNavigation();
@@ -16,17 +14,13 @@ const AgencyAdminDashboard: React.FC = () => {
       if (!user?.agencyId) return;
       setIsLoading(true);
       try {
-        // Fetch Fleet
-        const fleetQuery = query(collection(db, 'fleet'), where('agencyId', '==', user.agencyId));
-        const fleetSnapshot = await getDocs(fleetQuery);
-        const fleetData = fleetSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setFleet(fleetData);
-
-        // Fetch Routes
-        const routesQuery = query(collection(db, 'trips'), where('agencyId', '==', user.agencyId));
-        const routesSnapshot = await getDocs(routesQuery);
-        const routesData = routesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setRoutes(routesData);
+        const res = await fetch(`/api/trips?agencyId=${encodeURIComponent(user.agencyId)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setRoutes(data.trips || []);
+        }
+        // Fleet data would come from a dedicated /api/fleet endpoint
+        setFleet([]);
       } catch (error) {
         console.error("Error fetching agency data:", error);
       } finally {

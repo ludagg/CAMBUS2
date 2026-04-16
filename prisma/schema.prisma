@@ -1,0 +1,151 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  SUPER_ADMIN
+  AGENCY_ADMIN
+  STATION_MANAGER
+}
+
+enum TripStatus {
+  SCHEDULED
+  BOARDING
+  COMPLETED
+  CANCELLED
+}
+
+enum BookingStatus {
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  BOARDED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      UserRole @default(USER)
+  agencyId  String?
+  stationId String?
+  avatar    String?
+  createdAt DateTime @default(now())
+
+  agency   Agency?  @relation(fields: [agencyId], references: [id])
+  station  Station? @relation(fields: [stationId], references: [id])
+  bookings Booking[]
+
+  @@map("users")
+}
+
+model Agency {
+  id           String   @id @default(cuid())
+  name         String
+  logo         String?
+  logoUrl      String?
+  colorHex     String   @default("#2563eb")
+  contactEmail String?
+  status       String   @default("active")
+  createdAt    DateTime @default(now())
+
+  stations Station[]
+  trips    Trip[]
+  staff    User[]
+
+  @@map("agencies")
+}
+
+model Station {
+  id        String   @id @default(cuid())
+  agencyId  String
+  name      String
+  city      String
+  address   String?
+  lat       Float?
+  lng       Float?
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+
+  agency Agency @relation(fields: [agencyId], references: [id])
+  staff  User[]
+
+  @@map("stations")
+}
+
+model City {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  region    String?
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+
+  @@map("cities")
+}
+
+model Trip {
+  id             String     @id @default(cuid())
+  agencyId       String
+  agencyName     String
+  agencyLogo     String?
+  agencyColor    String?
+  origin         String
+  destination    String
+  departureTime  String
+  arrivalTime    String?
+  duration       String?
+  date           String     // YYYY-MM-DD
+  price          Int
+  currency       String     @default("FCFA")
+  totalSeats     Int        @default(70)
+  seatsAvailable Int        @default(70)
+  seatsBooked    String[]   @default([])
+  amenities      String[]   @default([])
+  status         TripStatus @default(SCHEDULED)
+  createdAt      DateTime   @default(now())
+
+  agency   Agency    @relation(fields: [agencyId], references: [id])
+  bookings Booking[]
+
+  @@index([origin, destination, date])
+  @@map("trips")
+}
+
+model Booking {
+  id            String        @id @default(cuid())
+  userId        String
+  tripId        String
+  tripDate      String
+  tripRoute     String
+  agencyName    String
+  agencyLogo    String?
+  color         String?
+  from          String
+  to            String
+  departureTime String
+  date          String
+  price         Int
+  currency      String        @default("FCFA")
+  passengers    Int
+  seats         String[]      @default([])
+  status        BookingStatus @default(CONFIRMED)
+  paymentMethod String        @default("momo")
+  qrCodeString  String?
+  createdAt     DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+  trip Trip @relation(fields: [tripId], references: [id])
+
+  @@index([userId])
+  @@map("bookings")
+}

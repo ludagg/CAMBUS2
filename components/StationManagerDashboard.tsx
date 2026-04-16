@@ -1,8 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
-import { db } from '../firebase/config';
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 
 const StationManagerDashboard: React.FC = () => {
   const { user, logout } = useNavigation();
@@ -15,42 +13,46 @@ const StationManagerDashboard: React.FC = () => {
     if (!scanCode) return;
     
     try {
-      // Assuming scanCode is the booking ID
-      const q = query(collection(db, 'bookings'), where('__name__', '==', scanCode));
-      const querySnapshot = await getDocs(q);
-      
-      if (querySnapshot.empty) {
+      const res = await fetch(`/api/bookings/${encodeURIComponent(scanCode)}`);
+
+      if (!res.ok) {
         setScanResult({ success: false, message: 'Billet introuvable.' });
         return;
       }
 
-      const bookingDoc = querySnapshot.docs[0];
-      const bookingData = bookingDoc.data();
+      const { booking } = await res.json();
 
-      if (bookingData.status === 'boarded') {
+      if (booking.status === 'BOARDED') {
         setScanResult({ success: false, message: 'Billet déjà validé.' });
         return;
       }
 
-      if (bookingData.status !== 'confirmed') {
-        setScanResult({ success: false, message: `Statut invalide: ${bookingData.status}` });
+      if (booking.status !== 'CONFIRMED') {
+        setScanResult({ success: false, message: `Statut invalide: ${booking.status}` });
         return;
       }
 
       // Update status to boarded
-      await updateDoc(doc(db, 'bookings', bookingDoc.id), {
-        status: 'boarded'
+      const patchRes = await fetch(`/api/bookings/${encodeURIComponent(scanCode)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'BOARDED' }),
       });
 
-      const passengerName = bookingData.passengersInfo?.[0]?.name || 'Passager';
-      const seat = bookingData.seats?.[0] || 'N/A';
+      if (!patchRes.ok) {
+        setScanResult({ success: false, message: 'Erreur lors de la validation.' });
+        return;
+      }
 
-      setScanResult({ success: true, message: 'Billet validé avec succès.', passenger: passengerName, seat: seat });
+      const passengerName = booking.passengers > 0 ? `${booking.passengers} passager(s)` : 'Passager';
+      const seat = (booking.seats || [])[0] || 'N/A';
+
+      setScanResult({ success: true, message: 'Billet validé avec succès.', passenger: passengerName, seat });
       
       setRecentScans(prev => [{
-        id: bookingDoc.id,
+        id: booking.id,
         name: passengerName,
-        seat: seat,
+        seat,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }, ...prev].slice(0, 5));
 

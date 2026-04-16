@@ -2,8 +2,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
-import { db } from '../firebase/config';
-import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 
 const FALLBACK_CITIES = ["Douala", "Yaoundé", "Bafoussam", "Bamenda", "Kribi", "Garoua", "Maroua", "Ngaoundéré"];
 
@@ -23,30 +21,25 @@ const SearchWidget: React.FC = () => {
   const [isPassengerMenuOpen, setIsPassengerMenuOpen] = useState(false);
   const passengerMenuRef = useRef<HTMLDivElement>(null);
 
-  // Firestore Cities
+  // Cities from API
   const [availableCities, setAvailableCities] = useState<string[]>(FALLBACK_CITIES);
 
-  // Fetch Cities from Firestore with robust error handling
+  // Fetch Cities from API
   useEffect(() => {
     const fetchCities = async () => {
-        try {
-            const q = query(collection(db, 'cities'), where('status', '==', 'active'), limit(50));
-            const snapshot = await getDocs(q);
-            if (!snapshot.empty) {
-                const cityNames = snapshot.docs.map(doc => doc.data().name);
-                setAvailableCities(cityNames.sort());
-            } else {
-                setAvailableCities(FALLBACK_CITIES);
-            }
-        } catch (error: any) {
-            // Silently handle permission errors by using fallbacks
-            if (error.code === 'permission-denied') {
-                console.warn("Firestore permissions strictly restricted. Using fallback cities.");
-            } else {
-                console.error("Error fetching cities:", error);
-            }
-            setAvailableCities(FALLBACK_CITIES);
+      try {
+        const res = await fetch('/api/cities');
+        if (!res.ok) throw new Error('Failed to fetch cities');
+        const data = await res.json();
+        const cityNames: string[] = (data.cities || []).map((c: any) => c.name);
+        if (cityNames.length > 0) {
+          setAvailableCities(cityNames.sort());
+        } else {
+          setAvailableCities(FALLBACK_CITIES);
         }
+      } catch {
+        setAvailableCities(FALLBACK_CITIES);
+      }
     };
     fetchCities();
   }, []);

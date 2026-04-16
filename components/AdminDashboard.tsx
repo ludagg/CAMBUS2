@@ -138,9 +138,9 @@ const AdminDashboard: React.FC = () => {
     if (role === 'super_admin') {
       mockUser = { uid: 'demo-super-admin', name: "Super Admin", email: "admin@easytravel.cm", role: 'super_admin', avatar: "SA" };
     } else if (role === 'agency_admin') {
-      mockUser = { uid: 'demo-agency-admin', name: "Boss Express", email: "ceo@express.cm", role: 'agency_admin', agencyId: 1, avatar: "BE" };
+      mockUser = { uid: 'demo-agency-admin', name: "Boss Express", email: "ceo@express.cm", role: 'agency_admin', agencyId: '1', avatar: "BE" };
     } else if (role === 'station_manager') {
-      mockUser = { uid: 'demo-station-manager', name: "Jean Dupont", email: "jean@express.cm", role: 'station_manager', agencyId: 1, stationId: 101, avatar: "JD" };
+      mockUser = { uid: 'demo-station-manager', name: "Jean Dupont", email: "jean@express.cm", role: 'station_manager', agencyId: '1', stationId: '101', avatar: "JD" };
     }
     
     setUser(mockUser);
@@ -148,10 +148,10 @@ const AdminDashboard: React.FC = () => {
   };
 
   // Get Context Data based on current user role
-  const getCurrentAgency = () => mockAgencies.find(a => a.id === user?.agencyId);
+  const getCurrentAgency = () => mockAgencies.find(a => String(a.id) === user?.agencyId);
   const getCurrentStation = () => {
     const agency = getCurrentAgency();
-    return agency?.stations.find(s => s.id === user?.stationId);
+    return agency?.stations.find(s => String(s.id) === user?.stationId);
   };
 
   // --- COMPOSANTS DE VUES SPÉCIFIQUES ---

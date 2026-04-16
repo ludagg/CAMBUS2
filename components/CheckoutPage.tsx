@@ -2,8 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
-import { db } from '../firebase/config';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 const SEAT_FEE = 1000; // Extra cost per seat selection
 
@@ -80,11 +78,9 @@ const CheckoutPage: React.FC = () => {
     setIsProcessing(true);
     
     try {
-      const bookingData = {
-        userId: user.uid,
-        tripId: bookingDetails.outbound.id,
+      const bookingPayload = {
+        tripId: String(bookingDetails.outbound.id),
         tripDate: bookingDetails.outbound.date,
-        tripRoute: `${bookingDetails.outbound.departureLocation} - ${bookingDetails.outbound.arrivalLocation}`,
         agencyName: bookingDetails.outbound.agencyName,
         agencyLogo: bookingDetails.outbound.agencyLogo,
         color: bookingDetails.outbound.color,
@@ -96,22 +92,24 @@ const CheckoutPage: React.FC = () => {
         currency: 'FCFA',
         passengers: totalSeatsNeeded,
         seats: outboundSeats,
-        status: 'confirmed',
         paymentMethod: paymentMethod,
-        contactEmail: email,
-        contactPhone: phone,
-        passengersInfo: passengersInfo,
-        createdAt: serverTimestamp()
       };
 
-      await addDoc(collection(db, 'bookings'), bookingData);
+      const res = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bookingPayload),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Erreur lors de la réservation.');
+      }
 
       if (bookingDetails.returnTrip) {
-        const returnBookingData = {
-          ...bookingData,
-          tripId: bookingDetails.returnTrip.id,
+        const returnPayload = {
+          tripId: String(bookingDetails.returnTrip.id),
           tripDate: bookingDetails.returnTrip.date,
-          tripRoute: `${bookingDetails.returnTrip.departureLocation} - ${bookingDetails.returnTrip.arrivalLocation}`,
           agencyName: bookingDetails.returnTrip.agencyName,
           agencyLogo: bookingDetails.returnTrip.agencyLogo,
           color: bookingDetails.returnTrip.color,
@@ -119,15 +117,23 @@ const CheckoutPage: React.FC = () => {
           to: bookingDetails.returnTrip.arrivalLocation,
           departureTime: bookingDetails.returnTrip.departureTime,
           date: bookingDetails.returnTrip.date,
+          price: bookingDetails.returnTrip.price,
+          currency: 'FCFA',
+          passengers: totalSeatsNeeded,
           seats: returnSeats,
+          paymentMethod: paymentMethod,
         };
-        await addDoc(collection(db, 'bookings'), returnBookingData);
+        await fetch('/api/bookings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(returnPayload),
+        });
       }
 
       setIsSuccess(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving booking:", error);
-      alert("Une erreur est survenue lors de la réservation.");
+      alert(error.message || "Une erreur est survenue lors de la réservation.");
     } finally {
       setIsProcessing(false);
     }

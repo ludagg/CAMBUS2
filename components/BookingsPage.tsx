@@ -2,8 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
-import { db } from '../firebase/config';
-import { collection, query, where, getDocs } from 'firebase/firestore';
 import { BookingCardSkeleton } from './Skeleton';
 
 interface Booking {
@@ -40,17 +38,23 @@ const BookingsPage: React.FC = () => {
       if (!user) return;
       setIsLoading(true);
       try {
-        const q = query(
-          collection(db, 'bookings'),
-          where("userId", "==", user.uid)
-        );
-        const querySnapshot = await getDocs(q);
-        const bookingsData: Booking[] = [];
-        querySnapshot.forEach((doc) => {
-          bookingsData.push({ id: doc.id, ...doc.data() } as Booking);
-        });
-        // Sort by date descending
-        bookingsData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        const res = await fetch('/api/bookings');
+        if (!res.ok) throw new Error('Failed to fetch bookings');
+        const data = await res.json();
+        const bookingsData: Booking[] = (data.bookings || []).map((b: any) => ({
+          id: b.id,
+          agencyName: b.agencyName,
+          agencyLogo: b.agencyLogo || 'directions_bus',
+          color: b.color || 'bg-blue-600',
+          from: b.from,
+          to: b.to,
+          departureTime: b.departureTime,
+          date: b.date,
+          price: b.price,
+          currency: b.currency,
+          passengers: b.passengers,
+          status: b.status.toLowerCase() as Booking['status'],
+        }));
         setBookings(bookingsData);
       } catch (error) {
         console.error("Error fetching bookings:", error);

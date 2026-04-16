@@ -2,15 +2,6 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { auth, db } from '../firebase/config';
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut, 
-  onAuthStateChanged,
-  type User as FirebaseUser
-} from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 export type Page = 'home' | 'agencies' | 'results' | 'checkout' | 'login' | 'signup' | 'bookings' | 'super_admin' | 'agency_admin' | 'station_manager';
 
@@ -78,8 +69,8 @@ export interface User {
   name: string;
   email: string;
   role?: UserRole;
-  agencyId?: number;
-  stationId?: number;
+  agencyId?: string;
+  stationId?: string;
   avatar?: string;
 }
 
@@ -117,59 +108,33 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
+    const checkAuth = async () => {
       setAuthLoading(true);
-      if (firebaseUser) {
-        try {
-          const docRef = doc(db, 'users', firebaseUser.uid);
-          const docSnap = await getDoc(docRef);
-
-          if (docSnap.exists()) {
-            setUser({ 
-              uid: firebaseUser.uid,
-              email: firebaseUser.email || '',
-              ...docSnap.data() 
-            } as User);
-          } else {
-            const email = firebaseUser.email || '';
-            let fallbackRole: UserRole = 'user';
-            let avatar = 'US';
-            
-            if (email.includes('admin')) { fallbackRole = 'super_admin'; avatar = 'SA'; }
-            else if (email.includes('express')) { fallbackRole = 'agency_admin'; avatar = 'AG'; }
-            else if (email.includes('station')) { fallbackRole = 'station_manager'; avatar = 'SM'; }
-
-            setUser({
-              uid: firebaseUser.uid,
-              name: firebaseUser.displayName || email.split('@')[0] || 'Utilisateur',
-              email: email,
-              role: fallbackRole,
-              avatar: avatar
-            });
-          }
-        } catch (error) {
-          console.error("Firestore error fallback:", error);
-          const email = firebaseUser.email || '';
-          let fallbackRole: UserRole = 'user';
-          if (email.includes('admin')) fallbackRole = 'super_admin';
-          else if (email.includes('express')) fallbackRole = 'agency_admin';
-          else if (email.includes('station')) fallbackRole = 'station_manager';
-
+      try {
+        const res = await fetch('/api/auth/me');
+        const data = await res.json();
+        if (data.user) {
+          const u = data.user;
           setUser({
-              uid: firebaseUser.uid,
-              name: email.split('@')[0] || 'Utilisateur',
-              email: email,
-              role: fallbackRole,
-              avatar: fallbackRole.charAt(0).toUpperCase()
+            uid: u.id,
+            name: u.name,
+            email: u.email,
+            role: u.role.toLowerCase() as UserRole,
+            agencyId: u.agencyId ?? undefined,
+            stationId: u.stationId ?? undefined,
+            avatar: u.avatar ?? undefined,
           });
+        } else {
+          setUser(null);
         }
-      } else {
+      } catch {
         setUser(null);
+      } finally {
+        setAuthLoading(false);
       }
-      setAuthLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    checkAuth();
   }, []);
 
   useEffect(() => {
@@ -186,35 +151,55 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
   }, [user, authLoading, currentPage, bookingDetails]);
 
   const login = async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email, password);
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const err: any = new Error(data.error || 'Erreur de connexion');
+      if (res.status === 401) err.code = 'auth/invalid-credential';
+      throw err;
+    }
+    const u = data;
+    setUser({
+      uid: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role.toLowerCase() as UserRole,
+      agencyId: u.agencyId ?? undefined,
+      stationId: u.stationId ?? undefined,
+      avatar: u.avatar ?? undefined,
+    });
   };
 
   const signup = async (name: string, email: string, password: string) => {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const uid = userCredential.user.uid;
-
-    let role: UserRole = 'user';
-    let avatar = 'US';
-    
-    if (email.includes('admin')) { role = 'super_admin'; avatar = 'SA'; }
-    else if (email.includes('express')) { role = 'agency_admin'; avatar = 'AG'; }
-    else if (email.includes('station')) { role = 'station_manager'; avatar = 'SM'; }
-
-    try {
-      await setDoc(doc(db, 'users', uid), {
-        name,
-        email,
-        role,
-        avatar,
-        createdAt: serverTimestamp()
-      });
-    } catch (e) {
-       console.warn("Could not save to firestore, auth only.");
+    const res = await fetch('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const err: any = new Error(data.error || 'Erreur d\'inscription');
+      if (res.status === 409) err.code = 'auth/email-already-in-use';
+      throw err;
     }
+    const u = data;
+    setUser({
+      uid: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role.toLowerCase() as UserRole,
+      agencyId: u.agencyId ?? undefined,
+      stationId: u.stationId ?? undefined,
+      avatar: u.avatar ?? undefined,
+    });
   };
 
   const logout = async () => {
-    await signOut(auth);
+    await fetch('/api/auth/logout', { method: 'POST' });
     setUser(null);
     navigateTo('home');
   };
