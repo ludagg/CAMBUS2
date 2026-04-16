@@ -31,7 +31,7 @@ const Footer: React.FC = () => {
             </div>
             <div>
               <span className="font-black text-lg text-white leading-none">EasyTravel</span>
-              <div className="text-[9px] font-bold text-primary/70 uppercase tracking-[0.2em]">Bus Tickets</div>
+              <div className="text-[9px] font-bold text-primary/70 uppercase tracking-[0.2em]"></div>
             </div>
           </div>
           <p className="text-sm text-gray-500 mb-6 leading-relaxed">
@@ -77,13 +77,12 @@ const Footer: React.FC = () => {
             <li><a href="#" className="hover:text-primary transition-colors">{t('footer.link.careers')}</a></li>
             <li><a href="#" className="hover:text-primary transition-colors">{t('footer.link.press')}</a></li>
             <li><a href="#" className="hover:text-primary transition-colors">{t('footer.link.sustainability')}</a></li>
-            <li><a href="#" onClick={handleAdminAccess} className="hover:text-primary transition-colors font-bold text-xs mt-5 block text-gray-600">Accès Administration (Demo)</a></li>
           </ul>
         </div>
       </div>
       
       <div className="max-w-7xl mx-auto pt-8 border-t border-gray-800 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-gray-600">
-        <p>&copy; 2024 {t('footer.rights')}</p>
+        <p>&copy; 2026 {t('footer.rights')}</p>
         <div className="flex gap-6">
           <a href="#" className="hover:text-gray-300 transition-colors">{t('footer.privacy')}</a>
           <a href="#" className="hover:text-gray-300 transition-colors">{t('footer.terms')}</a>
