@@ -1,340 +1,209 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useNavigation, UserRole } from '../contexts/NavigationContext';
-import { db } from '../firebase/config';
-import { 
-  collection, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  doc, 
-  onSnapshot, 
-  query, 
-  orderBy, 
-  serverTimestamp,
-  writeBatch
-} from 'firebase/firestore';
+import { useNavigation } from '../contexts/NavigationContext';
 
-interface City {
+interface Company {
   id: string;
   name: string;
-  region: string;
-  status: 'active' | 'inactive';
+  slug: string;
+  logo: string;
+  brandColor: string;
+  status: string;
+  _count?: { agencies: number; routes: number };
 }
 
 interface Agency {
   id: string;
   name: string;
-  logo: string;
-  email: string;
-  color: string;
-  status: 'active' | 'inactive';
+  status: string;
+  company: { name: string; brandColor: string };
+  city: { name: string; region: string };
+  _count?: { departures: number; vehicles: number };
+}
+
+interface City {
+  id: string;
+  name: string;
+  region: string;
 }
 
 interface PlatformUser {
-  uid: string;
+  id: string;
   name: string;
   email: string;
-  role: UserRole;
-  avatar?: string;
-  createdAt?: any;
+  role: string;
+  createdAt: string;
+}
+
+interface Stats {
+  companies: number;
+  agencies: number;
+  cities: number;
+  users: number;
+  bookings: number;
+  departures: number;
+  totalRevenue: number;
 }
 
 const SuperAdminDashboard: React.FC = () => {
   const { user, logout } = useNavigation();
-  const [activeTab, setActiveTab] = useState('overview');
-  const [cities, setCities] = useState<City[]>([]);
+  const [activeTab, setActiveTab] = useState<'overview' | 'companies' | 'agencies' | 'cities' | 'users'>('overview');
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [agencies, setAgencies] = useState<Agency[]>([]);
+  const [cities, setCities] = useState<City[]>([]);
   const [users, setUsers] = useState<PlatformUser[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Modal States
-  const [isAgencyModalOpen, setIsAgencyModalOpen] = useState(false);
-  const [editingAgency, setEditingAgency] = useState<Agency | null>(null);
-
-  // Form States
-  const [newCity, setNewCity] = useState({ name: '', region: 'Centre' });
-  const [agencyForm, setAgencyForm] = useState({ name: '', email: '', color: '#13ec5b' });
+  const refetch = async () => {
+    setIsLoading(true);
+    try {
+      const [companiesRes, agenciesRes, citiesRes, usersRes, statsRes] = await Promise.all([
+        fetch('/api/companies').then((r) => r.json()),
+        fetch('/api/agencies').then((r) => r.json()),
+        fetch('/api/cities').then((r) => r.json()),
+        fetch('/api/admin/users').then((r) => r.json()),
+        fetch('/api/admin/stats').then((r) => r.json()),
+      ]);
+      setCompanies(companiesRes.data ?? []);
+      setAgencies(agenciesRes.data ?? []);
+      setCities(citiesRes.data ?? []);
+      setUsers(usersRes.data ?? []);
+      setStats(statsRes.data ?? null);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    setIsLoading(true);
-    
-    // Listeners Temps Réel via Firebase
-    const unsubCities = onSnapshot(query(collection(db, 'cities'), orderBy('name')), (snap) => {
-      setCities(snap.docs.map(d => ({ id: d.id, ...d.data() } as City)));
-    });
-
-    const unsubAgencies = onSnapshot(query(collection(db, 'agencies'), orderBy('name')), (snap) => {
-      setAgencies(snap.docs.map(d => ({ id: d.id, ...d.data() } as Agency)));
-    });
-
-    const unsubUsers = onSnapshot(query(collection(db, 'users')), (snap) => {
-      setUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as PlatformUser)));
-      setIsLoading(false);
-    });
-
-    return () => {
-      unsubCities();
-      unsubAgencies();
-      unsubUsers();
-    };
+    refetch();
   }, []);
 
-  // --- ACTIONS ---
-
-  const handleSeedData = async () => {
-    if (!confirm("Voulez-vous injecter les données de démonstration (Agences, Villes, Trajets) ?")) return;
-    const batch = writeBatch(db);
-    
-    const demoCities = [
-      { name: "Douala", region: "Littoral", status: "active" },
-      { name: "Yaoundé", region: "Centre", status: "active" },
-      { name: "Bafoussam", region: "Ouest", status: "active" }
-    ];
-
-    demoCities.forEach(city => {
-      const ref = doc(collection(db, 'cities'));
-      batch.set(ref, { ...city, createdAt: serverTimestamp() });
-    });
-
-    const demoAgencies = [
-      { name: "Express Voyage", logo: "directions_bus", color: "bg-blue-600", colorHex: "#2563eb", email: "contact@express.cm", status: "active" },
-      { name: "GreenLines", logo: "eco", color: "bg-green-600", colorHex: "#16a34a", email: "contact@greenlines.cm", status: "active" },
-      { name: "Royal Road", logo: "diamond", color: "bg-amber-600", colorHex: "#d97706", email: "contact@royalroad.cm", status: "active" },
-      { name: "CityLink", logo: "apartment", color: "bg-purple-600", colorHex: "#9333ea", email: "contact@citylink.cm", status: "active" }
-    ];
-
-    demoAgencies.forEach(agency => {
-      const ref = doc(collection(db, 'agencies'));
-      batch.set(ref, { ...agency, createdAt: serverTimestamp() });
-    });
-
-    const demoTrips = [
-      {
-        agencyName: "Express Voyage", agencyLogo: "directions_bus", color: "bg-blue-600",
-        departureTime: "07:30", departureLocation: "Douala - Gare Centrale",
-        arrivalTime: "11:30", arrivalLocation: "Yaoundé - Mvan",
-        duration: "4h 00m", price: 4500, currency: "FCFA",
-        amenities: ["wifi", "ac", "power"], origin: "Douala", destination: "Yaoundé",
-        date: new Date().toISOString().split('T')[0], seatsAvailable: 70
-      },
-      {
-        agencyName: "GreenLines", agencyLogo: "eco", color: "bg-green-600",
-        departureTime: "09:00", departureLocation: "Douala - Akwa",
-        arrivalTime: "13:15", arrivalLocation: "Yaoundé - Biyem-Assi",
-        duration: "4h 15m", price: 3500, currency: "FCFA",
-        amenities: ["ac", "snack"], origin: "Douala", destination: "Yaoundé",
-        date: new Date().toISOString().split('T')[0], seatsAvailable: 50
-      },
-      {
-        agencyName: "Royal Road", agencyLogo: "diamond", color: "bg-amber-600",
-        departureTime: "13:00", departureLocation: "Douala - Bonabéri",
-        arrivalTime: "17:00", arrivalLocation: "Yaoundé - Centre Ville",
-        duration: "4h 00m", price: 6000, currency: "FCFA",
-        amenities: ["wifi", "ac", "power", "tv", "snack"], origin: "Douala", destination: "Yaoundé",
-        date: new Date().toISOString().split('T')[0], seatsAvailable: 30
-      },
-      {
-        agencyName: "CityLink", agencyLogo: "apartment", color: "bg-purple-600",
-        departureTime: "15:30", departureLocation: "Douala - Bali",
-        arrivalTime: "19:45", arrivalLocation: "Yaoundé - Nsam",
-        duration: "4h 15m", price: 4000, currency: "FCFA",
-        amenities: ["ac", "tv"], origin: "Douala", destination: "Yaoundé",
-        date: new Date().toISOString().split('T')[0], seatsAvailable: 45
-      }
-    ];
-
-    demoTrips.forEach(trip => {
-      const ref = doc(collection(db, 'trips'));
-      batch.set(ref, { ...trip, createdAt: serverTimestamp() });
-    });
-
-    await batch.commit();
-    alert("Données injectées avec succès !");
-  };
-
-  const addCity = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCity.name) return;
-    await addDoc(collection(db, 'cities'), { ...newCity, status: 'active', createdAt: serverTimestamp() });
-    setNewCity({ name: '', region: 'Centre' });
-  };
-
-  const saveAgency = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingAgency) {
-      await updateDoc(doc(db, 'agencies', editingAgency.id), { ...agencyForm });
-    } else {
-      await addDoc(collection(db, 'agencies'), { 
-        ...agencyForm, 
-        logo: 'directions_bus', 
-        status: 'active', 
-        createdAt: serverTimestamp() 
-      });
-    }
-    setAgencyForm({ name: '', email: '', color: '#13ec5b' });
-    setEditingAgency(null);
-    setIsAgencyModalOpen(false);
-  };
-
-  const updateUserRole = async (uid: string, newRole: UserRole) => {
-    await updateDoc(doc(db, 'users', uid), { role: newRole });
-  };
-
-  const deleteDocItem = async (col: string, id: string) => {
-    if (confirm("Supprimer définitivement ?")) {
-      await deleteDoc(doc(db, col, id));
-    }
-  };
-
-  const SidebarItem = ({ id, icon, label }: any) => (
-    <button 
-      onClick={() => setActiveTab(id)}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-        activeTab === id 
-          ? 'bg-primary text-black font-black shadow-lg shadow-primary/20' 
-          : 'text-gray-400 hover:bg-white/5 hover:text-white'
-      }`}
-    >
-      <span className="material-symbols-outlined">{icon}</span>
-      <span className="text-sm font-bold">{label}</span>
-    </button>
-  );
-
   return (
-    <div className="flex h-screen bg-[#050505] text-white overflow-hidden font-display">
-      <aside className="w-64 bg-black border-r border-white/5 flex flex-col p-6">
-        <div className="flex items-center gap-3 mb-10 px-2">
-           <div className="size-10 bg-primary rounded-xl flex items-center justify-center text-black shadow-lg">
-              <span className="material-symbols-outlined font-black">shield_person</span>
-           </div>
-           <div>
-              <div className="font-black text-lg tracking-tight leading-none">EasyTravel</div>
-              <div className="text-[10px] text-primary font-black uppercase tracking-widest mt-1">Super Admin</div>
-           </div>
+    <div className="bg-background-light dark:bg-background-dark min-h-screen">
+      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-8">
+        <div className="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <div className="text-[10px] font-black tracking-widest uppercase opacity-80">Super Admin</div>
+            <h1 className="text-3xl font-black">Administration Easy Travel</h1>
+            <p className="opacity-80 text-sm mt-1">{user?.name} • {user?.email}</p>
+          </div>
+          <button onClick={logout} className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 font-black text-sm">Déconnexion</button>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Tabs */}
+        <div className="flex gap-2 overflow-x-auto pb-3 mb-6 border-b border-gray-200 dark:border-gray-800">
+          {(['overview', 'companies', 'agencies', 'cities', 'users'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 rounded-lg font-black text-sm capitalize whitespace-nowrap transition-colors ${
+                activeTab === tab ? 'bg-primary text-text-main' : 'text-text-muted hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+            >
+              {tab === 'overview' ? 'Vue d\'ensemble' : tab}
+            </button>
+          ))}
         </div>
 
-        <nav className="flex-1 space-y-2">
-           <SidebarItem id="overview" icon="grid_view" label="Vue d'ensemble" />
-           <SidebarItem id="agencies" icon="business_center" label="Agences" />
-           <SidebarItem id="cities" icon="map" label="Villes & Réseau" />
-           <SidebarItem id="users" icon="group" label="Utilisateurs" />
-        </nav>
+        {isLoading && <div className="text-center py-20"><span className="material-symbols-outlined animate-spin text-5xl text-primary">progress_activity</span></div>}
 
-        <div className="mt-auto pt-6 border-t border-white/5 space-y-4">
-           <div className="flex items-center gap-3 px-2">
-              <div className="size-10 rounded-full bg-gray-800 border border-white/10 flex items-center justify-center font-black text-primary">
-                 {user?.avatar || 'SA'}
-              </div>
-              <div className="min-w-0">
-                 <div className="text-sm font-bold truncate">{user?.name}</div>
-                 <div className="text-[10px] text-gray-500 truncate">{user?.email}</div>
-              </div>
-           </div>
-           <button onClick={logout} className="w-full py-3 bg-red-500/10 text-red-500 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all">
-              Déconnexion
-           </button>
-        </div>
-      </aside>
-
-      <main className="flex-1 overflow-y-auto p-8 lg:p-12 custom-scrollbar">
-        <header className="flex justify-between items-center mb-10">
-           <div>
-              <h1 className="text-3xl font-black uppercase tracking-tighter">
-                 {activeTab === 'overview' && "Console de Commande"}
-                 {activeTab === 'agencies' && "Gestion des Partenaires"}
-                 {activeTab === 'cities' && "Configuration du Réseau"}
-                 {activeTab === 'users' && "Contrôle des Accès"}
-              </h1>
-              <p className="text-gray-500 text-sm font-medium">Tableau de bord centralisé Firebase.</p>
-           </div>
-           <div className="flex gap-4">
-              {cities.length === 0 && (
-                <button onClick={handleSeedData} className="px-4 py-2 border border-primary/30 text-primary text-xs font-black rounded-lg hover:bg-primary/10 transition-colors">
-                  Initialiser les données
-                </button>
-              )}
-           </div>
-        </header>
-
-        {activeTab === 'overview' && (
-           <div className="space-y-10 animate-fadeIn">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                 {[
-                   { label: "Agences", value: agencies.length, sub: "Actives", icon: "business", color: "text-blue-500" },
-                   { label: "Villes", value: cities.length, sub: "Desservies", icon: "location_city", color: "text-primary" },
-                   { label: "Membres", value: users.length, sub: "Inscrits", icon: "person", color: "text-purple-500" }
-                 ].map((stat, i) => (
-                    <div key={i} className="bg-white/5 border border-white/10 p-6 rounded-2xl hover:border-primary/50 transition-colors group">
-                       <div className="flex justify-between items-start mb-4">
-                          <span className={`material-symbols-outlined ${stat.color} text-3xl`}>{stat.icon}</span>
-                       </div>
-                       <div className="text-3xl font-black mb-1">{stat.value}</div>
-                       <div className="text-xs text-gray-500 font-bold">{stat.label}</div>
-                    </div>
-                 ))}
-              </div>
-           </div>
+        {!isLoading && activeTab === 'overview' && stats && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <StatCard label="Compagnies" value={stats.companies} icon="business" />
+            <StatCard label="Agences" value={stats.agencies} icon="store" />
+            <StatCard label="Villes" value={stats.cities} icon="location_city" />
+            <StatCard label="Utilisateurs" value={stats.users} icon="group" />
+            <StatCard label="Départs" value={stats.departures} icon="directions_bus" />
+            <StatCard label="Réservations" value={stats.bookings} icon="confirmation_number" />
+            <StatCard label="Revenus" value={`${(stats.totalRevenue).toLocaleString()} XAF`} icon="payments" />
+          </div>
         )}
 
-        {activeTab === 'agencies' && (
-           <div className="space-y-8 animate-fadeIn">
-              <div className="flex justify-between items-center">
-                 <h2 className="text-xl font-black text-gray-400">Partenaires ({agencies.length})</h2>
-                 <button onClick={() => { setEditingAgency(null); setIsAgencyModalOpen(true); }} className="px-6 py-3 bg-primary text-black font-black text-sm rounded-xl">Ajouter Agence</button>
+        {!isLoading && activeTab === 'companies' && (
+          <div className="space-y-3">
+            {companies.map((c) => (
+              <div key={c.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-4 flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-4">
+                  <div className="size-12 rounded-xl flex items-center justify-center text-white" style={{ backgroundColor: c.brandColor }}>
+                    <span className="material-symbols-outlined">{c.logo || 'business'}</span>
+                  </div>
+                  <div>
+                    <div className="font-black text-text-main dark:text-white">{c.name}</div>
+                    <div className="text-xs text-text-muted">{c._count?.agencies ?? 0} agences • {c._count?.routes ?? 0} routes</div>
+                  </div>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${c.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>{c.status}</span>
               </div>
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                 {agencies.map(agency => (
-                    <div key={agency.id} className="bg-white/5 border border-white/10 p-6 rounded-3xl relative overflow-hidden group">
-                       <h4 className="text-xl font-black mb-1">{agency.name}</h4>
-                       <p className="text-xs text-gray-500 font-bold">{agency.email}</p>
-                       <button onClick={() => deleteDocItem('agencies', agency.id)} className="mt-4 text-red-500 text-xs font-black">Supprimer</button>
-                    </div>
-                 ))}
-              </div>
-           </div>
+            ))}
+          </div>
         )}
 
-        {activeTab === 'cities' && (
-           <div className="grid lg:grid-cols-3 gap-10 animate-fadeIn">
-              <div className="lg:col-span-1">
-                 <form onSubmit={addCity} className="bg-white/5 p-8 rounded-3xl space-y-4">
-                    <input type="text" required value={newCity.name} onChange={e => setNewCity({...newCity, name: e.target.value})} className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm" placeholder="Nom Ville" />
-                    <button type="submit" className="w-full py-4 bg-primary text-black font-black uppercase text-xs rounded-xl">Ajouter</button>
-                 </form>
+        {!isLoading && activeTab === 'agencies' && (
+          <div className="grid md:grid-cols-2 gap-3">
+            {agencies.map((a) => (
+              <div key={a.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-4">
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div>
+                    <div className="font-black text-text-main dark:text-white">{a.name}</div>
+                    <div className="text-xs text-text-muted">{a.company.name} • {a.city.name}</div>
+                  </div>
+                  <span className="size-3 rounded-full" style={{ backgroundColor: a.company.brandColor }} />
+                </div>
+                <div className="flex items-center gap-4 text-xs text-text-muted">
+                  <span><strong className="text-text-main dark:text-white">{a._count?.departures ?? 0}</strong> départs</span>
+                  <span><strong className="text-text-main dark:text-white">{a._count?.vehicles ?? 0}</strong> véhicules</span>
+                </div>
               </div>
-              <div className="lg:col-span-2">
-                 <div className="grid sm:grid-cols-2 gap-4">
-                    {cities.map(city => (
-                       <div key={city.id} className="bg-white/5 border border-white/10 p-5 rounded-2xl flex items-center justify-between">
-                          <div className="font-bold">{city.name}</div>
-                          <button onClick={() => deleteDocItem('cities', city.id)} className="text-red-500 material-symbols-outlined">delete</button>
-                       </div>
-                    ))}
-                 </div>
-              </div>
-           </div>
+            ))}
+          </div>
         )}
-      </main>
 
-      {isAgencyModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
-           <div className="bg-[#111] border border-white/10 w-full max-w-md rounded-3xl p-8">
-              <h3 className="text-2xl font-black mb-6 uppercase">Nouvelle Agence</h3>
-              <form onSubmit={saveAgency} className="space-y-6">
-                 <input type="text" required value={agencyForm.name} onChange={e => setAgencyForm({...agencyForm, name: e.target.value})} className="w-full bg-black border border-white/10 rounded-xl px-4 py-3" placeholder="Nom Agence" />
-                 <input type="email" required value={agencyForm.email} onChange={e => setAgencyForm({...agencyForm, email: e.target.value})} className="w-full bg-black border border-white/10 rounded-xl px-4 py-3" placeholder="Email" />
-                 <div className="flex gap-4">
-                    <button type="button" onClick={() => setIsAgencyModalOpen(false)} className="flex-1 py-4 text-gray-500">Annuler</button>
-                    <button type="submit" className="flex-1 py-4 bg-primary text-black font-black rounded-xl">Enregistrer</button>
-                 </div>
-              </form>
-           </div>
-        </div>
-      )}
+        {!isLoading && activeTab === 'cities' && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {cities.map((c) => (
+              <div key={c.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-4">
+                <div className="font-black text-text-main dark:text-white">{c.name}</div>
+                <div className="text-xs text-text-muted">{c.region}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!isLoading && activeTab === 'users' && (
+          <div className="space-y-2">
+            {users.map((u) => (
+              <div key={u.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-black">{u.name.charAt(0)}</div>
+                  <div>
+                    <div className="font-black text-sm text-text-main dark:text-white">{u.name}</div>
+                    <div className="text-xs text-text-muted">{u.email}</div>
+                  </div>
+                </div>
+                <span className="px-3 py-1 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest">{u.role}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
+
+const StatCard: React.FC<{ label: string; value: string | number; icon: string }> = ({ label, value, icon }) => (
+  <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-5">
+    <div className="flex items-center justify-between mb-3">
+      <span className="text-xs font-black uppercase tracking-wider text-text-muted">{label}</span>
+      <span className="material-symbols-outlined text-primary">{icon}</span>
+    </div>
+    <div className="text-2xl font-black text-text-main dark:text-white">{value}</div>
+  </div>
+);
 
 export default SuperAdminDashboard;

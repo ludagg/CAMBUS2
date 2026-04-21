@@ -3,8 +3,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation, Trip } from '../contexts/NavigationContext';
-import { db } from '../firebase/config';
-import { collection, query, where, getDocs } from 'firebase/firestore';
 import { TripCardSkeleton } from './Skeleton';
 
 // Leaflet global declaration
@@ -94,21 +92,12 @@ const SearchResultsPage: React.FC = () => {
         const destination = currentStep === 'outbound' ? searchParams.to : searchParams.from;
         const date = currentStep === 'outbound' ? searchParams.date : (searchParams.returnDate || searchParams.date);
 
-        const q = query(
-          collection(db, 'trips'),
-          where("origin", "==", origin),
-          where("destination", "==", destination),
-          where("date", "==", date)
-        );
-
-        const querySnapshot = await getDocs(q);
-        const tripsData: TripExtended[] = [];
-        querySnapshot.forEach((doc) => {
-          tripsData.push({ id: doc.id, ...doc.data() } as TripExtended);
-        });
-        setFetchedTrips(tripsData);
+        const res = await fetch(`/api/departures?from=${encodeURIComponent(origin)}&to=${encodeURIComponent(destination)}&date=${encodeURIComponent(date)}`);
+        const json = await res.json();
+        setFetchedTrips(Array.isArray(json.data) ? (json.data as TripExtended[]) : []);
       } catch (error) {
         console.error("Error fetching trips:", error);
+        setFetchedTrips([]);
       } finally {
         setIsLoadingTrips(false);
       }

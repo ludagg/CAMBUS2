@@ -1,0 +1,269 @@
+// Easy Travel (CAMBUS2) - Prisma schema
+// PostgreSQL + Next.js. Domain: Company -> Agency -> Route -> Departure -> Booking
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  SUPER_ADMIN
+  COMPANY_ADMIN
+  AGENCY_ADMIN
+  STATION_MANAGER
+}
+
+enum Status {
+  ACTIVE
+  INACTIVE
+}
+
+enum TripType {
+  ONE_WAY
+  ROUND_TRIP
+}
+
+enum BookingLeg {
+  OUTBOUND
+  RETURN
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  BOARDED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  MOMO
+  OM
+  CARD
+  CASH
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  avatar       String?
+  role         Role     @default(USER)
+  companyId    String?
+  agencyId     String?
+  stationId    String?
+  company      Company? @relation(fields: [companyId], references: [id])
+  agency       Agency?  @relation(fields: [agencyId], references: [id])
+  station      Station? @relation(fields: [stationId], references: [id])
+  bookingGroups BookingGroup[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([role])
+  @@index([companyId])
+  @@index([agencyId])
+}
+
+model City {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  region      String
+  lat         Float?
+  lng         Float?
+  status      Status    @default(ACTIVE)
+  agencies    Agency[]
+  stations    Station[]
+  originRoutes      Route[] @relation("OriginCity")
+  destinationRoutes Route[] @relation("DestinationCity")
+  createdAt   DateTime  @default(now())
+}
+
+model Company {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  logo        String?   // material icon name
+  brandColor  String    @default("#13ec5b")
+  description String?
+  email       String?
+  phone       String?
+  status      Status    @default(ACTIVE)
+  agencies    Agency[]
+  routes      Route[]
+  users       User[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Agency {
+  id          String    @id @default(cuid())
+  companyId   String
+  cityId      String
+  name        String
+  address     String?
+  phone       String?
+  email       String?
+  status      Status    @default(ACTIVE)
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  city        City      @relation(fields: [cityId], references: [id])
+  stations    Station[]
+  vehicles    Vehicle[]
+  departures  Departure[]
+  users       User[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([companyId])
+  @@index([cityId])
+}
+
+model Station {
+  id         String     @id @default(cuid())
+  agencyId   String
+  cityId     String
+  name       String
+  address    String?
+  lat        Float?
+  lng        Float?
+  agency     Agency     @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  city       City       @relation(fields: [cityId], references: [id])
+  users      User[]
+  originDepartures      Departure[] @relation("OriginStation")
+  destinationDepartures Departure[] @relation("DestStation")
+  createdAt  DateTime   @default(now())
+
+  @@index([agencyId])
+  @@index([cityId])
+}
+
+model Vehicle {
+  id         String      @id @default(cuid())
+  agencyId   String
+  plate      String
+  model      String
+  capacity   Int
+  amenities  String[]    @default([])
+  status     Status      @default(ACTIVE)
+  agency     Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  departures Departure[]
+  createdAt  DateTime    @default(now())
+
+  @@unique([agencyId, plate])
+}
+
+model Route {
+  id                  String      @id @default(cuid())
+  companyId           String
+  originCityId        String
+  destinationCityId   String
+  distanceKm          Int?
+  defaultDurationMin  Int
+  company             Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  originCity          City        @relation("OriginCity", fields: [originCityId], references: [id])
+  destinationCity     City        @relation("DestinationCity", fields: [destinationCityId], references: [id])
+  departures          Departure[]
+  createdAt           DateTime    @default(now())
+
+  @@unique([companyId, originCityId, destinationCityId])
+  @@index([originCityId, destinationCityId])
+}
+
+model Departure {
+  id                 String     @id @default(cuid())
+  routeId            String
+  agencyId           String
+  vehicleId          String?
+  originStationId    String
+  destStationId      String
+  departureAt        DateTime
+  arrivalAt          DateTime
+  priceCents         Int
+  currency           String     @default("XAF")
+  amenities          String[]   @default([])
+  seatsTotal         Int
+  seatsAvailable     Int
+  status             Status     @default(ACTIVE)
+  route              Route      @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  agency             Agency     @relation(fields: [agencyId], references: [id])
+  vehicle            Vehicle?   @relation(fields: [vehicleId], references: [id])
+  originStation      Station    @relation("OriginStation", fields: [originStationId], references: [id])
+  destStation        Station    @relation("DestStation", fields: [destStationId], references: [id])
+  bookings           Booking[]
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  @@index([routeId])
+  @@index([departureAt])
+  @@index([agencyId])
+}
+
+model BookingGroup {
+  id             String        @id @default(cuid())
+  userId         String?
+  tripType       TripType      @default(ONE_WAY)
+  contactEmail   String
+  contactPhone   String
+  totalCents     Int
+  currency       String        @default("XAF")
+  status         BookingStatus @default(CONFIRMED)
+  user           User?         @relation(fields: [userId], references: [id])
+  bookings       Booking[]
+  payment        Payment?
+  createdAt      DateTime      @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Booking {
+  id          String        @id @default(cuid())
+  groupId     String
+  departureId String
+  leg         BookingLeg    @default(OUTBOUND)
+  seats       String[]      @default([])
+  priceCents  Int
+  status      BookingStatus @default(CONFIRMED)
+  qrCode      String        @unique @default(cuid())
+  group       BookingGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  departure   Departure     @relation(fields: [departureId], references: [id])
+  passengers  Passenger[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([groupId])
+  @@index([departureId])
+  @@index([status])
+}
+
+model Passenger {
+  id        String   @id @default(cuid())
+  bookingId String
+  fullName  String
+  idNumber  String?
+  seat      String?
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id           String        @id @default(cuid())
+  groupId      String        @unique
+  method       PaymentMethod
+  amountCents  Int
+  currency     String        @default("XAF")
+  status       PaymentStatus @default(SUCCEEDED)
+  providerRef  String?
+  group        BookingGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt    DateTime      @default(now())
+}
