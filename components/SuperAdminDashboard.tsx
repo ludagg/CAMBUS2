@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
+import AdminModal from './AdminModal';
 
 interface Company {
   id: string;
@@ -55,6 +56,8 @@ const SuperAdminDashboard: React.FC = () => {
   const [users, setUsers] = useState<PlatformUser[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [companyModalOpen, setCompanyModalOpen] = useState(false);
+  const [agencyModalOpen, setAgencyModalOpen] = useState(false);
 
   const refetch = async () => {
     setIsLoading(true);
@@ -81,6 +84,15 @@ const SuperAdminDashboard: React.FC = () => {
   useEffect(() => {
     refetch();
   }, []);
+
+  const toggleCompanyStatus = async (c: Company) => {
+    await fetch(`/api/companies/${c.id}`, {
+      method: c.status === 'ACTIVE' ? 'DELETE' : 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: c.status === 'ACTIVE' ? undefined : JSON.stringify({ status: 'ACTIVE' }),
+    });
+    await refetch();
+  };
 
   return (
     <div className="bg-background-light dark:bg-background-dark min-h-screen">
@@ -127,6 +139,12 @@ const SuperAdminDashboard: React.FC = () => {
 
         {!isLoading && activeTab === 'companies' && (
           <div className="space-y-3">
+            <div className="flex justify-end mb-2">
+              <button onClick={() => setCompanyModalOpen(true)} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm flex items-center gap-2 hover:bg-[#0fd651]">
+                <span className="material-symbols-outlined text-[18px]">add</span>
+                Nouvelle compagnie
+              </button>
+            </div>
             {companies.map((c) => (
               <div key={c.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-4 flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-4">
@@ -138,29 +156,42 @@ const SuperAdminDashboard: React.FC = () => {
                     <div className="text-xs text-text-muted">{c._count?.agencies ?? 0} agences • {c._count?.routes ?? 0} routes</div>
                   </div>
                 </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${c.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>{c.status}</span>
+                <div className="flex items-center gap-2">
+                  <span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${c.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>{c.status}</span>
+                  <button onClick={() => toggleCompanyStatus(c)} className="px-3 py-1 rounded-lg text-xs font-black bg-gray-100 dark:bg-gray-800 text-text-main dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700">
+                    {c.status === 'ACTIVE' ? 'Désactiver' : 'Réactiver'}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
 
         {!isLoading && activeTab === 'agencies' && (
-          <div className="grid md:grid-cols-2 gap-3">
-            {agencies.map((a) => (
-              <div key={a.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-4">
-                <div className="flex items-start justify-between gap-3 mb-2">
-                  <div>
-                    <div className="font-black text-text-main dark:text-white">{a.name}</div>
-                    <div className="text-xs text-text-muted">{a.company.name} • {a.city.name}</div>
+          <div>
+            <div className="flex justify-end mb-4">
+              <button onClick={() => setAgencyModalOpen(true)} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm flex items-center gap-2 hover:bg-[#0fd651]">
+                <span className="material-symbols-outlined text-[18px]">add</span>
+                Nouvelle agence
+              </button>
+            </div>
+            <div className="grid md:grid-cols-2 gap-3">
+              {agencies.map((a) => (
+                <div key={a.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-4">
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div>
+                      <div className="font-black text-text-main dark:text-white">{a.name}</div>
+                      <div className="text-xs text-text-muted">{a.company.name} • {a.city.name}</div>
+                    </div>
+                    <span className="size-3 rounded-full" style={{ backgroundColor: a.company.brandColor }} />
                   </div>
-                  <span className="size-3 rounded-full" style={{ backgroundColor: a.company.brandColor }} />
+                  <div className="flex items-center gap-4 text-xs text-text-muted">
+                    <span><strong className="text-text-main dark:text-white">{a._count?.departures ?? 0}</strong> départs</span>
+                    <span><strong className="text-text-main dark:text-white">{a._count?.vehicles ?? 0}</strong> véhicules</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-4 text-xs text-text-muted">
-                  <span><strong className="text-text-main dark:text-white">{a._count?.departures ?? 0}</strong> départs</span>
-                  <span><strong className="text-text-main dark:text-white">{a._count?.vehicles ?? 0}</strong> véhicules</span>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
@@ -192,9 +223,175 @@ const SuperAdminDashboard: React.FC = () => {
           </div>
         )}
       </div>
+
+      {companyModalOpen && (
+        <CompanyForm
+          onClose={() => setCompanyModalOpen(false)}
+          onSaved={async () => { setCompanyModalOpen(false); await refetch(); }}
+        />
+      )}
+      {agencyModalOpen && (
+        <AgencyForm
+          companies={companies}
+          cities={cities}
+          onClose={() => setAgencyModalOpen(false)}
+          onSaved={async () => { setAgencyModalOpen(false); await refetch(); }}
+        />
+      )}
     </div>
   );
 };
+
+const CompanyForm: React.FC<{ onClose: () => void; onSaved: () => void }> = ({ onClose, onSaved }) => {
+  const [name, setName] = useState('');
+  const [slug, setSlug] = useState('');
+  const [brandColor, setBrandColor] = useState('#13ec5b');
+  const [description, setDescription] = useState('');
+  const [email, setEmail] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/companies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          slug: slug || name.toLowerCase().replace(/\s+/g, '-'),
+          brandColor,
+          description: description || undefined,
+          email: email || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erreur');
+      onSaved();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <AdminModal title="Nouvelle compagnie" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Nom commercial">
+          <input required value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Ex: Express Union" />
+        </Field>
+        <Field label="Slug (URL)">
+          <input value={slug} onChange={(e) => setSlug(e.target.value)} className={inputCls} placeholder="express-union" />
+        </Field>
+        <Field label="Email">
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} placeholder="contact@express.cm" />
+        </Field>
+        <Field label="Couleur de marque">
+          <div className="flex gap-2 items-center">
+            <input type="color" value={brandColor} onChange={(e) => setBrandColor(e.target.value)} className="h-10 w-14 rounded cursor-pointer bg-transparent border-none" />
+            <input value={brandColor} onChange={(e) => setBrandColor(e.target.value)} className={inputCls + ' font-mono'} />
+          </div>
+        </Field>
+        <Field label="Description">
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className={inputCls} />
+        </Field>
+        {error && <div className="text-red-600 text-xs font-bold bg-red-50 p-2 rounded">{error}</div>}
+        <div className="flex gap-2 justify-end pt-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-text-muted font-black text-sm">Annuler</button>
+          <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm disabled:opacity-50">
+            {saving ? 'Enregistrement…' : 'Créer'}
+          </button>
+        </div>
+      </form>
+    </AdminModal>
+  );
+};
+
+const AgencyForm: React.FC<{ companies: Company[]; cities: City[]; onClose: () => void; onSaved: () => void }> = ({ companies, cities, onClose, onSaved }) => {
+  const [companyId, setCompanyId] = useState(companies[0]?.id ?? '');
+  const [cityId, setCityId] = useState(cities[0]?.id ?? '');
+  const [name, setName] = useState('');
+  const [address, setAddress] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/agencies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyId, cityId, name,
+          address: address || undefined,
+          phone: phone || undefined,
+          email: email || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erreur');
+      onSaved();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <AdminModal title="Nouvelle agence" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Compagnie">
+          <select required value={companyId} onChange={(e) => setCompanyId(e.target.value)} className={inputCls}>
+            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Ville">
+          <select required value={cityId} onChange={(e) => setCityId(e.target.value)} className={inputCls}>
+            {cities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Nom de l'agence">
+          <input required value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Ex: Express Douala Bonaberi" />
+        </Field>
+        <Field label="Adresse">
+          <input value={address} onChange={(e) => setAddress(e.target.value)} className={inputCls} />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Téléphone">
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} className={inputCls} placeholder="+237 6..." />
+          </Field>
+          <Field label="Email">
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
+          </Field>
+        </div>
+        {error && <div className="text-red-600 text-xs font-bold bg-red-50 p-2 rounded">{error}</div>}
+        <div className="flex gap-2 justify-end pt-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-text-muted font-black text-sm">Annuler</button>
+          <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm disabled:opacity-50">
+            {saving ? 'Enregistrement…' : 'Créer'}
+          </button>
+        </div>
+      </form>
+    </AdminModal>
+  );
+};
+
+export const inputCls = 'w-full h-10 px-3 bg-gray-50 dark:bg-[#102216] border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-text-main dark:text-white transition-all text-sm';
+
+export const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <label className="block">
+    <span className="block text-xs font-black text-text-muted mb-1 uppercase tracking-wider">{label}</span>
+    {children}
+  </label>
+);
 
 const StatCard: React.FC<{ label: string; value: string | number; icon: string }> = ({ label, value, icon }) => (
   <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-5">

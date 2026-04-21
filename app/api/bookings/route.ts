@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
+import { getProvider, normalizeCameroonPhone, type PaymentProviderId } from '@/lib/payment'
 
 export async function GET() {
   try {
@@ -63,7 +64,7 @@ export async function GET() {
         date: b.departure.departureAt.toISOString().split('T')[0],
         passengers: b.passengers,
       })),
-      payment: g.payment ? { method: g.payment.method, status: g.payment.status } : null,
+      payment: g.payment ? { method: g.payment.method, status: g.payment.status, provider: g.payment.provider, phoneNumber: g.payment.phoneNumber } : null,
     }))
 
     return NextResponse.json({ data: mapped })
@@ -87,6 +88,7 @@ const bookingSchema = z.object({
   contactEmail: z.string().email(),
   contactPhone: z.string().min(1),
   paymentMethod: z.enum(['MOMO', 'OM', 'CARD', 'CASH']),
+  paymentPhone: z.string().optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -94,6 +96,16 @@ export async function POST(req: NextRequest) {
     const session = await getSession()
     requireRole(session, ['USER', 'SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENCY_ADMIN', 'STATION_MANAGER'])
     const body = bookingSchema.parse(await req.json())
+
+    const isMobileMoney = body.paymentMethod === 'MOMO' || body.paymentMethod === 'OM'
+    let normalizedPhone: string | null = null
+    if (isMobileMoney) {
+      const rawPhone = body.paymentPhone || body.contactPhone
+      normalizedPhone = normalizeCameroonPhone(rawPhone)
+      if (!normalizedPhone) {
+        return bad('Numéro Mobile Money invalide. Format attendu: 6XX XXX XXX.')
+      }
+    }
 
     const outDep = await prisma.departure.findUnique({ where: { id: body.outboundDepartureId } })
     if (!outDep) return bad('Départ aller introuvable.', 404)
@@ -111,7 +123,7 @@ export async function POST(req: NextRequest) {
     const totalCents = outPrice + retPrice
 
     const result = await prisma.$transaction(async (tx) => {
-      // Decrement seats
+      // Reserve seats immediately; they're released if payment fails.
       await tx.departure.update({
         where: { id: outDep.id },
         data: { seatsAvailable: { decrement: body.passengers.length } },
@@ -123,6 +135,8 @@ export async function POST(req: NextRequest) {
         })
       }
 
+      const initialStatus = isMobileMoney ? 'PENDING' : 'CONFIRMED'
+
       const group = await tx.bookingGroup.create({
         data: {
           userId: session!.sub,
@@ -131,7 +145,7 @@ export async function POST(req: NextRequest) {
           contactPhone: body.contactPhone,
           totalCents,
           currency: outDep.currency,
-          status: 'CONFIRMED',
+          status: initialStatus,
         },
       })
 
@@ -142,7 +156,7 @@ export async function POST(req: NextRequest) {
           leg: 'OUTBOUND',
           seats: body.outboundSeats ?? [],
           priceCents: outPrice,
-          status: 'CONFIRMED',
+          status: initialStatus,
         },
       })
 
@@ -165,7 +179,7 @@ export async function POST(req: NextRequest) {
             leg: 'RETURN',
             seats: body.returnSeats ?? [],
             priceCents: retPrice,
-            status: 'CONFIRMED',
+            status: initialStatus,
           },
         })
         for (const p of body.passengers) {
@@ -180,21 +194,48 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      await tx.payment.create({
+      const payment = await tx.payment.create({
         data: {
           groupId: group.id,
           method: body.paymentMethod,
+          provider: isMobileMoney ? getProvider(body.paymentMethod as PaymentProviderId).name : null,
+          phoneNumber: normalizedPhone,
           amountCents: totalCents,
           currency: outDep.currency,
-          status: 'SUCCEEDED',
-          providerRef: `SIM-${Date.now()}`,
+          status: isMobileMoney ? 'PENDING' : 'SUCCEEDED',
+          providerRef: isMobileMoney ? null : `SIM-${body.paymentMethod}-${Date.now()}`,
         },
       })
 
-      return group
+      return { group, payment }
     })
 
-    return NextResponse.json({ data: { groupId: result.id } }, { status: 201 })
+    // If Mobile Money, initiate the provider session (mock returns a reference)
+    if (isMobileMoney && normalizedPhone) {
+      const provider = getProvider(body.paymentMethod as PaymentProviderId)
+      const init = await provider.initiate({
+        amountCents: totalCents,
+        currency: outDep.currency,
+        phoneNumber: normalizedPhone,
+        reference: result.group.id,
+      })
+      await prisma.payment.update({
+        where: { id: result.payment.id },
+        data: { providerRef: init.externalRef },
+      })
+    }
+
+    return NextResponse.json(
+      {
+        data: {
+          groupId: result.group.id,
+          paymentId: result.payment.id,
+          status: result.payment.status,
+          requiresConfirmation: isMobileMoney,
+        },
+      },
+      { status: 201 }
+    )
   } catch (err) {
     return handleError(err)
   }

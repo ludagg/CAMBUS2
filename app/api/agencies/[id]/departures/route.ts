@@ -70,6 +70,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const departureAt = new Date(body.departureAt)
     const arrivalAt = new Date(departureAt.getTime() + body.durationMin * 60_000)
 
+    if (body.vehicleId) {
+      const conflict = await prisma.departure.findFirst({
+        where: {
+          vehicleId: body.vehicleId,
+          status: 'ACTIVE',
+          // overlap: existing.departureAt < newArrival AND existing.arrivalAt > newDeparture
+          departureAt: { lt: arrivalAt },
+          arrivalAt: { gt: departureAt },
+        },
+        include: { route: { include: { originCity: true, destinationCity: true } } },
+      })
+      if (conflict) {
+        return bad(
+          `Ce véhicule est déjà programmé sur ${conflict.route.originCity.name} → ${conflict.route.destinationCity.name} à ${conflict.departureAt.toISOString()}.`
+        )
+      }
+    }
+
     const dep = await prisma.departure.create({
       data: {
         routeId: route.id,

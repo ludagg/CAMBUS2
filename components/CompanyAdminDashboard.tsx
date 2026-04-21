@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
+import AdminModal from './AdminModal';
+import { Field, inputCls } from './SuperAdminDashboard';
 
 interface Company {
   id: string;
@@ -11,21 +13,38 @@ interface Company {
   description?: string | null;
   _count?: { agencies: number; routes: number };
   agencies?: Agency[];
-  routes?: Route[];
+  routes?: RouteRow[];
 }
 
 interface Agency {
   id: string;
   name: string;
-  city: { name: string; region: string } | { name: string };
+  city: { id?: string; name: string; region?: string };
   _count?: { departures: number; vehicles: number };
 }
 
-interface Route {
+interface RouteRow {
   id: string;
-  originCity: { name: string };
-  destinationCity: { name: string };
+  originCity: { id?: string; name: string };
+  destinationCity: { id?: string; name: string };
   defaultDurationMin: number;
+  distanceKm?: number | null;
+  _count?: { departures: number };
+}
+
+interface City {
+  id: string;
+  name: string;
+  region: string;
+}
+
+interface Vehicle {
+  id: string;
+  plate: string;
+  model: string;
+  capacity: number;
+  amenities: string[];
+  status?: string;
 }
 
 const CompanyAdminDashboard: React.FC = () => {
@@ -33,40 +52,82 @@ const CompanyAdminDashboard: React.FC = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [tab, setTab] = useState<'overview' | 'routes' | 'vehicles'>('overview');
+  const [routes, setRoutes] = useState<RouteRow[]>([]);
+  const [cities, setCities] = useState<City[]>([]);
+  const [routeModalOpen, setRouteModalOpen] = useState(false);
+  const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
+  const [selectedAgencyId, setSelectedAgencyId] = useState<string>('');
+  const [agencyVehicles, setAgencyVehicles] = useState<Vehicle[]>([]);
 
-  useEffect(() => {
-    const run = async () => {
-      setIsLoading(true);
-      try {
-        if (user?.companyId) {
-          const res = await fetch(`/api/companies/${user.companyId}`);
-          const json = await res.json();
-          setCompanies(json.data ? [json.data] : []);
-          setActiveId(user.companyId);
-        } else {
-          const res = await fetch('/api/companies');
-          const json = await res.json();
-          const list: Company[] = json.data ?? [];
-          setCompanies(list);
-          setActiveId(list[0]?.id ?? null);
-        }
-      } finally {
-        setIsLoading(false);
+  const loadCompanies = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      if (user?.companyId) {
+        const res = await fetch(`/api/companies/${user.companyId}`);
+        const json = await res.json();
+        setCompanies(json.data ? [json.data] : []);
+        setActiveId(user.companyId);
+      } else {
+        const res = await fetch('/api/companies');
+        const json = await res.json();
+        const list: Company[] = json.data ?? [];
+        setCompanies(list);
+        setActiveId(list[0]?.id ?? null);
       }
-    };
-    run();
+    } finally {
+      setIsLoading(false);
+    }
   }, [user?.companyId]);
+
+  useEffect(() => { loadCompanies(); }, [loadCompanies]);
+
+  useEffect(() => { fetch('/api/cities').then((r) => r.json()).then((j) => setCities(j.data ?? [])); }, []);
+
+  const reloadActiveCompany = useCallback(async () => {
+    if (!activeId) return;
+    const res = await fetch(`/api/companies/${activeId}`);
+    const json = await res.json();
+    setCompanies((prev) => prev.map((c) => (c.id === activeId ? { ...c, ...json.data } : c)));
+  }, [activeId]);
 
   useEffect(() => {
     if (!activeId || companies.find((c) => c.id === activeId)?.agencies) return;
-    fetch(`/api/companies/${activeId}`)
-      .then((r) => r.json())
-      .then((json) => {
-        setCompanies((prev) => prev.map((c) => (c.id === activeId ? { ...c, ...json.data } : c)));
-      });
-  }, [activeId, companies]);
+    reloadActiveCompany();
+  }, [activeId, companies, reloadActiveCompany]);
+
+  const reloadRoutes = useCallback(async () => {
+    if (!activeId) return;
+    const res = await fetch(`/api/routes?companyId=${activeId}`);
+    const json = await res.json();
+    setRoutes(json.data ?? []);
+  }, [activeId]);
+
+  useEffect(() => { if (tab === 'routes') reloadRoutes(); }, [tab, reloadRoutes]);
+
+  useEffect(() => {
+    if (tab !== 'vehicles' || !selectedAgencyId) { setAgencyVehicles([]); return; }
+    fetch(`/api/agencies/${selectedAgencyId}/vehicles`).then((r) => r.json()).then((j) => setAgencyVehicles(j.data ?? []));
+  }, [tab, selectedAgencyId]);
 
   const active = useMemo(() => companies.find((c) => c.id === activeId), [companies, activeId]);
+
+  useEffect(() => {
+    if (!selectedAgencyId && active?.agencies?.[0]) setSelectedAgencyId(active.agencies[0].id);
+  }, [active, selectedAgencyId]);
+
+  const deleteRoute = async (id: string) => {
+    if (!confirm('Supprimer cette route ?')) return;
+    await fetch(`/api/routes/${id}`, { method: 'DELETE' });
+    await reloadRoutes();
+  };
+
+  const deleteVehicle = async (id: string) => {
+    if (!confirm('Désactiver ce véhicule ?')) return;
+    await fetch(`/api/vehicles/${id}`, { method: 'DELETE' });
+    const r = await fetch(`/api/agencies/${selectedAgencyId}/vehicles`).then((x) => x.json());
+    setAgencyVehicles(r.data ?? []);
+  };
 
   return (
     <div className="bg-background-light dark:bg-background-dark min-h-screen">
@@ -86,46 +147,249 @@ const CompanyAdminDashboard: React.FC = () => {
           <div className="text-center py-16"><span className="material-symbols-outlined animate-spin text-5xl text-primary">progress_activity</span></div>
         ) : active ? (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Stat label="Agences" value={active._count?.agencies ?? active.agencies?.length ?? 0} icon="store" />
-              <Stat label="Routes" value={active._count?.routes ?? active.routes?.length ?? 0} icon="route" />
-              <Stat label="Villes desservies" value={new Set(active.agencies?.map((a) => (a.city as { name: string }).name) ?? []).size} icon="location_city" />
-              <Stat label="Départs actifs" value={active.agencies?.reduce((sum, a) => sum + (a._count?.departures ?? 0), 0) ?? 0} icon="directions_bus" />
+            <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800">
+              {(['overview', 'routes', 'vehicles'] as const).map((t) => (
+                <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 font-black text-sm capitalize ${tab === t ? 'text-primary border-b-2 border-primary' : 'text-text-muted'}`}>
+                  {t === 'overview' ? 'Vue d\'ensemble' : t === 'routes' ? 'Routes' : 'Véhicules'}
+                </button>
+              ))}
             </div>
 
-            <section>
-              <h2 className="font-black text-lg mb-3 text-text-main dark:text-white">Agences</h2>
-              <div className="grid md:grid-cols-2 gap-3">
-                {(active.agencies ?? []).map((a) => (
-                  <div key={a.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-4">
-                    <div className="font-black text-text-main dark:text-white">{a.name}</div>
-                    <div className="text-xs text-text-muted mt-1">{(a.city as { name: string }).name}</div>
-                    <div className="flex items-center gap-4 text-xs text-text-muted mt-2">
-                      <span><strong className="text-text-main dark:text-white">{a._count?.departures ?? 0}</strong> départs</span>
-                      <span><strong className="text-text-main dark:text-white">{a._count?.vehicles ?? 0}</strong> véhicules</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
+            {tab === 'overview' && (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <Stat label="Agences" value={active._count?.agencies ?? active.agencies?.length ?? 0} icon="store" />
+                  <Stat label="Routes" value={active._count?.routes ?? active.routes?.length ?? 0} icon="route" />
+                  <Stat label="Villes desservies" value={new Set(active.agencies?.map((a) => a.city.name) ?? []).size} icon="location_city" />
+                  <Stat label="Départs actifs" value={active.agencies?.reduce((sum, a) => sum + (a._count?.departures ?? 0), 0) ?? 0} icon="directions_bus" />
+                </div>
 
-            <section>
-              <h2 className="font-black text-lg mb-3 text-text-main dark:text-white">Routes</h2>
-              <div className="grid md:grid-cols-3 gap-3">
-                {(active.routes ?? []).slice(0, 24).map((r) => (
-                  <div key={r.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-3 flex items-center justify-between text-xs">
-                    <span className="font-black text-text-main dark:text-white">{r.originCity.name} → {r.destinationCity.name}</span>
-                    <span className="text-text-muted">{Math.round(r.defaultDurationMin / 60)}h</span>
+                <section>
+                  <h2 className="font-black text-lg mb-3 text-text-main dark:text-white">Agences</h2>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    {(active.agencies ?? []).map((a) => (
+                      <div key={a.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-4">
+                        <div className="font-black text-text-main dark:text-white">{a.name}</div>
+                        <div className="text-xs text-text-muted mt-1">{a.city.name}</div>
+                        <div className="flex items-center gap-4 text-xs text-text-muted mt-2">
+                          <span><strong className="text-text-main dark:text-white">{a._count?.departures ?? 0}</strong> départs</span>
+                          <span><strong className="text-text-main dark:text-white">{a._count?.vehicles ?? 0}</strong> véhicules</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </section>
+                </section>
+              </>
+            )}
+
+            {tab === 'routes' && (
+              <section>
+                <div className="flex justify-between items-center mb-3">
+                  <h2 className="font-black text-lg text-text-main dark:text-white">Routes ({routes.length})</h2>
+                  <button onClick={() => setRouteModalOpen(true)} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm flex items-center gap-2 hover:bg-[#0fd651]">
+                    <span className="material-symbols-outlined text-[18px]">add</span>
+                    Nouvelle route
+                  </button>
+                </div>
+                <div className="grid md:grid-cols-2 gap-3">
+                  {routes.map((r) => (
+                    <div key={r.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-4 flex items-center justify-between gap-3">
+                      <div>
+                        <div className="font-black text-text-main dark:text-white">{r.originCity.name} → {r.destinationCity.name}</div>
+                        <div className="text-xs text-text-muted">{Math.round(r.defaultDurationMin / 60)}h{r.defaultDurationMin % 60 ? (r.defaultDurationMin % 60) + 'min' : ''} • {r.distanceKm ?? '–'} km • {r._count?.departures ?? 0} départ(s)</div>
+                      </div>
+                      <button onClick={() => deleteRoute(r.id)} className="text-red-600 hover:text-red-800 p-2" aria-label="Supprimer">
+                        <span className="material-symbols-outlined text-[20px]">delete</span>
+                      </button>
+                    </div>
+                  ))}
+                  {routes.length === 0 && <p className="text-text-muted col-span-2 text-center py-10">Aucune route.</p>}
+                </div>
+              </section>
+            )}
+
+            {tab === 'vehicles' && (
+              <section>
+                <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-text-muted uppercase tracking-wider">Agence:</span>
+                    <select value={selectedAgencyId} onChange={(e) => setSelectedAgencyId(e.target.value)} className={inputCls + ' w-auto'}>
+                      {(active.agencies ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                  </div>
+                  <button onClick={() => setVehicleModalOpen(true)} disabled={!selectedAgencyId} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm flex items-center gap-2 hover:bg-[#0fd651] disabled:opacity-50">
+                    <span className="material-symbols-outlined text-[18px]">add</span>
+                    Nouveau véhicule
+                  </button>
+                </div>
+                <div className="grid md:grid-cols-2 gap-3">
+                  {agencyVehicles.map((v) => (
+                    <div key={v.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-4 flex justify-between gap-3">
+                      <div>
+                        <div className="font-black text-text-main dark:text-white">{v.plate}</div>
+                        <div className="text-xs text-text-muted">{v.model} • {v.capacity} places</div>
+                        {v.amenities.length > 0 && <div className="flex flex-wrap gap-1 mt-2">{v.amenities.map((a) => <span key={a} className="text-[10px] font-black px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-text-muted rounded-full uppercase">{a}</span>)}</div>}
+                      </div>
+                      <button onClick={() => deleteVehicle(v.id)} className="text-red-600 hover:text-red-800 p-2" aria-label="Supprimer">
+                        <span className="material-symbols-outlined text-[20px]">delete</span>
+                      </button>
+                    </div>
+                  ))}
+                  {agencyVehicles.length === 0 && <p className="text-text-muted col-span-2 text-center py-10">Aucun véhicule.</p>}
+                </div>
+              </section>
+            )}
           </>
         ) : (
           <p className="text-center text-text-muted py-16">Aucune compagnie assignée.</p>
         )}
       </div>
+
+      {routeModalOpen && activeId && (
+        <RouteForm
+          companyId={activeId}
+          cities={cities}
+          onClose={() => setRouteModalOpen(false)}
+          onSaved={async () => { setRouteModalOpen(false); await reloadRoutes(); await reloadActiveCompany(); }}
+        />
+      )}
+      {vehicleModalOpen && selectedAgencyId && (
+        <VehicleForm
+          agencyId={selectedAgencyId}
+          onClose={() => setVehicleModalOpen(false)}
+          onSaved={async () => {
+            setVehicleModalOpen(false);
+            const r = await fetch(`/api/agencies/${selectedAgencyId}/vehicles`).then((x) => x.json());
+            setAgencyVehicles(r.data ?? []);
+          }}
+        />
+      )}
     </div>
+  );
+};
+
+const RouteForm: React.FC<{ companyId: string; cities: City[]; onClose: () => void; onSaved: () => void }> = ({ companyId, cities, onClose, onSaved }) => {
+  const [originCityId, setOriginCityId] = useState(cities[0]?.id ?? '');
+  const [destinationCityId, setDestinationCityId] = useState(cities[1]?.id ?? '');
+  const [durationH, setDurationH] = useState<number>(4);
+  const [durationM, setDurationM] = useState<number>(0);
+  const [distanceKm, setDistanceKm] = useState<number | ''>('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true); setError(null);
+    try {
+      const res = await fetch('/api/routes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyId, originCityId, destinationCityId,
+          defaultDurationMin: durationH * 60 + durationM,
+          distanceKm: distanceKm === '' ? undefined : Number(distanceKm),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erreur');
+      onSaved();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <AdminModal title="Nouvelle route" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Origine">
+            <select required value={originCityId} onChange={(e) => setOriginCityId(e.target.value)} className={inputCls}>
+              {cities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Destination">
+            <select required value={destinationCityId} onChange={(e) => setDestinationCityId(e.target.value)} className={inputCls}>
+              {cities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
+        </div>
+        <Field label="Durée par défaut">
+          <div className="flex gap-2 items-center">
+            <input type="number" min={0} value={durationH} onChange={(e) => setDurationH(Number(e.target.value))} className={inputCls} />
+            <span className="text-xs font-black text-text-muted">h</span>
+            <input type="number" min={0} max={59} value={durationM} onChange={(e) => setDurationM(Number(e.target.value))} className={inputCls} />
+            <span className="text-xs font-black text-text-muted">min</span>
+          </div>
+        </Field>
+        <Field label="Distance (km)">
+          <input type="number" min={0} value={distanceKm} onChange={(e) => setDistanceKm(e.target.value === '' ? '' : Number(e.target.value))} className={inputCls} placeholder="240" />
+        </Field>
+        {error && <div className="text-red-600 text-xs font-bold bg-red-50 p-2 rounded">{error}</div>}
+        <div className="flex gap-2 justify-end pt-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-text-muted font-black text-sm">Annuler</button>
+          <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm disabled:opacity-50">{saving ? 'Enregistrement…' : 'Créer'}</button>
+        </div>
+      </form>
+    </AdminModal>
+  );
+};
+
+const VehicleForm: React.FC<{ agencyId: string; onClose: () => void; onSaved: () => void }> = ({ agencyId, onClose, onSaved }) => {
+  const [plate, setPlate] = useState('');
+  const [model, setModel] = useState('Coaster');
+  const [capacity, setCapacity] = useState(30);
+  const [amenities, setAmenities] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const options = ['AC', 'WIFI', 'USB', 'VIP', 'TV'];
+
+  const toggle = (a: string) => setAmenities((arr) => arr.includes(a) ? arr.filter((x) => x !== a) : [...arr, a]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true); setError(null);
+    try {
+      const res = await fetch(`/api/agencies/${agencyId}/vehicles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plate, model, capacity, amenities }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erreur');
+      onSaved();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <AdminModal title="Nouveau véhicule" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Plaque d'immatriculation">
+          <input required value={plate} onChange={(e) => setPlate(e.target.value.toUpperCase())} className={inputCls + ' font-mono uppercase'} placeholder="LT-1234-AB" />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Modèle">
+            <input required value={model} onChange={(e) => setModel(e.target.value)} className={inputCls} placeholder="Toyota Coaster" />
+          </Field>
+          <Field label="Capacité">
+            <input required type="number" min={1} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} className={inputCls} />
+          </Field>
+        </div>
+        <Field label="Équipements">
+          <div className="flex flex-wrap gap-2">
+            {options.map((a) => (
+              <button type="button" key={a} onClick={() => toggle(a)} className={`px-3 py-1 rounded-full text-xs font-black border-2 transition-all ${amenities.includes(a) ? 'border-primary bg-primary/10 text-primary' : 'border-gray-200 dark:border-gray-700 text-text-muted'}`}>{a}</button>
+            ))}
+          </div>
+        </Field>
+        {error && <div className="text-red-600 text-xs font-bold bg-red-50 p-2 rounded">{error}</div>}
+        <div className="flex gap-2 justify-end pt-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-text-muted font-black text-sm">Annuler</button>
+          <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm disabled:opacity-50">{saving ? 'Enregistrement…' : 'Créer'}</button>
+        </div>
+      </form>
+    </AdminModal>
   );
 };
 

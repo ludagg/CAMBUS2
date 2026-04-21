@@ -5,12 +5,26 @@ import { useNavigation } from '../contexts/NavigationContext';
 
 const SEAT_FEE = 1000; // Extra cost per seat selection
 
+type PaymentStatusResponse = {
+  status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
+  provider?: string | null;
+  phoneNumber?: string | null;
+  failureReason?: string | null;
+  providerRef?: string | null;
+};
+
 const CheckoutPage: React.FC = () => {
   const { t } = useLanguage();
   const { bookingDetails, navigateTo, user } = useNavigation();
   const [paymentMethod, setPaymentMethod] = useState<'momo' | 'card'>('momo');
+  const [momoProvider, setMomoProvider] = useState<'MOMO' | 'OM'>('MOMO');
+  const [momoPhone, setMomoPhone] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [paymentId, setPaymentId] = useState<string | null>(null);
+  const [paymentGroupId, setPaymentGroupId] = useState<string | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatusResponse | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   // Redirect if not logged in
   useEffect(() => {
@@ -75,6 +89,18 @@ const CheckoutPage: React.FC = () => {
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !bookingDetails) return;
+    setPaymentError(null);
+
+    const methodCode = paymentMethod === 'momo' ? momoProvider : 'CARD';
+    if (paymentMethod === 'momo') {
+      const digits = momoPhone.replace(/\D/g, '');
+      const trimmed = digits.startsWith('237') ? digits.slice(3) : digits;
+      if (trimmed.length !== 9 || !trimmed.startsWith('6')) {
+        setPaymentError('Numéro invalide. Format attendu: 6XX XXX XXX.');
+        return;
+      }
+    }
+
     setIsProcessing(true);
 
     try {
@@ -85,7 +111,6 @@ const CheckoutPage: React.FC = () => {
           seat: outboundSeats[i],
         }))
         .slice(0, totalSeatsNeeded);
-      // Ensure at least totalSeatsNeeded passengers
       while (passengers.length < totalSeatsNeeded) {
         passengers.push({ fullName: `Passager ${passengers.length + 1}`, idNumber: undefined, seat: outboundSeats[passengers.length] });
       }
@@ -98,7 +123,8 @@ const CheckoutPage: React.FC = () => {
         returnSeats,
         contactEmail: email,
         contactPhone: phone,
-        paymentMethod: paymentMethod === 'momo' ? 'MOMO' : 'CARD',
+        paymentMethod: methodCode,
+        paymentPhone: paymentMethod === 'momo' ? momoPhone : undefined,
       };
 
       const res = await fetch('/api/bookings', {
@@ -109,14 +135,48 @@ const CheckoutPage: React.FC = () => {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Impossible de finaliser la réservation.');
 
-      setIsSuccess(true);
+      if (json.data?.requiresConfirmation) {
+        setPaymentId(json.data.paymentId);
+        setPaymentGroupId(json.data.groupId);
+        setPaymentStatus({ status: 'PENDING', provider: momoProvider === 'MOMO' ? 'MTN Mobile Money' : 'Orange Money', phoneNumber: momoPhone });
+      } else {
+        setIsSuccess(true);
+      }
     } catch (error: unknown) {
       console.error('Error saving booking:', error);
       const msg = error instanceof Error ? error.message : 'Une erreur est survenue lors de la réservation.';
-      alert(msg);
+      setPaymentError(msg);
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  useEffect(() => {
+    if (!paymentId || paymentStatus?.status !== 'PENDING') return;
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/payments/${paymentId}`);
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Impossible de vérifier le paiement.');
+        setPaymentStatus(json.data);
+        if (json.data.status === 'SUCCEEDED') {
+          setIsSuccess(true);
+        }
+      } catch (err) {
+        console.error('Payment poll error:', err);
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 2000);
+    return () => clearInterval(interval);
+  }, [paymentId, paymentStatus?.status]);
+
+  const retryPayment = () => {
+    setPaymentId(null);
+    setPaymentGroupId(null);
+    setPaymentStatus(null);
+    setPaymentError(null);
+    setIsProcessing(false);
   };
 
   const formatDate = (dateString: string) => {
@@ -204,6 +264,51 @@ const CheckoutPage: React.FC = () => {
     }
     return grid;
   };
+
+  // FAILED PAYMENT VIEW
+  if (paymentStatus?.status === 'FAILED') {
+    return (
+      <div className="min-h-screen bg-background-light dark:bg-background-dark flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-surface-dark w-full max-w-md rounded-2xl p-8 shadow-xl text-center border border-red-200 dark:border-red-900 animate-fadeIn">
+          <div className="size-20 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <span className="material-symbols-outlined text-5xl text-red-600">error</span>
+          </div>
+          <h2 className="text-2xl font-black text-text-main dark:text-white mb-2">Paiement échoué</h2>
+          <p className="text-text-muted dark:text-gray-400 mb-6">{paymentStatus.failureReason || 'La transaction Mobile Money a été refusée par l\'opérateur.'}</p>
+          <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-4 mb-6 text-left text-xs">
+            <div className="flex justify-between"><span className="text-text-muted">Fournisseur:</span><span className="font-bold text-text-main dark:text-white">{paymentStatus.provider}</span></div>
+            <div className="flex justify-between"><span className="text-text-muted">Numéro:</span><span className="font-mono font-bold text-text-main dark:text-white">{paymentStatus.phoneNumber}</span></div>
+            {paymentStatus.providerRef && <div className="flex justify-between"><span className="text-text-muted">Réf:</span><span className="font-mono text-text-main dark:text-white">{paymentStatus.providerRef}</span></div>}
+          </div>
+          <button onClick={retryPayment} className="w-full py-3 bg-primary text-text-main font-black rounded-xl shadow hover:bg-[#0fd651] transition-all">Réessayer le paiement</button>
+        </div>
+      </div>
+    );
+  }
+
+  // PENDING PAYMENT VIEW (Mobile Money confirmation)
+  if (paymentStatus?.status === 'PENDING' && paymentId) {
+    return (
+      <div className="min-h-screen bg-background-light dark:bg-background-dark flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-surface-dark w-full max-w-md rounded-2xl p-8 shadow-xl text-center border border-gray-100 dark:border-gray-800 animate-fadeIn">
+          <div className="size-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6 relative">
+            <span className="material-symbols-outlined text-5xl text-primary animate-pulse">smartphone</span>
+            <span className="absolute -top-1 -right-1 size-5 rounded-full border-2 border-primary border-t-transparent animate-spin"></span>
+          </div>
+          <h2 className="text-2xl font-black text-text-main dark:text-white mb-2">Confirmez sur votre téléphone</h2>
+          <p className="text-text-muted dark:text-gray-400 mb-6 text-sm">
+            Une demande de paiement de <strong className="text-text-main dark:text-white">{calculateTotal().toLocaleString()} XAF</strong> a été envoyée à votre numéro. Tapez votre code PIN pour valider.
+          </p>
+          <div className="bg-gray-50 dark:bg-[#102216] rounded-xl p-4 mb-6 text-left text-xs space-y-2">
+            <div className="flex justify-between"><span className="text-text-muted">Fournisseur:</span><span className="font-bold text-text-main dark:text-white">{paymentStatus.provider}</span></div>
+            <div className="flex justify-between"><span className="text-text-muted">Numéro:</span><span className="font-mono font-bold text-text-main dark:text-white">{paymentStatus.phoneNumber}</span></div>
+            <div className="flex justify-between"><span className="text-text-muted">Réservation:</span><span className="font-mono text-text-main dark:text-white text-[10px]">{paymentGroupId?.slice(0, 12)}…</span></div>
+          </div>
+          <p className="text-[11px] text-text-muted">Astuce test: un numéro finissant par <code>000</code> simule un échec.</p>
+        </div>
+      </div>
+    );
+  }
 
   // SUCCESS VIEW
   if (isSuccess) {
@@ -402,28 +507,34 @@ const CheckoutPage: React.FC = () => {
                  </button>
                </div>
 
-               {/* Momo Form */}
-               {paymentMethod === 'momo' && (
-                 <div className="space-y-4 animate-fadeIn">
-                    <div>
-                      <label className="block text-xs font-semibold text-text-muted mb-1">{t('checkout.momo.provider')}</label>
-                      <div className="flex gap-3">
-                         <label className="flex items-center gap-2 cursor-pointer border border-gray-200 dark:border-gray-700 p-3 rounded-lg flex-1 has-[:checked]:border-primary has-[:checked]:bg-primary/5 transition-all">
-                            <input type="radio" name="momo_provider" className="text-primary focus:ring-primary" defaultChecked />
-                            <span className="font-bold text-text-main dark:text-white">MTN Mobile Money</span>
-                         </label>
-                         <label className="flex items-center gap-2 cursor-pointer border border-gray-200 dark:border-gray-700 p-3 rounded-lg flex-1 has-[:checked]:border-primary has-[:checked]:bg-primary/5 transition-all">
-                            <input type="radio" name="momo_provider" className="text-primary focus:ring-primary" />
-                            <span className="font-bold text-text-main dark:text-white">Orange Money</span>
-                         </label>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-text-muted mb-1">{t('checkout.momo.number')}</label>
-                      <input type="tel" placeholder="6XX XXX XXX" className="w-full h-12 px-3 bg-gray-50 dark:bg-[#102216] border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-text-main dark:text-white transition-all font-mono" />
-                    </div>
-                 </div>
-               )}
+              {/* Momo Form */}
+              {paymentMethod === 'momo' && (
+                <div className="space-y-4 animate-fadeIn">
+                   <div>
+                     <label className="block text-xs font-semibold text-text-muted mb-1">{t('checkout.momo.provider')}</label>
+                     <div className="flex gap-3">
+                        <label className="flex items-center gap-2 cursor-pointer border border-gray-200 dark:border-gray-700 p-3 rounded-lg flex-1 has-[:checked]:border-primary has-[:checked]:bg-primary/5 transition-all">
+                           <input type="radio" name="momo_provider" className="text-primary focus:ring-primary" checked={momoProvider === 'MOMO'} onChange={() => setMomoProvider('MOMO')} />
+                           <span className="font-bold text-text-main dark:text-white">MTN Mobile Money</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer border border-gray-200 dark:border-gray-700 p-3 rounded-lg flex-1 has-[:checked]:border-primary has-[:checked]:bg-primary/5 transition-all">
+                           <input type="radio" name="momo_provider" className="text-primary focus:ring-primary" checked={momoProvider === 'OM'} onChange={() => setMomoProvider('OM')} />
+                           <span className="font-bold text-text-main dark:text-white">Orange Money</span>
+                        </label>
+                     </div>
+                   </div>
+                   <div>
+                     <label className="block text-xs font-semibold text-text-muted mb-1">{t('checkout.momo.number')}</label>
+                     <input type="tel" placeholder="6XX XXX XXX" value={momoPhone} onChange={(e) => setMomoPhone(e.target.value)} className="w-full h-12 px-3 bg-gray-50 dark:bg-[#102216] border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-text-main dark:text-white transition-all font-mono" />
+                     <p className="mt-2 text-[11px] text-text-muted">Vous recevrez une demande de confirmation USSD sur ce numéro.</p>
+                   </div>
+                   {paymentError && (
+                     <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-400 text-xs font-bold px-3 py-2 rounded-lg">
+                       {paymentError}
+                     </div>
+                   )}
+                </div>
+              )}
 
                {/* Card Form */}
                {paymentMethod === 'card' && (
