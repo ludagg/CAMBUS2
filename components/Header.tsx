@@ -153,8 +153,9 @@ const Header: React.FC = () => {
           ) : user ? (
             <button
               type="button"
-              onClick={() => navigateTo(dashboardForRole())}
+              onClick={() => navigateTo(user.role === 'USER' ? 'account' : dashboardForRole())}
               className="hidden md:inline-flex items-center gap-2.5 pl-1 pr-3 h-10 rounded-full border border-ink-200 dark:border-white/15 hover:border-ink-300 dark:hover:border-white/25 bg-white/70 dark:bg-white/5 backdrop-blur transition-colors"
+              aria-label={t('nav.account')}
             >
               <span className="size-8 rounded-full bg-primary/15 text-teal-accent dark:text-primary font-display font-semibold flex items-center justify-center ring-1 ring-inset ring-primary/30">
                 {user.avatar || user.name.charAt(0).toUpperCase()}
@@ -276,6 +277,9 @@ const Header: React.FC = () => {
               <MenuLink icon="route" label={t('nav.agencies')} onClick={() => goto('agencies')} />
               {user && (
                 <MenuLink icon="confirmation_number" label={t('nav.bookings')} onClick={() => goto('bookings')} accent />
+              )}
+              {user && (
+                <MenuLink icon="person" label={t('nav.account')} onClick={() => goto('account')} />
               )}
               <MenuLink icon="help" label={t('nav.help')} onClick={() => { window.location.hash = '#how'; closeMenu(); }} />
             </ul>
