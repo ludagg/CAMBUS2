@@ -2,8 +2,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
-import { db } from '../firebase/config';
-import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 
 const FALLBACK_CITIES = ["Douala", "Yaoundé", "Bafoussam", "Bamenda", "Kribi", "Garoua", "Maroua", "Ngaoundéré"];
 
@@ -12,11 +10,13 @@ const SearchWidget: React.FC = () => {
   const { navigateTo, setSearchParams } = useNavigation();
   
   // Trip Configuration State
+  const todayISO = new Date().toISOString().split('T')[0];
+  const tomorrowISO = new Date(Date.now() + 86_400_000).toISOString().split('T')[0];
   const [tripType, setTripType] = useState<'one-way' | 'round-trip'>('one-way');
   const [fromLocation, setFromLocation] = useState('');
   const [toLocation, setToLocation] = useState('');
-  const [departureDate, setDepartureDate] = useState('');
-  const [returnDate, setReturnDate] = useState('');
+  const [departureDate, setDepartureDate] = useState(todayISO);
+  const [returnDate, setReturnDate] = useState(tomorrowISO);
   
   // Passenger State
   const [passengers, setPassengers] = useState({ adults: 1, children: 0 });
@@ -26,27 +26,21 @@ const SearchWidget: React.FC = () => {
   // Firestore Cities
   const [availableCities, setAvailableCities] = useState<string[]>(FALLBACK_CITIES);
 
-  // Fetch Cities from Firestore with robust error handling
+  // Fetch Cities from API
   useEffect(() => {
     const fetchCities = async () => {
-        try {
-            const q = query(collection(db, 'cities'), where('status', '==', 'active'), limit(50));
-            const snapshot = await getDocs(q);
-            if (!snapshot.empty) {
-                const cityNames = snapshot.docs.map(doc => doc.data().name);
-                setAvailableCities(cityNames.sort());
-            } else {
-                setAvailableCities(FALLBACK_CITIES);
-            }
-        } catch (error: any) {
-            // Silently handle permission errors by using fallbacks
-            if (error.code === 'permission-denied') {
-                console.warn("Firestore permissions strictly restricted. Using fallback cities.");
-            } else {
-                console.error("Error fetching cities:", error);
-            }
-            setAvailableCities(FALLBACK_CITIES);
+      try {
+        const res = await fetch('/api/cities');
+        const json = await res.json();
+        if (Array.isArray(json.data) && json.data.length) {
+          setAvailableCities(json.data.map((c: { name: string }) => c.name).sort());
+        } else {
+          setAvailableCities(FALLBACK_CITIES);
         }
+      } catch (error) {
+        console.warn('Could not fetch cities, using fallback:', error);
+        setAvailableCities(FALLBACK_CITIES);
+      }
     };
     fetchCities();
   }, []);
@@ -68,12 +62,22 @@ const SearchWidget: React.FC = () => {
     setToLocation(temp);
   };
 
+  const toIso = (raw: string) => {
+    if (!raw) return todayISO;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? todayISO : d.toISOString().split('T')[0];
+  };
+
   const handleSearch = () => {
+    const from = fromLocation.trim() || availableCities[0];
+    const to = toLocation.trim() || availableCities[1];
+    if (from.toLowerCase() === to.toLowerCase()) return;
     setSearchParams({
-      from: fromLocation || availableCities[0],
-      to: toLocation || availableCities[1],
-      date: departureDate || new Date().toISOString().split('T')[0],
-      returnDate: returnDate || undefined,
+      from,
+      to,
+      date: toIso(departureDate),
+      returnDate: tripType === 'round-trip' ? toIso(returnDate) : undefined,
       passengers,
       tripType
     });
@@ -199,13 +203,11 @@ const SearchWidget: React.FC = () => {
               <div className="relative flex items-center">
                 <span className="material-symbols-outlined absolute left-3 text-gray-400">calendar_month</span>
                 <input 
-                  type="text"
-                  onFocus={(e) => e.target.type = 'date'}
-                  onBlur={(e) => e.target.type = 'text'}
+                  type="date"
+                  min={todayISO}
                   value={departureDate}
                   onChange={(e) => setDepartureDate(e.target.value)}
                   className="w-full h-12 pl-10 pr-2 bg-gray-50 dark:bg-[#102216] border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-text-main dark:text-white font-medium transition-all cursor-pointer text-sm" 
-                  placeholder={t('search.placeholder.today')}
                 />
               </div>
             </div>
@@ -216,13 +218,11 @@ const SearchWidget: React.FC = () => {
                 <div className="relative flex items-center">
                   <span className="material-symbols-outlined absolute left-3 text-gray-400">event_upcoming</span>
                   <input 
-                    type="text"
-                    onFocus={(e) => e.target.type = 'date'}
-                    onBlur={(e) => e.target.type = 'text'}
+                    type="date"
+                    min={departureDate || todayISO}
                     value={returnDate}
                     onChange={(e) => setReturnDate(e.target.value)}
                     className="w-full h-12 pl-10 pr-2 bg-gray-50 dark:bg-[#102216] border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-text-main dark:text-white font-medium transition-all cursor-pointer text-sm" 
-                    placeholder={t('search.placeholder.today')}
                   />
                 </div>
               </div>

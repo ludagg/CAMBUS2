@@ -2,17 +2,33 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
-import { db } from '../firebase/config';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import SeatMap from './SeatMap';
 
-const SEAT_FEE = 1000; // Extra cost per seat selection
+type PaymentStatusResponse = {
+  status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
+  provider?: string | null;
+  phoneNumber?: string | null;
+  failureReason?: string | null;
+  providerRef?: string | null;
+};
 
 const CheckoutPage: React.FC = () => {
   const { t } = useLanguage();
   const { bookingDetails, navigateTo, user } = useNavigation();
   const [paymentMethod, setPaymentMethod] = useState<'momo' | 'card'>('momo');
+  const [momoProvider, setMomoProvider] = useState<'MOMO' | 'OM'>('MOMO');
+  const [momoPhone, setMomoPhone] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [paymentId, setPaymentId] = useState<string | null>(null);
+  const [paymentGroupId, setPaymentGroupId] = useState<string | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatusResponse | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const makeIdempotencyKey = () =>
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const [idempotencyKey, setIdempotencyKey] = useState(makeIdempotencyKey);
 
   // Redirect if not logged in
   useEffect(() => {
@@ -34,9 +50,7 @@ const CheckoutPage: React.FC = () => {
   // Seat Selection State
   const [outboundSeats, setOutboundSeats] = useState<string[]>([]);
   const [returnSeats, setReturnSeats] = useState<string[]>([]);
-  const [isSeatModalOpen, setIsSeatModalOpen] = useState(false);
-  const [seatSelectionContext, setSeatSelectionContext] = useState<'outbound' | 'return'>('outbound');
-  
+
   // Total passengers (assuming children also need seats)
   const totalSeatsNeeded = bookingDetails ? bookingDetails.passengers.adults + bookingDetails.passengers.children : 1;
 
@@ -52,85 +66,107 @@ const CheckoutPage: React.FC = () => {
     setPassengersInfo(newInfo);
   };
 
-  // Seat Modal Logic
-  const openSeatModal = (context: 'outbound' | 'return') => {
-    setSeatSelectionContext(context);
-    setIsSeatModalOpen(true);
-  };
-
-  const toggleSeat = (seatId: string) => {
-    const currentSeats = seatSelectionContext === 'outbound' ? outboundSeats : returnSeats;
-    const setSeats = seatSelectionContext === 'outbound' ? setOutboundSeats : setReturnSeats;
-
-    if (currentSeats.includes(seatId)) {
-      setSeats(currentSeats.filter(id => id !== seatId));
-    } else {
-      if (currentSeats.length < totalSeatsNeeded) {
-        setSeats([...currentSeats, seatId]);
-      } else {
-        // Optional: Replace last selection or show warning.
-        // For UX, let's just not add more than limit.
-      }
-    }
-  };
-
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !bookingDetails) return;
+    setPaymentError(null);
+
+    const methodCode = paymentMethod === 'momo' ? momoProvider : 'CARD';
+    if (paymentMethod === 'momo') {
+      const digits = momoPhone.replace(/\D/g, '');
+      const trimmed = digits.startsWith('237') ? digits.slice(3) : digits;
+      if (trimmed.length !== 9 || !trimmed.startsWith('6')) {
+        setPaymentError('Numéro invalide. Format attendu: 6XX XXX XXX.');
+        return;
+      }
+    }
+
     setIsProcessing(true);
-    
+
     try {
-      const bookingData = {
-        userId: user.uid,
-        tripId: bookingDetails.outbound.id,
-        tripDate: bookingDetails.outbound.date,
-        tripRoute: `${bookingDetails.outbound.departureLocation} - ${bookingDetails.outbound.arrivalLocation}`,
-        agencyName: bookingDetails.outbound.agencyName,
-        agencyLogo: bookingDetails.outbound.agencyLogo,
-        color: bookingDetails.outbound.color,
-        from: bookingDetails.outbound.departureLocation,
-        to: bookingDetails.outbound.arrivalLocation,
-        departureTime: bookingDetails.outbound.departureTime,
-        date: bookingDetails.outbound.date,
-        price: calculateTotal(),
-        currency: 'FCFA',
-        passengers: totalSeatsNeeded,
-        seats: outboundSeats,
-        status: 'confirmed',
-        paymentMethod: paymentMethod,
-        contactEmail: email,
-        contactPhone: phone,
-        passengersInfo: passengersInfo,
-        createdAt: serverTimestamp()
-      };
-
-      await addDoc(collection(db, 'bookings'), bookingData);
-
-      if (bookingDetails.returnTrip) {
-        const returnBookingData = {
-          ...bookingData,
-          tripId: bookingDetails.returnTrip.id,
-          tripDate: bookingDetails.returnTrip.date,
-          tripRoute: `${bookingDetails.returnTrip.departureLocation} - ${bookingDetails.returnTrip.arrivalLocation}`,
-          agencyName: bookingDetails.returnTrip.agencyName,
-          agencyLogo: bookingDetails.returnTrip.agencyLogo,
-          color: bookingDetails.returnTrip.color,
-          from: bookingDetails.returnTrip.departureLocation,
-          to: bookingDetails.returnTrip.arrivalLocation,
-          departureTime: bookingDetails.returnTrip.departureTime,
-          date: bookingDetails.returnTrip.date,
-          seats: returnSeats,
-        };
-        await addDoc(collection(db, 'bookings'), returnBookingData);
+      const passengers = passengersInfo
+        .map((p, i) => ({
+          fullName: p.name || `Passager ${i + 1}`,
+          idNumber: p.id || undefined,
+          seat: outboundSeats[i],
+        }))
+        .slice(0, totalSeatsNeeded);
+      while (passengers.length < totalSeatsNeeded) {
+        passengers.push({ fullName: `Passager ${passengers.length + 1}`, idNumber: undefined, seat: outboundSeats[passengers.length] });
       }
 
-      setIsSuccess(true);
-    } catch (error) {
-      console.error("Error saving booking:", error);
-      alert("Une erreur est survenue lors de la réservation.");
+      const payload = {
+        outboundDepartureId: String(bookingDetails.outbound.id),
+        returnDepartureId: bookingDetails.returnTrip ? String(bookingDetails.returnTrip.id) : undefined,
+        passengers,
+        outboundSeats,
+        returnSeats,
+        contactEmail: email,
+        contactPhone: phone,
+        paymentMethod: methodCode,
+        paymentPhone: paymentMethod === 'momo' ? momoPhone : undefined,
+      };
+
+      const res = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey,
+        },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Impossible de finaliser la réservation.');
+
+      const status = json.data?.status;
+      if (json.data?.requiresConfirmation) {
+        setPaymentId(json.data.paymentId);
+        setPaymentGroupId(json.data.groupId);
+        setPaymentStatus({ status: 'PENDING', provider: momoProvider === 'MOMO' ? 'MTN Mobile Money' : 'Orange Money', phoneNumber: momoPhone });
+      } else if (status === 'FAILED' || status === 'CANCELLED') {
+        setPaymentError(json.data?.failureReason || 'Paiement précédent échoué. Veuillez recommencer.');
+        setIdempotencyKey(makeIdempotencyKey());
+      } else if (status === 'SUCCEEDED' || status === 'CONFIRMED' || !status) {
+        setIsSuccess(true);
+      } else {
+        setPaymentError(`Statut de paiement inattendu: ${status}`);
+      }
+    } catch (error: unknown) {
+      console.error('Error saving booking:', error);
+      const msg = error instanceof Error ? error.message : 'Une erreur est survenue lors de la réservation.';
+      setPaymentError(msg);
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  useEffect(() => {
+    if (!paymentId || paymentStatus?.status !== 'PENDING') return;
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/payments/${paymentId}`);
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Impossible de vérifier le paiement.');
+        setPaymentStatus(json.data);
+        if (json.data.status === 'SUCCEEDED') {
+          setIsSuccess(true);
+        }
+      } catch (err) {
+        console.error('Payment poll error:', err);
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 2000);
+    return () => clearInterval(interval);
+  }, [paymentId, paymentStatus?.status]);
+
+  const retryPayment = () => {
+    setPaymentId(null);
+    setPaymentGroupId(null);
+    setPaymentStatus(null);
+    setPaymentError(null);
+    setIsProcessing(false);
+    setIdempotencyKey(makeIdempotencyKey());
   };
 
   const formatDate = (dateString: string) => {
@@ -143,81 +179,54 @@ const CheckoutPage: React.FC = () => {
   };
 
   const calculateTotal = () => {
-    const seatFees = (outboundSeats.length + returnSeats.length) * SEAT_FEE;
-    return bookingDetails.totalPrice + seatFees;
+    return bookingDetails.totalPrice;
   };
 
-  // Mock Seat Layout Generator
-  const renderSeatMap = () => {
-    // Generate 10 rows, 4 cols (2-2 layout)
-    // Some seats randomly occupied
-    const rows = 10;
-    const currentSelection = seatSelectionContext === 'outbound' ? outboundSeats : returnSeats;
-    
-    // We use a deterministic random based on context so occupied seats stay same
-    const isTaken = (r: number, c: number) => {
-       const seed = (r * 10 + c) * (seatSelectionContext === 'outbound' ? 2 : 3);
-       return (seed % 7) === 0; // Approx 15% occupancy
-    };
 
-    let grid = [];
-    for (let r = 1; r <= rows; r++) {
-      let rowCells = [];
-      // Left side (A, B)
-      ['A', 'B'].forEach(col => {
-        const seatId = `${r}${col}`;
-        const taken = isTaken(r, col.charCodeAt(0));
-        const selected = currentSelection.includes(seatId);
-        
-        rowCells.push(
-          <button
-            key={seatId}
-            disabled={taken}
-            onClick={() => toggleSeat(seatId)}
-            className={`size-10 rounded-lg flex items-center justify-center font-bold text-xs transition-all border-b-4 active:border-b-0 active:translate-y-1 ${
-               taken 
-               ? 'bg-red-100 text-red-400 border-red-200 cursor-not-allowed'
-               : selected
-                 ? 'bg-primary text-text-main border-green-600 shadow-lg scale-105'
-                 : 'bg-gray-100 dark:bg-gray-700 text-gray-500 border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'
-            }`}
-          >
-             {taken ? <span className="material-symbols-outlined text-lg">close</span> : seatId}
-          </button>
-        );
-      });
+  // FAILED PAYMENT VIEW
+  if (paymentStatus?.status === 'FAILED') {
+    return (
+      <div className="min-h-screen bg-background-light dark:bg-background-dark flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-surface-dark w-full max-w-md rounded-2xl p-8 shadow-xl text-center border border-red-200 dark:border-red-900 animate-fadeIn">
+          <div className="size-20 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <span className="material-symbols-outlined text-5xl text-red-600">error</span>
+          </div>
+          <h2 className="text-2xl font-black text-text-main dark:text-white mb-2">Paiement échoué</h2>
+          <p className="text-text-muted dark:text-gray-400 mb-6">{paymentStatus.failureReason || 'La transaction Mobile Money a été refusée par l\'opérateur.'}</p>
+          <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-4 mb-6 text-left text-xs">
+            <div className="flex justify-between"><span className="text-text-muted">Fournisseur:</span><span className="font-bold text-text-main dark:text-white">{paymentStatus.provider}</span></div>
+            <div className="flex justify-between"><span className="text-text-muted">Numéro:</span><span className="font-mono font-bold text-text-main dark:text-white">{paymentStatus.phoneNumber}</span></div>
+            {paymentStatus.providerRef && <div className="flex justify-between"><span className="text-text-muted">Réf:</span><span className="font-mono text-text-main dark:text-white">{paymentStatus.providerRef}</span></div>}
+          </div>
+          <button onClick={retryPayment} className="w-full py-3 bg-primary text-text-main font-black rounded-xl shadow hover:bg-[#0fd651] transition-all">Réessayer le paiement</button>
+        </div>
+      </div>
+    );
+  }
 
-      // Aisle
-      rowCells.push(<div key={`aisle-${r}`} className="w-8 text-center text-gray-300 text-xs flex items-center justify-center">{r}</div>);
-
-      // Right side (C, D)
-      ['C', 'D'].forEach(col => {
-        const seatId = `${r}${col}`;
-        const taken = isTaken(r, col.charCodeAt(0));
-        const selected = currentSelection.includes(seatId);
-
-        rowCells.push(
-          <button
-            key={seatId}
-            disabled={taken}
-            onClick={() => toggleSeat(seatId)}
-            className={`size-10 rounded-lg flex items-center justify-center font-bold text-xs transition-all border-b-4 active:border-b-0 active:translate-y-1 ${
-               taken 
-               ? 'bg-red-100 text-red-400 border-red-200 cursor-not-allowed'
-               : selected
-                 ? 'bg-primary text-text-main border-green-600 shadow-lg scale-105'
-                 : 'bg-gray-100 dark:bg-gray-700 text-gray-500 border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'
-            }`}
-          >
-             {taken ? <span className="material-symbols-outlined text-lg">close</span> : seatId}
-          </button>
-        );
-      });
-
-      grid.push(<div key={r} className="flex gap-2 mb-2 justify-center">{rowCells}</div>);
-    }
-    return grid;
-  };
+  // PENDING PAYMENT VIEW (Mobile Money confirmation)
+  if (paymentStatus?.status === 'PENDING' && paymentId) {
+    return (
+      <div className="min-h-screen bg-background-light dark:bg-background-dark flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-surface-dark w-full max-w-md rounded-2xl p-8 shadow-xl text-center border border-gray-100 dark:border-gray-800 animate-fadeIn">
+          <div className="size-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6 relative">
+            <span className="material-symbols-outlined text-5xl text-primary animate-pulse">smartphone</span>
+            <span className="absolute -top-1 -right-1 size-5 rounded-full border-2 border-primary border-t-transparent animate-spin"></span>
+          </div>
+          <h2 className="text-2xl font-black text-text-main dark:text-white mb-2">Confirmez sur votre téléphone</h2>
+          <p className="text-text-muted dark:text-gray-400 mb-6 text-sm">
+            Une demande de paiement de <strong className="text-text-main dark:text-white">{calculateTotal().toLocaleString()} XAF</strong> a été envoyée à votre numéro. Tapez votre code PIN pour valider.
+          </p>
+          <div className="bg-gray-50 dark:bg-[#102216] rounded-xl p-4 mb-6 text-left text-xs space-y-2">
+            <div className="flex justify-between"><span className="text-text-muted">Fournisseur:</span><span className="font-bold text-text-main dark:text-white">{paymentStatus.provider}</span></div>
+            <div className="flex justify-between"><span className="text-text-muted">Numéro:</span><span className="font-mono font-bold text-text-main dark:text-white">{paymentStatus.phoneNumber}</span></div>
+            <div className="flex justify-between"><span className="text-text-muted">Réservation:</span><span className="font-mono text-text-main dark:text-white text-[10px]">{paymentGroupId?.slice(0, 12)}…</span></div>
+          </div>
+          <p className="text-[11px] text-text-muted">Astuce test: un numéro finissant par <code>000</code> simule un échec.</p>
+        </div>
+      </div>
+    );
+  }
 
   // SUCCESS VIEW
   if (isSuccess) {
@@ -334,53 +343,24 @@ const CheckoutPage: React.FC = () => {
                </div>
             </div>
 
-            {/* Seat Selection */}
-            <div className="bg-white dark:bg-surface-dark rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
-               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-                  <div>
-                    <div className="flex items-center gap-2 text-text-main dark:text-white font-bold text-lg">
-                        <span className="material-symbols-outlined text-primary">event_seat</span>
-                        {t('checkout.seats.title')}
-                    </div>
-                    <p className="text-sm text-text-muted">{t('checkout.seats.desc')}</p>
-                  </div>
-                  <div className="text-right">
-                     <span className="block text-xs text-text-muted uppercase font-bold">{t('checkout.seats.price')}</span>
-                     <span className="text-primary font-black text-lg">+{SEAT_FEE} FCFA</span>
-                  </div>
-               </div>
-
-               <div className="flex gap-4">
-                   <button 
-                     type="button"
-                     onClick={() => openSeatModal('outbound')}
-                     className="flex-1 py-3 px-4 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl hover:border-primary hover:bg-primary/5 transition-all flex items-center justify-between group"
-                   >
-                      <div className="text-left">
-                          <div className="text-xs text-text-muted font-bold uppercase mb-1">{t('checkout.seats.select_outbound')}</div>
-                          <div className="font-bold text-text-main dark:text-white">
-                              {outboundSeats.length > 0 ? outboundSeats.join(', ') : `${outboundSeats.length}/${totalSeatsNeeded} selected`}
-                          </div>
-                      </div>
-                      <span className="material-symbols-outlined text-gray-400 group-hover:text-primary">arrow_forward_ios</span>
-                   </button>
-                   
-                   {bookingDetails.returnTrip && (
-                       <button 
-                        type="button"
-                        onClick={() => openSeatModal('return')}
-                        className="flex-1 py-3 px-4 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl hover:border-primary hover:bg-primary/5 transition-all flex items-center justify-between group"
-                        >
-                        <div className="text-left">
-                            <div className="text-xs text-text-muted font-bold uppercase mb-1">{t('checkout.seats.select_return')}</div>
-                            <div className="font-bold text-text-main dark:text-white">
-                                {returnSeats.length > 0 ? returnSeats.join(', ') : `${returnSeats.length}/${totalSeatsNeeded} selected`}
-                            </div>
-                        </div>
-                        <span className="material-symbols-outlined text-gray-400 group-hover:text-primary">arrow_forward_ios</span>
-                        </button>
-                   )}
-               </div>
+            {/* Visual Seat Selection */}
+            <div className="space-y-4">
+              <SeatMap
+                departureId={String(bookingDetails.outbound.id)}
+                totalSeatsNeeded={totalSeatsNeeded}
+                selectedSeats={outboundSeats}
+                onChange={setOutboundSeats}
+                label="Sièges — Aller"
+              />
+              {bookingDetails.returnTrip && (
+                <SeatMap
+                  departureId={String(bookingDetails.returnTrip.id)}
+                  totalSeatsNeeded={totalSeatsNeeded}
+                  selectedSeats={returnSeats}
+                  onChange={setReturnSeats}
+                  label="Sièges — Retour"
+                />
+              )}
             </div>
 
             {/* Payment Method */}
@@ -416,28 +396,34 @@ const CheckoutPage: React.FC = () => {
                  </button>
                </div>
 
-               {/* Momo Form */}
-               {paymentMethod === 'momo' && (
-                 <div className="space-y-4 animate-fadeIn">
-                    <div>
-                      <label className="block text-xs font-semibold text-text-muted mb-1">{t('checkout.momo.provider')}</label>
-                      <div className="flex gap-3">
-                         <label className="flex items-center gap-2 cursor-pointer border border-gray-200 dark:border-gray-700 p-3 rounded-lg flex-1 has-[:checked]:border-primary has-[:checked]:bg-primary/5 transition-all">
-                            <input type="radio" name="momo_provider" className="text-primary focus:ring-primary" defaultChecked />
-                            <span className="font-bold text-text-main dark:text-white">MTN Mobile Money</span>
-                         </label>
-                         <label className="flex items-center gap-2 cursor-pointer border border-gray-200 dark:border-gray-700 p-3 rounded-lg flex-1 has-[:checked]:border-primary has-[:checked]:bg-primary/5 transition-all">
-                            <input type="radio" name="momo_provider" className="text-primary focus:ring-primary" />
-                            <span className="font-bold text-text-main dark:text-white">Orange Money</span>
-                         </label>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-text-muted mb-1">{t('checkout.momo.number')}</label>
-                      <input type="tel" placeholder="6XX XXX XXX" className="w-full h-12 px-3 bg-gray-50 dark:bg-[#102216] border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-text-main dark:text-white transition-all font-mono" />
-                    </div>
-                 </div>
-               )}
+              {/* Momo Form */}
+              {paymentMethod === 'momo' && (
+                <div className="space-y-4 animate-fadeIn">
+                   <div>
+                     <label className="block text-xs font-semibold text-text-muted mb-1">{t('checkout.momo.provider')}</label>
+                     <div className="flex gap-3">
+                        <label className="flex items-center gap-2 cursor-pointer border border-gray-200 dark:border-gray-700 p-3 rounded-lg flex-1 has-[:checked]:border-primary has-[:checked]:bg-primary/5 transition-all">
+                           <input type="radio" name="momo_provider" className="text-primary focus:ring-primary" checked={momoProvider === 'MOMO'} onChange={() => setMomoProvider('MOMO')} />
+                           <span className="font-bold text-text-main dark:text-white">MTN Mobile Money</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer border border-gray-200 dark:border-gray-700 p-3 rounded-lg flex-1 has-[:checked]:border-primary has-[:checked]:bg-primary/5 transition-all">
+                           <input type="radio" name="momo_provider" className="text-primary focus:ring-primary" checked={momoProvider === 'OM'} onChange={() => setMomoProvider('OM')} />
+                           <span className="font-bold text-text-main dark:text-white">Orange Money</span>
+                        </label>
+                     </div>
+                   </div>
+                   <div>
+                     <label className="block text-xs font-semibold text-text-muted mb-1">{t('checkout.momo.number')}</label>
+                     <input type="tel" placeholder="6XX XXX XXX" value={momoPhone} onChange={(e) => setMomoPhone(e.target.value)} className="w-full h-12 px-3 bg-gray-50 dark:bg-[#102216] border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-text-main dark:text-white transition-all font-mono" />
+                     <p className="mt-2 text-[11px] text-text-muted">Vous recevrez une demande de confirmation USSD sur ce numéro.</p>
+                   </div>
+                   {paymentError && (
+                     <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-400 text-xs font-bold px-3 py-2 rounded-lg">
+                       {paymentError}
+                     </div>
+                   )}
+                </div>
+              )}
 
                {/* Card Form */}
                {paymentMethod === 'card' && (
@@ -518,8 +504,8 @@ const CheckoutPage: React.FC = () => {
                    </div>
                    {(outboundSeats.length > 0 || returnSeats.length > 0) && (
                       <div className="flex justify-between items-center text-sm text-primary">
-                          <span>{t('checkout.summary.extras')}</span>
-                          <span className="font-medium">+{(outboundSeats.length + returnSeats.length) * SEAT_FEE} FCFA</span>
+                          <span>Sièges</span>
+                          <span className="font-medium">{[...outboundSeats, ...returnSeats].join(" · ")}</span>
                       </div>
                    )}
                    
@@ -535,61 +521,6 @@ const CheckoutPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Seat Selection Modal */}
-      {isSeatModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white dark:bg-surface-dark w-full max-w-lg rounded-2xl p-6 shadow-2xl border border-gray-100 dark:border-gray-800 max-h-[90vh] overflow-y-auto flex flex-col">
-             <div className="flex items-center justify-between mb-4 border-b border-gray-100 dark:border-gray-700 pb-2">
-                <h3 className="text-xl font-bold text-text-main dark:text-white">{t('checkout.seats.modal_title')}</h3>
-                <button onClick={() => setIsSeatModalOpen(false)} className="size-8 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center">
-                   <span className="material-symbols-outlined">close</span>
-                </button>
-             </div>
-             
-             {/* Legend */}
-             <div className="flex justify-center gap-6 mb-6 text-xs text-text-muted">
-                <div className="flex items-center gap-1">
-                   <div className="size-4 rounded bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600"></div>
-                   {t('checkout.seats.legend.available')}
-                </div>
-                <div className="flex items-center gap-1">
-                   <div className="size-4 rounded bg-red-100 border border-red-200 flex items-center justify-center"><span className="material-symbols-outlined text-[10px] text-red-400">close</span></div>
-                   {t('checkout.seats.legend.taken')}
-                </div>
-                <div className="flex items-center gap-1">
-                   <div className="size-4 rounded bg-primary border border-green-600"></div>
-                   {t('checkout.seats.legend.selected')}
-                </div>
-             </div>
-
-             {/* Bus Front */}
-             <div className="mb-4 bg-gray-50 dark:bg-[#102216] rounded-lg p-2 flex justify-between items-center text-xs text-text-muted uppercase font-bold tracking-wider">
-                 <span>{t('checkout.seats.front')}</span>
-                 <div className="flex flex-col items-center">
-                    <span className="material-symbols-outlined text-xl">steering_wheel</span>
-                    {t('checkout.seats.driver')}
-                 </div>
-             </div>
-
-             {/* Grid */}
-             <div className="bg-white dark:bg-surface-dark border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-4 mb-6">
-                {renderSeatMap()}
-             </div>
-
-             <div className="flex items-center justify-between gap-4 mt-auto">
-                 <div className="text-sm">
-                    <div className="text-text-muted">Selected: <span className="font-bold text-text-main dark:text-white">{(seatSelectionContext === 'outbound' ? outboundSeats : returnSeats).length}</span> / {totalSeatsNeeded}</div>
-                 </div>
-                 <button 
-                   onClick={() => setIsSeatModalOpen(false)}
-                   className="px-6 py-2 bg-primary text-text-main font-bold rounded-lg hover:bg-[#0fd651]"
-                 >
-                    {t('checkout.seats.confirm')}
-                 </button>
-             </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

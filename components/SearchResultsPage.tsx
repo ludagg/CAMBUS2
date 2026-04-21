@@ -3,8 +3,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation, Trip } from '../contexts/NavigationContext';
-import { db } from '../firebase/config';
-import { collection, query, where, getDocs } from 'firebase/firestore';
 import { TripCardSkeleton } from './Skeleton';
 
 // Leaflet global declaration
@@ -41,12 +39,14 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 const SearchResultsPage: React.FC = () => {
   const { t } = useLanguage();
   const { searchParams, navigateTo, setBookingDetails } = useNavigation();
-  const [sortOption, setSortOption] = useState<'price' | 'time' | 'duration'>('time');
-  
+  const [sortOption, setSortOption] = useState<'price' | 'time' | 'duration' | 'arrival'>('time');
+
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectedTimes, setSelectedTimes] = useState<string[]>([]);
   const [selectedAgencies, setSelectedAgencies] = useState<string[]>([]);
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
+  const [maxPrice, setMaxPrice] = useState<number | null>(null);
+  const [maxDurationMin, setMaxDurationMin] = useState<number | null>(null);
 
   const [selectedOutbound, setSelectedOutbound] = useState<TripExtended | null>(null);
   const [selectedReturn, setSelectedReturn] = useState<TripExtended | null>(null);
@@ -94,21 +94,12 @@ const SearchResultsPage: React.FC = () => {
         const destination = currentStep === 'outbound' ? searchParams.to : searchParams.from;
         const date = currentStep === 'outbound' ? searchParams.date : (searchParams.returnDate || searchParams.date);
 
-        const q = query(
-          collection(db, 'trips'),
-          where("origin", "==", origin),
-          where("destination", "==", destination),
-          where("date", "==", date)
-        );
-
-        const querySnapshot = await getDocs(q);
-        const tripsData: TripExtended[] = [];
-        querySnapshot.forEach((doc) => {
-          tripsData.push({ id: doc.id, ...doc.data() } as TripExtended);
-        });
-        setFetchedTrips(tripsData);
+        const res = await fetch(`/api/departures?from=${encodeURIComponent(origin)}&to=${encodeURIComponent(destination)}&date=${encodeURIComponent(date)}`);
+        const json = await res.json();
+        setFetchedTrips(Array.isArray(json.data) ? (json.data as TripExtended[]) : []);
       } catch (error) {
         console.error("Error fetching trips:", error);
+        setFetchedTrips([]);
       } finally {
         setIsLoadingTrips(false);
       }
@@ -130,27 +121,62 @@ const SearchResultsPage: React.FC = () => {
     return fetchedTrips;
   }, [fetchedTrips, userCoords]);
 
+  const priceBounds = useMemo(() => {
+    if (initialTrips.length === 0) return { min: 0, max: 50000 };
+    const prices = initialTrips.map(t => t.price);
+    return { min: Math.floor(Math.min(...prices) / 500) * 500, max: Math.ceil(Math.max(...prices) / 500) * 500 };
+  }, [initialTrips]);
+
+  const durationBounds = useMemo(() => {
+    if (initialTrips.length === 0) return { min: 0, max: 720 };
+    const durations = initialTrips.map(t => t.durationMin ?? 0).filter(d => d > 0);
+    if (durations.length === 0) return { min: 0, max: 720 };
+    return { min: Math.min(...durations), max: Math.max(...durations) };
+  }, [initialTrips]);
+
+  const availableAgencies = useMemo(() => {
+    return Array.from(new Set(initialTrips.map(t => t.agencyName))).sort();
+  }, [initialTrips]);
+
   const filteredTrips = useMemo(() => {
     return initialTrips.filter(trip => {
       if (selectedAgencies.length > 0 && !selectedAgencies.includes(trip.agencyName)) return false;
       if (selectedAmenities.length > 0 && !selectedAmenities.every(a => trip.amenities.includes(a))) return false;
       if (selectedTimes.length > 0) {
         const hour = parseInt(trip.departureTime.split(':')[0]);
-        let period = hour >= 6 && hour < 12 ? 'morning' : hour >= 12 && hour < 18 ? 'afternoon' : 'evening';
+        const period = hour >= 6 && hour < 12 ? 'morning' : hour >= 12 && hour < 18 ? 'afternoon' : 'evening';
         if (!selectedTimes.includes(period)) return false;
       }
+      if (maxPrice !== null && trip.price > maxPrice) return false;
+      if (maxDurationMin !== null && (trip.durationMin ?? 0) > maxDurationMin) return false;
       return true;
     });
-  }, [initialTrips, selectedAgencies, selectedAmenities, selectedTimes]);
+  }, [initialTrips, selectedAgencies, selectedAmenities, selectedTimes, maxPrice, maxDurationMin]);
 
   const sortedTrips = useMemo(() => {
     return [...filteredTrips].sort((a, b) => {
       if (sortOption === 'price') return a.price - b.price;
       if (sortOption === 'time') return a.departureTime.localeCompare(b.departureTime);
-      if (sortOption === 'duration') return a.duration.localeCompare(b.duration);
+      if (sortOption === 'arrival') return a.arrivalTime.localeCompare(b.arrivalTime);
+      if (sortOption === 'duration') return (a.durationMin ?? 0) - (b.durationMin ?? 0);
       return 0;
     });
   }, [filteredTrips, sortOption]);
+
+  const activeFilterCount =
+    selectedTimes.length +
+    selectedAgencies.length +
+    selectedAmenities.length +
+    (maxPrice !== null ? 1 : 0) +
+    (maxDurationMin !== null ? 1 : 0);
+
+  const resetFilters = () => {
+    setSelectedTimes([]);
+    setSelectedAgencies([]);
+    setSelectedAmenities([]);
+    setMaxPrice(null);
+    setMaxDurationMin(null);
+  };
 
   // Handle selection from map
   const selectFromMap = (tripId: string | number) => {
@@ -429,9 +455,9 @@ const SearchResultsPage: React.FC = () => {
                         >
                           <span className="material-symbols-outlined text-lg">tune</span>
                           {t('results.filter.open')}
-                          {(selectedTimes.length + selectedAgencies.length + selectedAmenities.length) > 0 && (
+                          {activeFilterCount > 0 && (
                             <span className="size-5 rounded-full bg-black/10 dark:bg-white/10 flex items-center justify-center text-[10px]">
-                              {selectedTimes.length + selectedAgencies.length + selectedAmenities.length}
+                              {activeFilterCount}
                             </span>
                           )}
                         </button>
@@ -441,8 +467,9 @@ const SearchResultsPage: React.FC = () => {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-black uppercase text-gray-500">{t('results.sort_by')} :</span>
-                        <select value={sortOption} onChange={(e) => setSortOption(e.target.value as any)} className="bg-transparent border-none text-xs font-black uppercase focus:ring-0 cursor-pointer text-primary">
+                        <select value={sortOption} onChange={(e) => setSortOption(e.target.value as 'price' | 'time' | 'duration' | 'arrival')} className="bg-transparent border-none text-xs font-black uppercase focus:ring-0 cursor-pointer text-primary">
                            <option value="time">{t('results.sort.departure')}</option>
+                           <option value="arrival">Arrivée la plus tôt</option>
                            <option value="price">{t('results.sort.price')}</option>
                            <option value="duration">{t('results.sort.duration')}</option>
                         </select>
@@ -451,6 +478,54 @@ const SearchResultsPage: React.FC = () => {
 
                    {isFilterOpen && (
                      <div className="bg-gray-50 dark:bg-white/5 rounded-3xl p-6 mb-8 border border-gray-100 dark:border-gray-800 animate-slideDown overflow-hidden">
+                        {priceBounds.max > priceBounds.min && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6 pb-6 border-b border-gray-100 dark:border-gray-800">
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Prix max</h4>
+                                <span className="text-xs font-black text-primary">
+                                  {(maxPrice ?? priceBounds.max).toLocaleString()} FCFA
+                                </span>
+                              </div>
+                              <input
+                                type="range"
+                                min={priceBounds.min}
+                                max={priceBounds.max}
+                                step={500}
+                                value={maxPrice ?? priceBounds.max}
+                                onChange={(e) => setMaxPrice(Number(e.target.value) >= priceBounds.max ? null : Number(e.target.value))}
+                                className="w-full accent-primary"
+                              />
+                              <div className="flex justify-between text-[10px] text-text-muted font-bold mt-1">
+                                <span>{priceBounds.min.toLocaleString()}</span>
+                                <span>{priceBounds.max.toLocaleString()}</span>
+                              </div>
+                            </div>
+                            {durationBounds.max > durationBounds.min && (
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Durée max</h4>
+                                  <span className="text-xs font-black text-primary">
+                                    {Math.floor((maxDurationMin ?? durationBounds.max) / 60)}h {String((maxDurationMin ?? durationBounds.max) % 60).padStart(2, '0')}
+                                  </span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min={durationBounds.min}
+                                  max={durationBounds.max}
+                                  step={15}
+                                  value={maxDurationMin ?? durationBounds.max}
+                                  onChange={(e) => setMaxDurationMin(Number(e.target.value) >= durationBounds.max ? null : Number(e.target.value))}
+                                  className="w-full accent-primary"
+                                />
+                                <div className="flex justify-between text-[10px] text-text-muted font-bold mt-1">
+                                  <span>{Math.floor(durationBounds.min / 60)}h{String(durationBounds.min % 60).padStart(2, '0')}</span>
+                                  <span>{Math.floor(durationBounds.max / 60)}h{String(durationBounds.max % 60).padStart(2, '0')}</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                           <div>
                             <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-4">{t('results.filter.departure_time')}</h4>
@@ -473,7 +548,7 @@ const SearchResultsPage: React.FC = () => {
                           <div>
                             <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-4">{t('results.filter.agencies')}</h4>
                             <div className="space-y-2">
-                              {['Express Voyage', 'GreenLines', 'Royal Road', 'CityLink'].map(agency => (
+                              {(availableAgencies.length > 0 ? availableAgencies : ['Express Voyage', 'GreenLines', 'Royal Road', 'CityLink']).map(agency => (
                                 <label key={agency} className="flex items-center gap-3 cursor-pointer group">
                                   <input 
                                     type="checkbox" 
@@ -506,8 +581,8 @@ const SearchResultsPage: React.FC = () => {
                           </div>
                         </div>
                         <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                           <button 
-                             onClick={() => { setSelectedTimes([]); setSelectedAgencies([]); setSelectedAmenities([]); }}
+                           <button
+                             onClick={resetFilters}
                              className="text-[10px] font-black uppercase text-red-500 hover:underline"
                            >
                              {t('results.filter.clear')}

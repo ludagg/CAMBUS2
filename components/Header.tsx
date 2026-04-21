@@ -67,7 +67,11 @@ const Header: React.FC = () => {
                 </div>
                 <div 
                   onClick={() => {
-                    if (user.role && user.role !== 'user') navigateTo(user.role);
+                    if (user.role === 'SUPER_ADMIN') navigateTo('super_admin');
+                    else if (user.role === 'COMPANY_ADMIN') navigateTo('company_admin');
+                    else if (user.role === 'AGENCY_ADMIN') navigateTo('agency_admin');
+                    else if (user.role === 'STATION_MANAGER') navigateTo('station_manager');
+                    else navigateTo('bookings');
                   }}
                   className="size-10 bg-gradient-to-br from-primary/20 to-emerald-100 dark:from-primary/20 dark:to-emerald-900/30 rounded-xl flex items-center justify-center text-primary font-black border-2 border-white dark:border-gray-700 shadow-sm cursor-pointer hover:border-primary transition-all hover:shadow-md"
                 >

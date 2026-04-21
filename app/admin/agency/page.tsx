@@ -3,5 +3,5 @@ import AgencyAdminDashboard from '../../../components/AgencyAdminDashboard';
 import AuthGuard from '../../../components/AuthGuard';
 
 export default function AgencyAdminRoute() {
-  return <AuthGuard requiredRole="agency_admin"><AgencyAdminDashboard /></AuthGuard>;
+  return <AuthGuard requiredRole={["AGENCY_ADMIN", "COMPANY_ADMIN", "SUPER_ADMIN"]}><AgencyAdminDashboard /></AuthGuard>;
 }

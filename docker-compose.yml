@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: easytravel-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: easytravel
+      POSTGRES_PASSWORD: easytravel
+      POSTGRES_DB: easytravel
+    ports:
+      - "5432:5432"
+    volumes:
+      - easytravel-db:/var/lib/postgresql/data
+
+volumes:
+  easytravel-db:

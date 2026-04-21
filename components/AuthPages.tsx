@@ -20,15 +20,10 @@ export const LoginPage: React.FC = () => {
 
     try {
       await login(email, password);
-    } catch (err: any) {
-      console.error("Login error:", err);
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-        setError("Email ou mot de passe incorrect.");
-      } else if (err.code === 'auth/too-many-requests') {
-        setError("Trop de tentatives. Veuillez réessayer plus tard.");
-      } else {
-        setError("Une erreur est survenue lors de la connexion.");
-      }
+    } catch (err: unknown) {
+      console.error('Login error:', err);
+      const msg = err instanceof Error ? err.message : 'Une erreur est survenue lors de la connexion.';
+      setError(msg);
       setIsSubmitting(false);
     }
   };
@@ -139,13 +134,10 @@ export const SignupPage: React.FC = () => {
 
     try {
         await signup(name, email, password);
-    } catch (err: any) {
-        console.error("Signup error:", err);
-        if (err.code === 'auth/email-already-in-use') {
-            setError("Cette adresse email est déjà utilisée.");
-        } else {
-            setError("Erreur lors de l'inscription. Vérifiez votre connexion.");
-        }
+    } catch (err: unknown) {
+        console.error('Signup error:', err);
+        const msg = err instanceof Error ? err.message : "Erreur lors de l'inscription. Vérifiez votre connexion.";
+        setError(msg);
         setIsSubmitting(false);
     }
   };
@@ -171,8 +163,8 @@ export const SignupPage: React.FC = () => {
         <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl flex gap-3 items-start">
             <span className="material-symbols-outlined text-blue-500 mt-0.5">info</span>
             <div className="text-[11px] text-blue-800 dark:text-blue-300 leading-relaxed">
-              <p className="font-bold mb-0.5">💡 Note Administrateur :</p>
-              <p>Utilisez un email contenant <b>"admin"</b> pour simuler un accès Super Admin, <b>"express"</b> pour Agence, ou <b>"station"</b> pour Chef de Gare.</p>
+              <p className="font-bold mb-0.5">Comptes de démo</p>
+              <p><b>admin@easytravel.cm</b> (Super Admin) • <b>company@express.cm</b> • <b>agency@express.cm</b> • <b>station@express.cm</b> • <b>client@easytravel.cm</b> — mot de passe <b>admin123</b>.</p>
             </div>
         </div>
 
