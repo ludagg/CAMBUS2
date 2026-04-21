@@ -85,6 +85,14 @@ enum IncidentSeverity {
   CRITICAL
 }
 
+enum WaitlistStatus {
+  WAITING
+  NOTIFIED
+  PROMOTED
+  EXPIRED
+  CANCELLED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -103,6 +111,7 @@ model User {
   reportedIncidents Incident[] @relation("IncidentReportedBy")
   resolvedIncidents Incident[] @relation("IncidentResolvedBy")
   auditLogs    AuditLog[]
+  waitlistEntries WaitlistEntry[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -126,21 +135,43 @@ model City {
 }
 
 model Company {
-  id          String    @id @default(cuid())
-  name        String
-  slug        String    @unique
-  logo        String?   // material icon name
-  brandColor  String    @default("#13ec5b")
-  description String?
-  email       String?
-  phone       String?
-  status      Status    @default(ACTIVE)
-  agencies    Agency[]
-  routes      Route[]
-  users       User[]
-  drivers     Driver[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                  String               @id @default(cuid())
+  name                String
+  slug                String               @unique
+  logo                String?   // material icon name
+  brandColor          String               @default("#13ec5b")
+  description         String?
+  email               String?
+  phone               String?
+  status              Status               @default(ACTIVE)
+  agencies            Agency[]
+  routes              Route[]
+  users               User[]
+  drivers             Driver[]
+  cancellationPolicy  CancellationPolicy?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+/// Règles de remboursement configurables par compagnie. `tiers` est une liste
+/// de paliers ordonnée du plus strict (grand `minHoursBeforeDeparture`) au
+/// plus permissif (petit `minHoursBeforeDeparture`). Format :
+///   [{ minHoursBeforeDeparture: 24, refundPercent: 100 },
+///    { minHoursBeforeDeparture:  2, refundPercent:  50 }]
+/// Par défaut (aucune policy en base), le code applique : >24h = 100 %,
+/// 2-24h = 50 %, <2h = 0 %, deadline à 0 h (pas d'annulation après départ).
+model CancellationPolicy {
+  id             String   @id @default(cuid())
+  companyId      String   @unique
+  /// Heures minimales avant départ pour **autoriser** l'annulation.
+  /// Au-dessous, on renvoie 409. 0 = pas de deadline.
+  deadlineHours  Int      @default(2)
+  /// Paliers de remboursement. JSON array (voir commentaire du modèle).
+  tiers          Json
+  notes          String?
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model Agency {
@@ -273,6 +304,7 @@ model Departure {
   destStation        Station    @relation("DestStation", fields: [destStationId], references: [id])
   bookings           Booking[]
   incidents          Incident[]
+  waitlist           WaitlistEntry[]
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
@@ -280,6 +312,33 @@ model Departure {
   @@index([departureAt])
   @@index([agencyId])
   @@index([driverId])
+}
+
+/// Liste d'attente sur un départ plein. Une entrée est créée par l'utilisateur
+/// via POST /api/waitlist. Lorsque des places se libèrent (annulation ou
+/// release-pending), le helper `promoteWaitlist()` consomme les entrées les
+/// plus anciennes (FIFO) et notifie leur utilisateur. L'entrée est archivée
+/// (status = PROMOTED) une fois la réservation confirmée.
+model WaitlistEntry {
+  id                 String         @id @default(cuid())
+  departureId        String
+  userId             String?
+  passengerFullName  String
+  phone              String?
+  email              String?
+  seatsRequested     Int            @default(1)
+  status             WaitlistStatus @default(WAITING)
+  notifiedAt         DateTime?
+  /// Délai imparti après la notification pour confirmer, sinon EXPIRED.
+  holdExpiresAt      DateTime?
+  promotedGroupId    String?
+  departure          Departure      @relation(fields: [departureId], references: [id], onDelete: Cascade)
+  user               User?          @relation(fields: [userId], references: [id])
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([departureId, status, createdAt])
+  @@index([userId])
 }
 
 /// Incidents opérationnels (panne, accident, route coupée). Un incident peut

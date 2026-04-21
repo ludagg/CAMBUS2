@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { failPayment } from '@/lib/booking-confirm'
+import { expireStaleWaitlistHolds } from '@/lib/waitlist'
 
 /**
  * Scheduled job: fail any PENDING payment whose BookingGroup.expiresAt has
@@ -40,5 +41,19 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ data: { released, scanned: expired.length, at: now.toISOString() } })
+  let waitlistExpired = 0
+  try {
+    waitlistExpired = await expireStaleWaitlistHolds(now)
+  } catch (err) {
+    console.error('[cron] waitlist expiry failed', err)
+  }
+
+  return NextResponse.json({
+    data: {
+      released,
+      scanned: expired.length,
+      waitlistExpired,
+      at: now.toISOString(),
+    },
+  })
 }

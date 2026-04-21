@@ -45,7 +45,7 @@ export async function POST(
       reason = undefined
     }
 
-    await cancelBookingGroup(groupId, {
+    const outcome = await cancelBookingGroup(groupId, {
       actorUserId: session!.sub,
       reason,
     })
@@ -55,12 +55,20 @@ export async function POST(
         action: 'booking.cancel',
         entityType: 'BookingGroup',
         entityId: groupId,
-        metadata: { reason: reason ?? null, selfService: session!.role === 'USER' },
+        metadata: {
+          reason: reason ?? null,
+          selfService: session!.role === 'USER',
+          refundPercent: outcome.refundPercent,
+          refundAmountCents: outcome.refundAmountCents,
+          policyWasDefault: outcome.policyWasDefault,
+        },
       },
       { session, req },
     )
 
-    return NextResponse.json({ data: { ok: true, status: 'CANCELLED' } })
+    return NextResponse.json({
+      data: { ok: true, status: 'CANCELLED', ...outcome },
+    })
   } catch (err) {
     if (err instanceof CancellationError) return bad(err.message, err.status)
     return handleError(err)
