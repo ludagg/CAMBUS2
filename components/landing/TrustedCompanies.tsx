@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import SectionEyebrow from './SectionEyebrow';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface Company {
   id: string;
@@ -11,6 +12,7 @@ interface Company {
 }
 
 const TrustedCompanies: React.FC = () => {
+  const { t } = useLanguage();
   const [companies, setCompanies] = useState<Company[]>([]);
 
   useEffect(() => {
@@ -26,13 +28,13 @@ const TrustedCompanies: React.FC = () => {
     <section className="relative py-20 md:py-24 px-6 md:px-10 bg-white dark:bg-background-dark border-y border-ink-100 dark:border-white/10">
       <div className="max-w-6xl mx-auto">
         <div className="max-w-2xl mx-auto text-center mb-12 md:mb-14">
-          <SectionEyebrow>Compagnies partenaires</SectionEyebrow>
+          <SectionEyebrow>{t('trusted.eyebrow')}</SectionEyebrow>
           <h2 className="mt-5 font-display text-2xl md:text-4xl font-semibold text-text-main dark:text-white tracking-tightest leading-[1.1]">
-            {companies.length} compagnies de confiance,
-            <span className="font-serif-italic text-teal-accent dark:text-primary font-normal italic"> un seul billet.</span>
+            {t('trusted.title', { count: companies.length })}
+            <span className="font-serif-italic text-teal-accent dark:text-primary font-normal italic"> {t('trusted.title.accent')}</span>
           </h2>
           <p className="mt-4 text-text-muted dark:text-gray-400 text-sm leading-relaxed">
-            Toutes les grandes compagnies camerounaises réunies sur une plateforme unique.
+            {t('trusted.subtitle')}
           </p>
         </div>
 
@@ -51,13 +53,13 @@ const TrustedCompanies: React.FC = () => {
                 </div>
                 <div className="min-w-0">
                   <div className="font-display font-semibold tracking-tight text-text-main dark:text-white truncate">{c.name}</div>
-                  <div className="text-[10px] font-medium text-text-muted uppercase tracking-[0.16em] mt-0.5">Officiel</div>
+                  <div className="text-[10px] font-medium text-text-muted uppercase tracking-[0.16em] mt-0.5">{t('trusted.official')}</div>
                 </div>
               </div>
               <div className="flex items-center gap-3 text-xs text-text-muted">
-                <span><strong className="text-text-main dark:text-white font-semibold">{c._count?.agencies ?? 0}</strong> agences</span>
+                <span><strong className="text-text-main dark:text-white font-semibold">{c._count?.agencies ?? 0}</strong> {t('trusted.agencies')}</span>
                 <span className="w-1 h-1 rounded-full bg-ink-200 dark:bg-white/20" />
-                <span><strong className="text-text-main dark:text-white font-semibold">{c._count?.routes ?? 0}</strong> routes</span>
+                <span><strong className="text-text-main dark:text-white font-semibold">{c._count?.routes ?? 0}</strong> {t('trusted.routes')}</span>
               </div>
             </div>
           ))}

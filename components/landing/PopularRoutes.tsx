@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 import SectionEyebrow from './SectionEyebrow';
 
 interface RouteItem {
@@ -32,6 +33,8 @@ const fmtDur = (m: number) => {
 
 const PopularRoutes: React.FC = () => {
   const { setSearchParams, navigateTo } = useNavigation();
+  const { t, language } = useLanguage();
+  const fmtXAFLocal = (n: number) => n.toLocaleString(language === 'en' ? 'en-US' : 'fr-FR') + ' XAF';
   const [routes, setRoutes] = useState<RouteItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -83,21 +86,21 @@ const PopularRoutes: React.FC = () => {
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-14 md:mb-16">
           <div className="max-w-2xl">
-            <SectionEyebrow align="left">Destinations populaires</SectionEyebrow>
+            <SectionEyebrow align="left">{t('routes.eyebrow')}</SectionEyebrow>
             <h2 className="mt-5 font-display text-3xl md:text-5xl font-semibold text-text-main dark:text-white tracking-tightest leading-[1.05]">
-              Les axes les plus empruntés
+              {t('routes.title')}
               <br />
-              <span className="font-serif-italic text-teal-accent dark:text-primary font-normal italic">du Cameroun.</span>
+              <span className="font-serif-italic text-teal-accent dark:text-primary font-normal italic">{t('routes.title.accent')}</span>
             </h2>
             <p className="mt-5 text-text-muted dark:text-gray-400 leading-relaxed max-w-xl">
-              Des prix négociés sur les grandes liaisons inter-régions, mis à jour en temps réel.
+              {t('routes.subtitle')}
             </p>
           </div>
           <button
             onClick={() => navigateTo('home')}
             className="hidden md:inline-flex items-center gap-1.5 text-sm font-medium text-text-main dark:text-gray-200 hover:text-teal-accent dark:hover:text-primary transition-colors"
           >
-            Voir toutes les destinations
+            {t('routes.view_all')}
             <span className="material-symbols-outlined text-base">arrow_forward</span>
           </button>
         </div>
@@ -109,7 +112,7 @@ const PopularRoutes: React.FC = () => {
             ))}
           </div>
         ) : routes.length === 0 ? (
-          <p className="text-center text-text-muted py-16">Aucun départ pour le moment. Revenez bientôt.</p>
+          <p className="text-center text-text-muted py-16">{t('routes.empty')}</p>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {routes.map((r, idx) => (
@@ -132,7 +135,7 @@ const PopularRoutes: React.FC = () => {
                 <div className="absolute inset-x-0 bottom-0 p-6 text-white">
                   <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.16em] text-white/60 mb-3">
                     <span className="material-symbols-outlined text-[14px]">directions_bus</span>
-                    {r.dailyCount}+ départs / jour
+                    {r.dailyCount}+ {t('routes.connections')}
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="font-display text-2xl md:text-3xl font-semibold tracking-tight">{r.from}</span>
@@ -141,11 +144,11 @@ const PopularRoutes: React.FC = () => {
                   </div>
                   <div className="mt-4 flex items-end justify-between">
                     <div>
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-white/50">À partir de</div>
-                      <div className="font-display text-lg font-semibold text-white mt-0.5">{fmtXAF(r.priceFromXAF)}</div>
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-white/50">{t('routes.from')}</div>
+                      <div className="font-display text-lg font-semibold text-white mt-0.5">{fmtXAFLocal(r.priceFromXAF)}</div>
                     </div>
                     <span className="inline-flex items-center gap-1 rounded-full bg-primary text-text-main px-3 py-1.5 text-xs font-semibold tracking-tight shadow-card group-hover:translate-x-0.5 transition-transform">
-                      Réserver
+                      {t('nav.book_now')}
                       <span className="material-symbols-outlined text-sm">arrow_outward</span>
                     </span>
                   </div>

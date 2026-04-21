@@ -1,9 +1,11 @@
 'use client';
 import React, { useState } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const Footer: React.FC = () => {
   const { navigateTo } = useNavigation();
+  const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
 
@@ -22,11 +24,11 @@ const Footer: React.FC = () => {
         <div className="max-w-6xl mx-auto px-6 md:px-10 py-14 grid md:grid-cols-2 gap-8 items-center">
           <div>
             <h3 className="font-display text-2xl md:text-3xl font-semibold text-white tracking-tightest leading-tight">
-              Bons plans & nouveaux trajets,
-              <span className="font-serif-italic text-primary italic font-normal"> droit dans votre boîte mail.</span>
+              {t('footer.newsletter.title')}
+              <span className="font-serif-italic text-primary italic font-normal"> {t('footer.newsletter.title.accent')}</span>
             </h3>
             <p className="text-sm text-gray-400 mt-3 leading-relaxed max-w-md">
-              Une lettre mensuelle, pas de spam. Nouvelles destinations, offres négociées et mises à jour produit.
+              {t('footer.newsletter.subtitle')}
             </p>
           </div>
           <form onSubmit={handleSubscribe} className="flex gap-2">
@@ -35,14 +37,14 @@ const Footer: React.FC = () => {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="votre@email.cm"
+              placeholder={t('footer.newsletter.placeholder')}
               className="flex-1 h-12 px-4 bg-white/5 border border-white/10 rounded-full text-white placeholder-gray-500 focus:ring-2 focus:ring-primary/40 focus:border-primary/40 outline-none text-sm"
             />
             <button
               type="submit"
               className="h-12 px-5 rounded-full bg-primary hover:bg-primary-600 text-text-main font-semibold text-sm tracking-tight whitespace-nowrap transition-all"
             >
-              {subscribed ? 'Merci !' : 'S’abonner'}
+              {subscribed ? t('footer.newsletter.thanks') : t('footer.newsletter.subscribe')}
             </button>
           </form>
         </div>
@@ -61,7 +63,7 @@ const Footer: React.FC = () => {
               </div>
             </div>
             <p className="text-sm text-gray-400 mb-6 leading-relaxed max-w-sm">
-              La plateforme camerounaise de réservation de bus. Toutes les compagnies, un seul billet, 100 % Mobile Money.
+              {t('footer.slogan')}
             </p>
             <div className="space-y-2.5 text-sm mb-6">
               <a href="tel:+237670000000" className="flex items-center gap-2 hover:text-primary transition-colors">
@@ -98,35 +100,35 @@ const Footer: React.FC = () => {
           </div>
 
           <div>
-            <h4 className="font-display font-semibold text-white mb-5 text-[11px] uppercase tracking-[0.16em]">Voyager</h4>
+            <h4 className="font-display font-semibold text-white mb-5 text-[11px] uppercase tracking-[0.16em]">{t('footer.travel')}</h4>
             <ul className="space-y-2.5 text-sm">
-              <li><button onClick={() => navigateTo('home')} className="hover:text-primary transition-colors">Rechercher un bus</button></li>
-              <li><button onClick={() => navigateTo('agencies')} className="hover:text-primary transition-colors">Nos agences</button></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Compagnies partenaires</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Trajets populaires</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Gérer ma réservation</a></li>
+              <li><button onClick={() => navigateTo('home')} className="hover:text-primary transition-colors">{t('footer.link.search_bus')}</button></li>
+              <li><button onClick={() => navigateTo('agencies')} className="hover:text-primary transition-colors">{t('footer.link.agencies')}</button></li>
+              <li><a href="#" className="hover:text-primary transition-colors">{t('footer.link.partners')}</a></li>
+              <li><a href="#" className="hover:text-primary transition-colors">{t('footer.link.popular')}</a></li>
+              <li><a href="#" className="hover:text-primary transition-colors">{t('footer.link.manage_booking')}</a></li>
             </ul>
           </div>
 
           <div>
-            <h4 className="font-display font-semibold text-white mb-5 text-[11px] uppercase tracking-[0.16em]">Support</h4>
+            <h4 className="font-display font-semibold text-white mb-5 text-[11px] uppercase tracking-[0.16em]">{t('footer.support')}</h4>
             <ul className="space-y-2.5 text-sm">
-              <li><a href="#" className="hover:text-primary transition-colors">Centre d’aide</a></li>
-              <li><a href="https://wa.me/237670000000" target="_blank" rel="noreferrer" className="hover:text-primary transition-colors">Chat WhatsApp</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Foire aux questions</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Signaler un problème</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Objets perdus</a></li>
+              <li><a href="#" className="hover:text-primary transition-colors">{t('footer.link.help_center')}</a></li>
+              <li><a href="https://wa.me/237670000000" target="_blank" rel="noreferrer" className="hover:text-primary transition-colors">{t('footer.link.whatsapp')}</a></li>
+              <li><a href="#" className="hover:text-primary transition-colors">{t('footer.link.faqs')}</a></li>
+              <li><a href="#" className="hover:text-primary transition-colors">{t('footer.link.report')}</a></li>
+              <li><a href="#" className="hover:text-primary transition-colors">{t('footer.link.lost_found')}</a></li>
             </ul>
           </div>
 
           <div>
-            <h4 className="font-display font-semibold text-white mb-5 text-[11px] uppercase tracking-[0.16em]">EasyTravel</h4>
+            <h4 className="font-display font-semibold text-white mb-5 text-[11px] uppercase tracking-[0.16em]">{t('footer.company')}</h4>
             <ul className="space-y-2.5 text-sm">
-              <li><a href="#" className="hover:text-primary transition-colors">À propos</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Devenir partenaire</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Carrières</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Presse & médias</a></li>
-              <li><button onClick={() => navigateTo('login')} className="hover:text-primary transition-colors">Espace pro / admin</button></li>
+              <li><a href="#" className="hover:text-primary transition-colors">{t('footer.link.about')}</a></li>
+              <li><a href="#" className="hover:text-primary transition-colors">{t('footer.link.partner_with_us')}</a></li>
+              <li><a href="#" className="hover:text-primary transition-colors">{t('footer.link.careers')}</a></li>
+              <li><a href="#" className="hover:text-primary transition-colors">{t('footer.link.press')}</a></li>
+              <li><button onClick={() => navigateTo('login')} className="hover:text-primary transition-colors">{t('footer.link.pro_space')}</button></li>
             </ul>
           </div>
         </div>
@@ -134,7 +136,7 @@ const Footer: React.FC = () => {
         {/* Payment + compliance row */}
         <div className="flex flex-wrap justify-between items-center gap-6 py-6 border-y border-white/5">
           <div className="text-[11px] text-gray-500 font-medium uppercase tracking-[0.16em]">
-            Paiements acceptés
+            {t('footer.payments')}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {[
@@ -154,11 +156,11 @@ const Footer: React.FC = () => {
         </div>
 
         <div className="pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-gray-500">
-          <p>© 2026 EasyTravel Cameroun. Tous droits réservés.</p>
+          <p>© 2026 EasyTravel Cameroun. {t('footer.rights')}</p>
           <div className="flex gap-6">
-            <a href="#" className="hover:text-gray-300 transition-colors">Conditions d’utilisation</a>
-            <a href="#" className="hover:text-gray-300 transition-colors">Politique de confidentialité</a>
-            <a href="#" className="hover:text-gray-300 transition-colors">Cookies</a>
+            <a href="#" className="hover:text-gray-300 transition-colors">{t('footer.link.terms')}</a>
+            <a href="#" className="hover:text-gray-300 transition-colors">{t('footer.link.privacy')}</a>
+            <a href="#" className="hover:text-gray-300 transition-colors">{t('footer.link.cookies')}</a>
           </div>
         </div>
       </div>

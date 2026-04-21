@@ -1,45 +1,29 @@
 'use client';
 import React from 'react';
 import SectionEyebrow from './SectionEyebrow';
+import { useLanguage } from '../../contexts/LanguageContext';
 
-const steps = [
-  {
-    num: '01',
-    icon: 'search',
-    title: 'Recherchez',
-    desc: 'Saisissez votre ville de départ, votre destination et la date. Aller simple ou aller-retour.',
-  },
-  {
-    num: '02',
-    icon: 'event_seat',
-    title: 'Comparez',
-    desc: 'Toutes les compagnies et tous les niveaux de confort — VIP, Classique, Climatisé — sur un seul écran.',
-  },
-  {
-    num: '03',
-    icon: 'smartphone',
-    title: 'Payez',
-    desc: 'Orange Money ou MTN MoMo en un clic. Confirmation USSD directement sur votre téléphone.',
-  },
-  {
-    num: '04',
-    icon: 'qr_code_2',
-    title: 'Embarquez',
-    desc: 'Votre billet QR est prêt. Montrez-le au chef de gare, montez à bord. Aucune impression.',
-  },
-];
+const HowItWorks: React.FC = () => {
+  const { t } = useLanguage();
 
-const HowItWorks: React.FC = () => (
+  const steps = [
+    { num: '01', icon: 'search', title: t('how.step1.title'), desc: t('how.step1.desc') },
+    { num: '02', icon: 'event_seat', title: t('how.step2.title'), desc: t('how.step2.desc') },
+    { num: '03', icon: 'smartphone', title: t('how.step3.title'), desc: t('how.step3.desc') },
+    { num: '04', icon: 'qr_code_2', title: t('how.step4.title'), desc: t('how.step4.desc') },
+  ];
+
+  return (
   <section id="how" className="relative py-24 md:py-32 px-6 md:px-10 bg-background-light dark:bg-background-dark">
     <div className="max-w-6xl mx-auto">
       <div className="max-w-2xl mx-auto text-center mb-16 md:mb-20">
-        <SectionEyebrow>Comment ça marche</SectionEyebrow>
+        <SectionEyebrow>{t('how.eyebrow')}</SectionEyebrow>
         <h2 className="mt-5 font-display text-3xl md:text-5xl font-semibold text-text-main dark:text-white tracking-tightest leading-[1.05]">
-          Réservez en 2 minutes,
-          <span className="font-serif-italic text-teal-accent dark:text-primary font-normal italic"> de chez vous.</span>
+          {t('how.title')}
+          <span className="font-serif-italic text-teal-accent dark:text-primary font-normal italic"> {t('how.title.accent')}</span>
         </h2>
         <p className="mt-5 text-text-muted dark:text-gray-400 leading-relaxed">
-          Une expérience conçue pour le mobile — simple, rapide et fiable, même sur réseau 3G.
+          {t('how.subtitle')}
         </p>
       </div>
 
@@ -68,6 +52,7 @@ const HowItWorks: React.FC = () => (
       </div>
     </div>
   </section>
-);
+  );
+};
 
 export default HowItWorks;
