@@ -1,79 +1,60 @@
 'use client';
 import React from 'react';
+import SectionEyebrow from './SectionEyebrow';
+import { useLanguage } from '../../contexts/LanguageContext';
 
-const data = [
-  {
-    name: 'Marie Nguema',
-    role: 'Commerçante, Douala',
-    avatar: 'M',
-    color: 'from-pink-500 to-rose-500',
-    stars: 5,
-    quote:
-      "J'ai réservé Douala → Yaoundé en 2 minutes pendant que je cuisinais. Paiement MoMo, QR code reçu immédiatement. C'est fini les longues files à l'agence.",
-  },
-  {
-    name: 'Jean-Paul Kamga',
-    role: 'Étudiant, Bafoussam',
-    avatar: 'J',
-    color: 'from-blue-500 to-cyan-500',
-    stars: 5,
-    quote:
-      "L'aller-retour Bafoussam → Yaoundé est super pratique pour mes week-ends. Je vois tous les horaires des compagnies sur un seul écran, je choisis le moins cher.",
-  },
-  {
-    name: 'Aïcha Bello',
-    role: 'Enseignante, Garoua',
-    avatar: 'A',
-    color: 'from-amber-500 to-orange-500',
-    stars: 5,
-    quote:
-      "Au début j'étais sceptique avec les paiements Mobile Money sur internet. Mais le système demande confirmation USSD sur le téléphone, donc c'est vraiment sécurisé. Je recommande.",
-  },
-];
+const Testimonials: React.FC = () => {
+  const { t } = useLanguage();
 
-const Testimonials: React.FC = () => (
-  <section className="py-20 md:py-24 px-6 md:px-10 bg-background-light dark:bg-surface-dark/50">
-    <div className="max-w-7xl mx-auto">
-      <div className="text-center mb-14">
-        <div className="inline-flex items-center gap-2 bg-primary/10 text-teal-accent dark:text-primary text-xs font-black uppercase tracking-widest px-4 py-2 rounded-full mb-5">
-          <span className="material-symbols-outlined text-sm">favorite</span>
-          Ils nous font confiance
+  const data = [
+    { name: t('testimonials.1.name'), role: t('testimonials.1.role'), avatar: 'M', quote: t('testimonials.1.quote') },
+    { name: t('testimonials.2.name'), role: t('testimonials.2.role'), avatar: 'J', quote: t('testimonials.2.quote') },
+    { name: t('testimonials.3.name'), role: t('testimonials.3.role'), avatar: 'A', quote: t('testimonials.3.quote') },
+  ];
+
+  return (
+    <section className="relative py-24 md:py-32 px-6 md:px-10 bg-background-light dark:bg-background-dark">
+      <div className="max-w-6xl mx-auto">
+        <div className="max-w-2xl mx-auto text-center mb-14 md:mb-16">
+          <SectionEyebrow>{t('testimonials.eyebrow')}</SectionEyebrow>
+          <h2 className="mt-5 font-display text-3xl md:text-5xl font-semibold text-text-main dark:text-white tracking-tightest leading-[1.05]">
+            {t('testimonials.title')} <span className="font-serif-italic text-teal-accent dark:text-primary italic font-normal">{t('testimonials.title.highlight')}</span>
+            <br /> {t('testimonials.title.accent')}
+          </h2>
         </div>
-        <h2 className="text-3xl md:text-4xl font-black text-text-main dark:text-white mb-3">
-          Plus de <span className="text-primary">200 000</span> voyageurs satisfaits
-        </h2>
-        <p className="text-text-muted dark:text-gray-400 max-w-2xl mx-auto">
-          Ce que pensent nos clients après avoir voyagé avec EasyTravel.
-        </p>
-      </div>
 
-      <div className="grid md:grid-cols-3 gap-6">
-        {data.map((t) => (
-          <div
-            key={t.name}
-            className="relative bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-800 p-7 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300"
-          >
-            <span className="material-symbols-outlined absolute top-5 right-5 text-6xl text-primary/10 select-none pointer-events-none">format_quote</span>
-            <div className="flex gap-0.5 mb-4">
-              {Array.from({ length: t.stars }).map((_, i) => (
-                <span key={i} className="material-symbols-outlined text-amber-400 text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>star</span>
-              ))}
-            </div>
-            <p className="text-text-main dark:text-gray-200 leading-relaxed mb-6 relative z-10">&ldquo;{t.quote}&rdquo;</p>
-            <div className="flex items-center gap-3 pt-4 border-t border-gray-100 dark:border-gray-800">
-              <div className={`size-11 rounded-full bg-gradient-to-br ${t.color} flex items-center justify-center text-white font-black text-lg shadow-md`}>
-                {t.avatar}
-              </div>
-              <div>
-                <div className="font-black text-text-main dark:text-white text-sm">{t.name}</div>
-                <div className="text-xs text-text-muted">{t.role}</div>
-              </div>
-            </div>
-          </div>
-        ))}
+        <div className="grid md:grid-cols-3 gap-6">
+          {data.map((item) => (
+            <figure
+              key={item.name}
+              className="relative bg-white dark:bg-surface-dark rounded-2xl border border-ink-100 dark:border-white/10 p-8 hover:border-primary/30 transition-all duration-300"
+            >
+              <span
+                aria-hidden
+                className="font-serif-italic absolute top-4 right-6 text-7xl leading-none text-primary/20 select-none pointer-events-none"
+              >
+                “
+              </span>
+              <blockquote className="relative font-display text-[17px] md:text-lg leading-relaxed text-text-main dark:text-gray-100 tracking-tight">
+                {item.quote}
+              </blockquote>
+              <figcaption className="mt-6 pt-5 border-t border-ink-100 dark:border-white/10 flex items-center gap-3">
+                <div className="size-10 rounded-full bg-primary/10 ring-1 ring-inset ring-primary/20 flex items-center justify-center text-teal-accent dark:text-primary font-display font-semibold">
+                  {item.avatar}
+                </div>
+                <div>
+                  <div className="font-display font-semibold tracking-tight text-text-main dark:text-white text-sm">
+                    {item.name}
+                  </div>
+                  <div className="text-xs text-text-muted mt-0.5">{item.role}</div>
+                </div>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
       </div>
-    </div>
-  </section>
-);
+    </section>
+  );
+};
 
 export default Testimonials;

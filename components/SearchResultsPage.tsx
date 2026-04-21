@@ -13,6 +13,12 @@ interface TripExtended extends Trip {
   distanceToUser?: number;
 }
 
+interface NearbyDate {
+  date: string;
+  count: number;
+  minPrice: number | null;
+}
+
 // Coordonnées des gares pour la démo
 const stationLocations: Record<string, { lat: number, lng: number, address: string }> = {
   "Douala - Gare Centrale": { lat: 4.0511, lng: 9.7679, address: "Bd de la Liberté, Douala (Express Voyage)" },
@@ -38,26 +44,34 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 
 const SearchResultsPage: React.FC = () => {
   const { t } = useLanguage();
-  const { searchParams, navigateTo, setBookingDetails } = useNavigation();
+  const { searchParams, navigateTo, setBookingDetails, setSearchParams } = useNavigation();
   const [sortOption, setSortOption] = useState<'price' | 'time' | 'duration' | 'arrival'>('time');
 
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectedTimes, setSelectedTimes] = useState<string[]>([]);
   const [selectedAgencies, setSelectedAgencies] = useState<string[]>([]);
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
+  const [minPrice, setMinPrice] = useState<number | null>(null);
   const [maxPrice, setMaxPrice] = useState<number | null>(null);
   const [maxDurationMin, setMaxDurationMin] = useState<number | null>(null);
+  const [hourRange, setHourRange] = useState<[number, number]>([0, 24]);
 
   const [selectedOutbound, setSelectedOutbound] = useState<TripExtended | null>(null);
   const [selectedReturn, setSelectedReturn] = useState<TripExtended | null>(null);
   const [hoveredTripId, setHoveredTripId] = useState<number | string | null>(null);
-  
+
+  // Comparator (up to 3 trips side-by-side)
+  const [compareTripIds, setCompareTripIds] = useState<Array<string | number>>([]);
+  const [showCompare, setShowCompare] = useState(false);
+
   // New: Geolocation & Mobile View switcher
   const [userCoords, setUserCoords] = useState<{lat: number, lng: number} | null>(null);
   const [mobileView, setMobileView] = useState<'list' | 'map'>('list');
 
   const [fetchedTrips, setFetchedTrips] = useState<TripExtended[]>([]);
   const [isLoadingTrips, setIsLoadingTrips] = useState(false);
+  const [nearbyDates, setNearbyDates] = useState<NearbyDate[]>([]);
+  const [isLoadingNearby, setIsLoadingNearby] = useState(false);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
@@ -89,6 +103,7 @@ const SearchResultsPage: React.FC = () => {
   useEffect(() => {
     const fetchTrips = async () => {
       setIsLoadingTrips(true);
+      setNearbyDates([]);
       try {
         const origin = currentStep === 'outbound' ? searchParams.from : searchParams.to;
         const destination = currentStep === 'outbound' ? searchParams.to : searchParams.from;
@@ -96,7 +111,35 @@ const SearchResultsPage: React.FC = () => {
 
         const res = await fetch(`/api/departures?from=${encodeURIComponent(origin)}&to=${encodeURIComponent(destination)}&date=${encodeURIComponent(date)}`);
         const json = await res.json();
-        setFetchedTrips(Array.isArray(json.data) ? (json.data as TripExtended[]) : []);
+        const trips = Array.isArray(json.data) ? (json.data as TripExtended[]) : [];
+        setFetchedTrips(trips);
+
+        if (trips.length === 0) {
+          setIsLoadingNearby(true);
+          try {
+            const base = new Date(`${date}T00:00:00`);
+            const offsets = [-3, -2, -1, 1, 2, 3];
+            const results = await Promise.all(
+              offsets.map(async (offset) => {
+                const d = new Date(base);
+                d.setDate(d.getDate() + offset);
+                const iso = d.toISOString().slice(0, 10);
+                try {
+                  const r = await fetch(`/api/departures?from=${encodeURIComponent(origin)}&to=${encodeURIComponent(destination)}&date=${encodeURIComponent(iso)}`);
+                  const j = await r.json();
+                  const t = Array.isArray(j.data) ? (j.data as TripExtended[]) : [];
+                  const minPrice = t.length > 0 ? Math.min(...t.map(x => x.price)) : null;
+                  return { date: iso, count: t.length, minPrice } as NearbyDate;
+                } catch {
+                  return { date: iso, count: 0, minPrice: null } as NearbyDate;
+                }
+              })
+            );
+            setNearbyDates(results.filter(r => r.count > 0));
+          } finally {
+            setIsLoadingNearby(false);
+          }
+        }
       } catch (error) {
         console.error("Error fetching trips:", error);
         setFetchedTrips([]);
@@ -142,16 +185,20 @@ const SearchResultsPage: React.FC = () => {
     return initialTrips.filter(trip => {
       if (selectedAgencies.length > 0 && !selectedAgencies.includes(trip.agencyName)) return false;
       if (selectedAmenities.length > 0 && !selectedAmenities.every(a => trip.amenities.includes(a))) return false;
+      const hour = parseInt(trip.departureTime.split(':')[0]);
       if (selectedTimes.length > 0) {
-        const hour = parseInt(trip.departureTime.split(':')[0]);
         const period = hour >= 6 && hour < 12 ? 'morning' : hour >= 12 && hour < 18 ? 'afternoon' : 'evening';
         if (!selectedTimes.includes(period)) return false;
       }
+      if (hourRange[0] > 0 || hourRange[1] < 24) {
+        if (hour < hourRange[0] || hour >= hourRange[1]) return false;
+      }
+      if (minPrice !== null && trip.price < minPrice) return false;
       if (maxPrice !== null && trip.price > maxPrice) return false;
       if (maxDurationMin !== null && (trip.durationMin ?? 0) > maxDurationMin) return false;
       return true;
     });
-  }, [initialTrips, selectedAgencies, selectedAmenities, selectedTimes, maxPrice, maxDurationMin]);
+  }, [initialTrips, selectedAgencies, selectedAmenities, selectedTimes, hourRange, minPrice, maxPrice, maxDurationMin]);
 
   const sortedTrips = useMemo(() => {
     return [...filteredTrips].sort((a, b) => {
@@ -167,15 +214,51 @@ const SearchResultsPage: React.FC = () => {
     selectedTimes.length +
     selectedAgencies.length +
     selectedAmenities.length +
+    (minPrice !== null ? 1 : 0) +
     (maxPrice !== null ? 1 : 0) +
-    (maxDurationMin !== null ? 1 : 0);
+    (maxDurationMin !== null ? 1 : 0) +
+    ((hourRange[0] > 0 || hourRange[1] < 24) ? 1 : 0);
 
   const resetFilters = () => {
     setSelectedTimes([]);
     setSelectedAgencies([]);
     setSelectedAmenities([]);
+    setMinPrice(null);
     setMaxPrice(null);
     setMaxDurationMin(null);
+    setHourRange([0, 24]);
+  };
+
+  const toggleCompare = (tripId: string | number) => {
+    setCompareTripIds(prev => {
+      if (prev.includes(tripId)) return prev.filter(id => id !== tripId);
+      if (prev.length >= 3) return prev;
+      return [...prev, tripId];
+    });
+  };
+
+  const compareTrips = useMemo(
+    () => compareTripIds
+      .map(id => sortedTrips.find(t => t.id === id))
+      .filter((t): t is TripExtended => Boolean(t)),
+    [compareTripIds, sortedTrips]
+  );
+
+  const retrySearchWithDate = (newDate: string) => {
+    if (!searchParams) return;
+    const next = currentStep === 'outbound'
+      ? { ...searchParams, date: newDate }
+      : { ...searchParams, returnDate: newDate };
+    setSearchParams(next);
+  };
+
+  const formatNearbyDate = (iso: string) => {
+    try {
+      const d = new Date(`${iso}T00:00:00`);
+      return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+    } catch {
+      return iso;
+    }
   };
 
   // Handle selection from map
@@ -311,24 +394,26 @@ const SearchResultsPage: React.FC = () => {
   };
 
   const renderTripCard = (trip: TripExtended, isSummary = false) => (
-    <div 
-      key={trip.id} 
+    <div
+      key={trip.id}
       onMouseEnter={() => !isSummary && setHoveredTripId(trip.id)}
       onMouseLeave={() => !isSummary && setHoveredTripId(null)}
-      className={`bg-white dark:bg-surface-dark rounded-2xl border transition-all overflow-hidden flex flex-col md:flex-row mb-4 ${
-        hoveredTripId === trip.id ? 'border-primary shadow-xl scale-[1.01]' : 'border-gray-100 dark:border-gray-800 shadow-sm'
+      className={`bg-white dark:bg-surface-dark rounded-2xl border transition-all overflow-hidden flex flex-col md:flex-row mb-3 ${
+        hoveredTripId === trip.id
+          ? 'border-primary/50 shadow-card -translate-y-0.5'
+          : 'border-ink-100 dark:border-white/10 shadow-subtle'
       }`}
     >
-      <div className="p-5 md:w-1/4 flex flex-row md:flex-col items-center gap-3 border-b md:border-b-0 md:border-r border-gray-50 dark:border-gray-800 bg-gray-50/30 dark:bg-white/5">
-        <div className={`size-12 rounded-2xl ${trip.color} flex items-center justify-center text-white shadow-lg`}>
-          <span className="material-symbols-outlined text-2xl">{trip.agencyLogo}</span>
+      <div className="p-5 md:w-1/4 flex flex-row md:flex-col items-center gap-3 border-b md:border-b-0 md:border-r border-ink-100/70 dark:border-white/10 bg-ink-50/40 dark:bg-white/[0.03]">
+        <div className={`size-11 rounded-xl ${trip.color} flex items-center justify-center text-white shadow-subtle`}>
+          <span className="material-symbols-outlined text-xl">{trip.agencyLogo}</span>
         </div>
         <div className="text-left md:text-center">
-          <h3 className="font-black text-text-main dark:text-white">{trip.agencyName}</h3>
-          {isSummary && <div className="text-[10px] font-bold text-text-muted mt-1 uppercase tracking-widest">{trip.date}</div>}
+          <h3 className="font-display font-semibold tracking-tight text-text-main dark:text-white">{trip.agencyName}</h3>
+          {isSummary && <div className="text-[11px] font-medium text-text-muted mt-1 tracking-tight">{trip.date}</div>}
           {!isSummary && trip.distanceToUser && (
-            <div className="text-[9px] font-black text-primary mt-1 flex items-center gap-1 md:justify-center">
-              <span className="material-symbols-outlined text-[12px]">my_location</span>
+            <div className="text-[11px] font-medium text-teal-accent dark:text-primary mt-1 flex items-center gap-1 md:justify-center">
+              <span className="material-symbols-outlined text-[14px]">my_location</span>
               À {trip.distanceToUser.toFixed(1)} km
             </div>
           )}
@@ -338,74 +423,119 @@ const SearchResultsPage: React.FC = () => {
       <div className="p-6 md:w-1/2 flex flex-col justify-center">
         <div className="flex items-center justify-between gap-4 mb-4">
           <div className="text-center w-1/3">
-            <div className="text-2xl font-black text-text-main dark:text-white">{trip.departureTime}</div>
-            <div className="text-[10px] font-bold text-text-muted uppercase tracking-tighter truncate" title={trip.departureLocation}>{trip.departureLocation}</div>
+            <div className="font-display text-2xl font-semibold tabular-nums tracking-tight text-text-main dark:text-white">{trip.departureTime}</div>
+            <div className="text-[11px] font-medium text-text-muted mt-1 tracking-tight truncate" title={trip.departureLocation}>{trip.departureLocation}</div>
           </div>
           <div className="flex-1 flex flex-col items-center">
-            <div className="text-[10px] font-black text-primary mb-1">{trip.duration}</div>
-            <div className="w-full h-0.5 bg-gray-100 dark:bg-gray-800 relative">
+            <div className="text-[11px] font-medium text-text-muted mb-1.5 tabular-nums">{trip.duration}</div>
+            <div className="w-full h-px bg-ink-200 dark:bg-white/15 relative">
               <div className="absolute left-0 top-1/2 -translate-y-1/2 size-1.5 rounded-full bg-primary"></div>
-              <div className="absolute right-0 top-1/2 -translate-y-1/2 size-1.5 rounded-full bg-amber-500"></div>
+              <div className="absolute right-0 top-1/2 -translate-y-1/2 size-1.5 rounded-full bg-teal-accent dark:bg-primary/60"></div>
             </div>
           </div>
           <div className="text-center w-1/3">
-            <div className="text-2xl font-black text-text-main dark:text-white">{trip.arrivalTime}</div>
-            <div className="text-[10px] font-bold text-text-muted uppercase tracking-tighter truncate" title={trip.arrivalLocation}>{trip.arrivalLocation}</div>
+            <div className="font-display text-2xl font-semibold tabular-nums tracking-tight text-text-main dark:text-white">{trip.arrivalTime}</div>
+            <div className="text-[11px] font-medium text-text-muted mt-1 tracking-tight truncate" title={trip.arrivalLocation}>{trip.arrivalLocation}</div>
           </div>
         </div>
         {!isSummary && (
           <div className="flex items-center gap-3">
             {trip.amenities.map(a => (
-              <span key={a} className="material-symbols-outlined text-gray-400 text-lg hover:text-primary transition-colors">{getAmenityIcon(a)}</span>
+              <span key={a} className="material-symbols-outlined text-text-muted/80 text-[18px] hover:text-teal-accent dark:hover:text-primary transition-colors">{getAmenityIcon(a)}</span>
             ))}
           </div>
         )}
       </div>
 
-      <div className="p-6 md:w-1/4 flex flex-row md:flex-col items-center justify-between md:justify-center gap-3 bg-gray-50/20 dark:bg-black/10 border-t md:border-t-0 md:border-l border-gray-50 dark:border-gray-800">
+      <div className="p-6 md:w-1/4 flex flex-row md:flex-col items-center justify-between md:justify-center gap-3 bg-ink-50/30 dark:bg-black/10 border-t md:border-t-0 md:border-l border-ink-100/70 dark:border-white/10">
         <div className="text-right md:text-center">
-          <div className="text-2xl font-black text-primary">{trip.price.toLocaleString()} <span className="text-xs font-bold text-gray-400">FCFA</span></div>
-          <div className="text-[10px] text-text-muted uppercase font-black">{t('results.per_person')}</div>
+          <div className="font-display text-2xl font-semibold text-text-main dark:text-white tracking-tight tabular-nums">
+            {trip.price.toLocaleString()}
+            <span className="text-[11px] font-medium text-text-muted ml-1">FCFA</span>
+          </div>
+          <div className="text-[11px] text-text-muted mt-0.5">{t('results.per_person')}</div>
         </div>
         {!isSummary && (
-          <button onClick={() => handleTripSelect(trip)} className="px-6 py-2.5 bg-text-main dark:bg-white text-white dark:text-black rounded-xl font-black text-xs uppercase tracking-widest hover:bg-primary hover:text-black transition-all">
-            {t('results.select')}
-          </button>
+          <div className="flex flex-col items-end md:items-center gap-2">
+            <button
+              onClick={() => handleTripSelect(trip)}
+              className="inline-flex items-center gap-1.5 rounded-full bg-text-main dark:bg-white text-white dark:text-text-main px-5 py-2 text-xs font-semibold tracking-tight shadow-subtle hover:shadow-card active:translate-y-[1px] transition-all"
+            >
+              {t('results.select')}
+              <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+            </button>
+            <label
+              className={`inline-flex items-center gap-1.5 text-[11px] font-medium tracking-tight cursor-pointer select-none transition-colors ${
+                compareTripIds.includes(trip.id)
+                  ? 'text-teal-accent dark:text-primary'
+                  : 'text-text-muted hover:text-text-main dark:hover:text-white'
+              }`}
+              title={
+                !compareTripIds.includes(trip.id) && compareTripIds.length >= 3
+                  ? 'Maximum 3 trajets à comparer'
+                  : 'Ajouter à la comparaison'
+              }
+            >
+              <input
+                type="checkbox"
+                checked={compareTripIds.includes(trip.id)}
+                disabled={!compareTripIds.includes(trip.id) && compareTripIds.length >= 3}
+                onChange={() => toggleCompare(trip.id)}
+                className="size-3.5 rounded border-ink-300 dark:border-white/25 text-primary focus:ring-primary/40 bg-transparent"
+              />
+              <span className="material-symbols-outlined text-[14px]">compare_arrows</span>
+              Comparer
+            </label>
+          </div>
         )}
       </div>
     </div>
   );
 
   return (
-    <div className="flex flex-col h-[calc(100vh-72px)] bg-background-light dark:bg-background-dark overflow-hidden font-display relative">
-      
+    <div className="flex flex-col h-[calc(100vh-72px)] bg-background-light dark:bg-background-dark overflow-hidden relative">
+
       {/* Mobile Switcher FAB */}
-      <button 
+      <button
         onClick={() => setMobileView(mobileView === 'list' ? 'map' : 'list')}
-        className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] bg-black dark:bg-white text-white dark:text-black h-12 px-6 rounded-full font-black shadow-2xl flex items-center gap-2 border border-white/20 active:scale-95 transition-transform uppercase tracking-widest text-[10px]"
+        className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] bg-text-main dark:bg-white text-white dark:text-text-main h-11 px-5 rounded-full font-semibold shadow-elevated flex items-center gap-2 active:scale-95 transition-transform text-sm tracking-tight"
       >
-        <span className="material-symbols-outlined text-lg">
+        <span className="material-symbols-outlined text-[18px]">
           {mobileView === 'list' ? 'map' : 'list'}
         </span>
-        {mobileView === 'list' ? 'Voir Carte' : 'Voir Liste'}
+        {mobileView === 'list' ? 'Carte' : 'Liste'}
       </button>
 
       {/* Dynamic Header */}
-      <div className="bg-white dark:bg-surface-dark border-b border-gray-100 dark:border-gray-800 z-20 px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm">
+      <div className="bg-white/90 dark:bg-surface-dark/90 backdrop-blur-xl border-b border-ink-100 dark:border-white/10 z-20 px-6 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex flex-col">
-          <div className="text-[10px] font-black text-primary uppercase tracking-[0.3em] mb-1">{currentStep === 'summary' ? 'Récapitulatif' : t(`results.step.${currentStep}`)}</div>
-          <div className="flex items-center gap-3 font-black text-lg text-text-main dark:text-white">
+          <div className="text-[11px] font-semibold text-teal-accent dark:text-primary uppercase tracking-[0.18em] mb-1">
+            {currentStep === 'summary' ? 'Récapitulatif' : t(`results.step.${currentStep}`)}
+          </div>
+          <div className="flex items-center gap-2.5 font-display font-semibold text-xl tracking-tight text-text-main dark:text-white">
             <span>{currentStep === 'return' ? searchParams.to : searchParams.from}</span>
-            <span className="material-symbols-outlined text-text-muted">arrow_forward</span>
+            <span className="material-symbols-outlined text-text-muted text-lg">arrow_forward</span>
             <span>{currentStep === 'return' ? searchParams.from : searchParams.to}</span>
           </div>
         </div>
-        <div className="flex items-center gap-6">
-           <div className="text-right hidden sm:block">
-              <div className="text-xs font-bold text-text-main dark:text-white">{searchParams.date}</div>
-              <div className="text-[10px] text-text-muted font-black uppercase">{searchParams.passengers.adults + searchParams.passengers.children} passagers</div>
-           </div>
-           <button onClick={() => navigateTo('home')} className="text-xs font-black text-primary uppercase border border-primary/20 px-4 py-2 rounded-lg hover:bg-primary/5 transition-all">{t('results.edit_search')}</button>
+        <div className="flex items-center gap-4">
+          <div className="text-right hidden sm:flex items-center gap-4 pr-4 border-r border-ink-100 dark:border-white/10">
+            <div>
+              <div className="text-[11px] text-text-muted uppercase tracking-[0.14em] font-medium">Date</div>
+              <div className="text-sm font-semibold tracking-tight text-text-main dark:text-white">{searchParams.date}</div>
+            </div>
+            <div>
+              <div className="text-[11px] text-text-muted uppercase tracking-[0.14em] font-medium">Passagers</div>
+              <div className="text-sm font-semibold tracking-tight text-text-main dark:text-white">{searchParams.passengers.adults + searchParams.passengers.children}</div>
+            </div>
+          </div>
+          <button
+            onClick={() => navigateTo('home')}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold tracking-tight text-text-main dark:text-white border border-ink-200 dark:border-white/15 hover:border-primary/40 px-3.5 py-2 rounded-full transition-all"
+          >
+            <span className="material-symbols-outlined text-[16px]">edit</span>
+            {t('results.edit_search')}
+          </button>
         </div>
       </div>
 
@@ -416,58 +546,72 @@ const SearchResultsPage: React.FC = () => {
            <div className="p-6 md:p-8">
               {currentStep === 'summary' ? (
                 <div className="space-y-8 animate-fadeIn">
-                   <h2 className="text-2xl font-black mb-6">{t('results.summary.title')}</h2>
+                   <h2 className="font-display text-2xl md:text-3xl font-semibold tracking-tightest text-text-main dark:text-white mb-2">{t('results.summary.title')}</h2>
+                   <p className="text-sm text-text-muted dark:text-gray-400 mb-8 leading-relaxed">Relisez vos trajets avant de finaliser votre paiement.</p>
                    {selectedOutbound && (
                      <div>
-                       <div className="text-xs font-black text-text-muted uppercase tracking-widest mb-3 flex items-center gap-2">
-                         <span className="material-symbols-outlined text-sm">flight_takeoff</span> {t('results.summary.outbound')}
+                       <div className="text-[11px] font-semibold text-text-muted uppercase tracking-[0.16em] mb-3 flex items-center gap-2">
+                         <span className="material-symbols-outlined text-[16px] text-teal-accent dark:text-primary">flight_takeoff</span> {t('results.summary.outbound')}
                        </div>
                        {renderTripCard(selectedOutbound, true)}
                      </div>
                    )}
                    {selectedReturn && (
                      <div>
-                       <div className="text-xs font-black text-text-muted uppercase tracking-widest mb-3 flex items-center gap-2">
-                         <span className="material-symbols-outlined text-sm">flight_land</span> {t('results.summary.return')}
+                       <div className="text-[11px] font-semibold text-text-muted uppercase tracking-[0.16em] mb-3 flex items-center gap-2">
+                         <span className="material-symbols-outlined text-[16px] text-teal-accent dark:text-primary">flight_land</span> {t('results.summary.return')}
                        </div>
                        {renderTripCard(selectedReturn, true)}
                      </div>
                    )}
-                   <div className="bg-primary/10 border border-primary/20 rounded-3xl p-8 mt-10 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
+                   <div className="bg-ink-950 text-white rounded-3xl p-8 mt-10 flex flex-col md:flex-row items-center justify-between gap-6 shadow-elevated">
                       <div>
-                        <div className="text-xs font-black text-text-muted uppercase tracking-widest mb-1">{t('results.summary.total')}</div>
-                        <div className="text-4xl font-black text-text-main dark:text-white">
-                          {((selectedOutbound?.price || 0) + (selectedReturn?.price || 0)) * (searchParams.passengers.adults + searchParams.passengers.children)} <span className="text-sm">FCFA</span>
+                        <div className="text-[11px] font-semibold text-white/60 uppercase tracking-[0.16em] mb-1">{t('results.summary.total')}</div>
+                        <div className="font-display text-4xl md:text-5xl font-semibold text-white tracking-tightest tabular-nums">
+                          {(((selectedOutbound?.price || 0) + (selectedReturn?.price || 0)) * (searchParams.passengers.adults + searchParams.passengers.children)).toLocaleString()}
+                          <span className="text-sm font-medium text-white/60 ml-2">FCFA</span>
                         </div>
                       </div>
-                      <button onClick={handleProceedToCheckout} className="w-full md:w-auto px-10 py-5 bg-primary text-text-main font-black rounded-2xl shadow-xl shadow-primary/20 hover:scale-105 transition-transform uppercase tracking-widest text-sm">
+                      <button
+                        onClick={handleProceedToCheckout}
+                        className="group w-full md:w-auto inline-flex items-center justify-center gap-2 rounded-full bg-primary hover:bg-primary-600 text-text-main font-semibold px-7 py-3.5 text-sm tracking-tight shadow-card transition-all hover:-translate-y-0.5"
+                      >
                         {t('results.summary.checkout')}
+                        <span className="material-symbols-outlined text-base group-hover:translate-x-0.5 transition-transform">arrow_forward</span>
                       </button>
                    </div>
                 </div>
               ) : (
                 <div className="space-y-6">
-                   <div className="flex items-center justify-between mb-4">
+                   <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
                       <div className="flex items-center gap-4">
-                        <button 
+                        <button
                           onClick={() => setIsFilterOpen(!isFilterOpen)}
-                          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase transition-all ${isFilterOpen ? 'bg-primary text-black' : 'bg-gray-100 dark:bg-gray-800 text-text-muted'}`}
+                          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold tracking-tight transition-all border ${
+                            isFilterOpen
+                              ? 'bg-text-main text-white border-text-main'
+                              : 'bg-white dark:bg-white/5 text-text-main dark:text-gray-200 border-ink-200 dark:border-white/15 hover:border-primary/40'
+                          }`}
                         >
-                          <span className="material-symbols-outlined text-lg">tune</span>
+                          <span className="material-symbols-outlined text-[18px]">tune</span>
                           {t('results.filter.open')}
                           {activeFilterCount > 0 && (
-                            <span className="size-5 rounded-full bg-black/10 dark:bg-white/10 flex items-center justify-center text-[10px]">
+                            <span className="size-5 rounded-full bg-primary text-text-main flex items-center justify-center text-[10px] font-semibold">
                               {activeFilterCount}
                             </span>
                           )}
                         </button>
-                        <h2 className="text-sm font-black text-text-main dark:text-white uppercase tracking-tighter hidden sm:block">
-                          {sortedTrips.length} {t('results.found')}
+                        <h2 className="text-sm font-medium tracking-tight text-text-muted hidden sm:block">
+                          <span className="text-text-main dark:text-white font-semibold">{sortedTrips.length}</span> {t('results.found')}
                         </h2>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black uppercase text-gray-500">{t('results.sort_by')} :</span>
-                        <select value={sortOption} onChange={(e) => setSortOption(e.target.value as 'price' | 'time' | 'duration' | 'arrival')} className="bg-transparent border-none text-xs font-black uppercase focus:ring-0 cursor-pointer text-primary">
+                        <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-text-muted">{t('results.sort_by')}</span>
+                        <select
+                          value={sortOption}
+                          onChange={(e) => setSortOption(e.target.value as 'price' | 'time' | 'duration' | 'arrival')}
+                          className="bg-transparent border-0 text-xs font-semibold tracking-tight focus:ring-0 cursor-pointer text-text-main dark:text-white hover:text-teal-accent dark:hover:text-primary"
+                        >
                            <option value="time">{t('results.sort.departure')}</option>
                            <option value="arrival">Arrivée la plus tôt</option>
                            <option value="price">{t('results.sort.price')}</option>
@@ -477,58 +621,117 @@ const SearchResultsPage: React.FC = () => {
                    </div>
 
                    {isFilterOpen && (
-                     <div className="bg-gray-50 dark:bg-white/5 rounded-3xl p-6 mb-8 border border-gray-100 dark:border-gray-800 animate-slideDown overflow-hidden">
-                        {priceBounds.max > priceBounds.min && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6 pb-6 border-b border-gray-100 dark:border-gray-800">
+                     <div className="bg-white dark:bg-white/[0.03] rounded-2xl p-6 mb-8 border border-ink-100 dark:border-white/10 animate-slideDown overflow-hidden shadow-subtle">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6 pb-6 border-b border-ink-100 dark:border-white/10">
+                          {priceBounds.max > priceBounds.min && (
                             <div>
                               <div className="flex items-center justify-between mb-2">
-                                <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Prix max</h4>
-                                <span className="text-xs font-black text-primary">
-                                  {(maxPrice ?? priceBounds.max).toLocaleString()} FCFA
+                                <h4 className="text-[11px] font-semibold uppercase text-text-muted tracking-[0.16em]">Fourchette de prix</h4>
+                                <span className="text-xs font-semibold tabular-nums text-text-main dark:text-white">
+                                  {(minPrice ?? priceBounds.min).toLocaleString()} – {(maxPrice ?? priceBounds.max).toLocaleString()} FCFA
                                 </span>
                               </div>
-                              <input
-                                type="range"
-                                min={priceBounds.min}
-                                max={priceBounds.max}
-                                step={500}
-                                value={maxPrice ?? priceBounds.max}
-                                onChange={(e) => setMaxPrice(Number(e.target.value) >= priceBounds.max ? null : Number(e.target.value))}
-                                className="w-full accent-primary"
-                              />
-                              <div className="flex justify-between text-[10px] text-text-muted font-bold mt-1">
+                              <div className="grid grid-cols-2 gap-2">
+                                <input
+                                  type="range"
+                                  aria-label="Prix minimum"
+                                  min={priceBounds.min}
+                                  max={priceBounds.max}
+                                  step={500}
+                                  value={minPrice ?? priceBounds.min}
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    setMinPrice(v <= priceBounds.min ? null : v);
+                                  }}
+                                  className="w-full accent-primary"
+                                />
+                                <input
+                                  type="range"
+                                  aria-label="Prix maximum"
+                                  min={priceBounds.min}
+                                  max={priceBounds.max}
+                                  step={500}
+                                  value={maxPrice ?? priceBounds.max}
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    setMaxPrice(v >= priceBounds.max ? null : v);
+                                  }}
+                                  className="w-full accent-primary"
+                                />
+                              </div>
+                              <div className="flex justify-between text-[11px] text-text-muted font-medium mt-1 tabular-nums">
                                 <span>{priceBounds.min.toLocaleString()}</span>
                                 <span>{priceBounds.max.toLocaleString()}</span>
                               </div>
                             </div>
-                            {durationBounds.max > durationBounds.min && (
-                              <div>
-                                <div className="flex items-center justify-between mb-2">
-                                  <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Durée max</h4>
-                                  <span className="text-xs font-black text-primary">
-                                    {Math.floor((maxDurationMin ?? durationBounds.max) / 60)}h {String((maxDurationMin ?? durationBounds.max) % 60).padStart(2, '0')}
-                                  </span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min={durationBounds.min}
-                                  max={durationBounds.max}
-                                  step={15}
-                                  value={maxDurationMin ?? durationBounds.max}
-                                  onChange={(e) => setMaxDurationMin(Number(e.target.value) >= durationBounds.max ? null : Number(e.target.value))}
-                                  className="w-full accent-primary"
-                                />
-                                <div className="flex justify-between text-[10px] text-text-muted font-bold mt-1">
-                                  <span>{Math.floor(durationBounds.min / 60)}h{String(durationBounds.min % 60).padStart(2, '0')}</span>
-                                  <span>{Math.floor(durationBounds.max / 60)}h{String(durationBounds.max % 60).padStart(2, '0')}</span>
-                                </div>
+                          )}
+                          {durationBounds.max > durationBounds.min && (
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <h4 className="text-[11px] font-semibold uppercase text-text-muted tracking-[0.16em]">Durée max</h4>
+                                <span className="text-xs font-semibold tabular-nums text-text-main dark:text-white">
+                                  {Math.floor((maxDurationMin ?? durationBounds.max) / 60)}h {String((maxDurationMin ?? durationBounds.max) % 60).padStart(2, '0')}
+                                </span>
                               </div>
-                            )}
+                              <input
+                                type="range"
+                                min={durationBounds.min}
+                                max={durationBounds.max}
+                                step={15}
+                                value={maxDurationMin ?? durationBounds.max}
+                                onChange={(e) => setMaxDurationMin(Number(e.target.value) >= durationBounds.max ? null : Number(e.target.value))}
+                                className="w-full accent-primary"
+                              />
+                              <div className="flex justify-between text-[11px] text-text-muted font-medium mt-1 tabular-nums">
+                                <span>{Math.floor(durationBounds.min / 60)}h{String(durationBounds.min % 60).padStart(2, '0')}</span>
+                                <span>{Math.floor(durationBounds.max / 60)}h{String(durationBounds.max % 60).padStart(2, '0')}</span>
+                              </div>
+                            </div>
+                          )}
+                          <div className="sm:col-span-2">
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className="text-[11px] font-semibold uppercase text-text-muted tracking-[0.16em]">Heure de départ</h4>
+                              <span className="text-xs font-semibold tabular-nums text-text-main dark:text-white">
+                                {String(hourRange[0]).padStart(2, '0')}h – {String(hourRange[1]).padStart(2, '0')}h
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <input
+                                type="range"
+                                aria-label="Heure min"
+                                min={0}
+                                max={23}
+                                step={1}
+                                value={hourRange[0]}
+                                onChange={(e) => {
+                                  const v = Math.min(Number(e.target.value), hourRange[1] - 1);
+                                  setHourRange([v, hourRange[1]]);
+                                }}
+                                className="w-full accent-primary"
+                              />
+                              <input
+                                type="range"
+                                aria-label="Heure max"
+                                min={1}
+                                max={24}
+                                step={1}
+                                value={hourRange[1]}
+                                onChange={(e) => {
+                                  const v = Math.max(Number(e.target.value), hourRange[0] + 1);
+                                  setHourRange([hourRange[0], v]);
+                                }}
+                                className="w-full accent-primary"
+                              />
+                            </div>
+                            <div className="flex justify-between text-[11px] text-text-muted font-medium mt-1 tabular-nums">
+                              <span>00h</span>
+                              <span>24h</span>
+                            </div>
                           </div>
-                        )}
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                           <div>
-                            <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-4">{t('results.filter.departure_time')}</h4>
+                            <h4 className="text-[11px] font-semibold uppercase text-text-muted tracking-[0.16em] mb-4">{t('results.filter.departure_time')}</h4>
                             <div className="space-y-2">
                               {['morning', 'afternoon', 'evening'].map(time => (
                                 <label key={time} className="flex items-center gap-3 cursor-pointer group">
@@ -538,7 +741,7 @@ const SearchResultsPage: React.FC = () => {
                                     onChange={() => toggleFilter(selectedTimes, setSelectedTimes, time)}
                                     className="size-5 rounded-lg border-gray-300 dark:border-gray-700 text-primary focus:ring-primary bg-transparent"
                                   />
-                                  <span className="text-xs font-bold text-text-muted group-hover:text-text-main dark:group-hover:text-white transition-colors">
+                                  <span className="text-sm font-medium text-text-main dark:text-gray-300 transition-colors">
                                     {t(`results.filter.${time}`)}
                                   </span>
                                 </label>
@@ -546,7 +749,7 @@ const SearchResultsPage: React.FC = () => {
                             </div>
                           </div>
                           <div>
-                            <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-4">{t('results.filter.agencies')}</h4>
+                            <h4 className="text-[11px] font-semibold uppercase text-text-muted tracking-[0.16em] mb-4">{t('results.filter.agencies')}</h4>
                             <div className="space-y-2">
                               {(availableAgencies.length > 0 ? availableAgencies : ['Express Voyage', 'GreenLines', 'Royal Road', 'CityLink']).map(agency => (
                                 <label key={agency} className="flex items-center gap-3 cursor-pointer group">
@@ -556,13 +759,13 @@ const SearchResultsPage: React.FC = () => {
                                     onChange={() => toggleFilter(selectedAgencies, setSelectedAgencies, agency)}
                                     className="size-5 rounded-lg border-gray-300 dark:border-gray-700 text-primary focus:ring-primary bg-transparent"
                                   />
-                                  <span className="text-xs font-bold text-text-muted group-hover:text-text-main dark:group-hover:text-white transition-colors">{agency}</span>
+                                  <span className="text-sm font-medium text-text-main dark:text-gray-300">{agency}</span>
                                 </label>
                               ))}
                             </div>
                           </div>
                           <div>
-                            <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-4">{t('results.filter.amenities')}</h4>
+                            <h4 className="text-[11px] font-semibold uppercase text-text-muted tracking-[0.16em] mb-4">{t('results.filter.amenities')}</h4>
                             <div className="space-y-2">
                               {['wifi', 'ac', 'power', 'snack', 'tv'].map(amenity => (
                                 <label key={amenity} className="flex items-center gap-3 cursor-pointer group">
@@ -572,7 +775,7 @@ const SearchResultsPage: React.FC = () => {
                                     onChange={() => toggleFilter(selectedAmenities, setSelectedAmenities, amenity)}
                                     className="size-5 rounded-lg border-gray-300 dark:border-gray-700 text-primary focus:ring-primary bg-transparent"
                                   />
-                                  <span className="text-xs font-bold text-text-muted group-hover:text-text-main dark:group-hover:text-white transition-colors uppercase tracking-tight">
+                                  <span className="text-sm font-medium text-text-main dark:text-gray-300">
                                     {t(`amenity.${amenity}`)}
                                   </span>
                                 </label>
@@ -580,14 +783,17 @@ const SearchResultsPage: React.FC = () => {
                             </div>
                           </div>
                         </div>
-                        <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                        <div className="mt-8 pt-6 border-t border-ink-100 dark:border-white/10 flex items-center justify-between">
                            <button
                              onClick={resetFilters}
-                             className="text-[10px] font-black uppercase text-red-500 hover:underline"
+                             className="text-xs font-semibold tracking-tight text-red-500 hover:underline"
                            >
                              {t('results.filter.clear')}
                            </button>
-                           <button onClick={() => setIsFilterOpen(false)} className="px-6 py-2 bg-text-main dark:bg-white text-white dark:text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:opacity-90">
+                           <button
+                             onClick={() => setIsFilterOpen(false)}
+                             className="inline-flex items-center gap-1.5 px-5 py-2 rounded-full bg-text-main dark:bg-white text-white dark:text-text-main text-xs font-semibold tracking-tight shadow-subtle hover:shadow-card transition-all"
+                           >
                              {t('results.filter.apply')}
                            </button>
                         </div>
@@ -605,9 +811,55 @@ const SearchResultsPage: React.FC = () => {
                       ) : sortedTrips.length > 0 ? (
                         sortedTrips.map(trip => renderTripCard(trip))
                       ) : (
-                        <div className="text-center py-20 bg-gray-50 dark:bg-white/5 rounded-[2rem] border-2 border-dashed border-gray-100 dark:border-gray-800">
-                           <span className="material-symbols-outlined text-6xl text-gray-300 dark:text-gray-700 mb-4">search_off</span>
-                           <h3 className="text-lg font-black text-text-muted">Aucun trajet disponible</h3>
+                        <div className="bg-white dark:bg-white/[0.03] rounded-2xl border border-dashed border-ink-200 dark:border-white/10 p-8 md:p-10">
+                          <div className="text-center mb-6">
+                            <div className="inline-flex size-14 rounded-2xl bg-ink-50 dark:bg-white/5 items-center justify-center mb-4">
+                              <span className="material-symbols-outlined text-3xl text-text-muted">search_off</span>
+                            </div>
+                            <h3 className="font-display text-xl font-semibold text-text-main dark:text-white tracking-tightest mb-1">
+                              Aucun trajet ce jour-là
+                            </h3>
+                            <p className="text-sm text-text-muted leading-relaxed max-w-md mx-auto">
+                              {activeFilterCount > 0
+                                ? 'Essayez d\'élargir vos filtres, ou regardez les dates proches ci-dessous.'
+                                : 'Voici les dates proches où des trajets sont disponibles.'}
+                            </p>
+                          </div>
+
+                          {isLoadingNearby ? (
+                            <div className="flex justify-center py-4">
+                              <div className="size-5 rounded-full border-2 border-ink-200 border-t-text-main dark:border-white/15 dark:border-t-white animate-spin" />
+                            </div>
+                          ) : nearbyDates.length > 0 ? (
+                            <div>
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-muted text-center mb-3">
+                                Dates proches disponibles
+                              </div>
+                              <div className="flex flex-wrap justify-center gap-2">
+                                {nearbyDates.map(nd => (
+                                  <button
+                                    key={nd.date}
+                                    onClick={() => retrySearchWithDate(nd.date)}
+                                    className="group inline-flex flex-col items-start gap-0.5 rounded-xl border border-ink-200 dark:border-white/15 bg-white dark:bg-white/5 px-3.5 py-2 hover:border-text-main/40 hover:shadow-subtle transition-all"
+                                  >
+                                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted group-hover:text-text-main dark:group-hover:text-white">
+                                      {formatNearbyDate(nd.date)}
+                                    </span>
+                                    <span className="text-xs font-medium tracking-tight text-text-main dark:text-white tabular-nums">
+                                      {nd.count} trajet{nd.count > 1 ? 's' : ''}
+                                      {nd.minPrice !== null && (
+                                        <> · dès {nd.minPrice.toLocaleString()} FCFA</>
+                                      )}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-center text-text-muted">
+                              Aucun trajet trouvé dans les 3 jours alentours.
+                            </p>
+                          )}
                         </div>
                       )}
                    </div>
@@ -617,19 +869,22 @@ const SearchResultsPage: React.FC = () => {
         </div>
 
         {/* Right Side: Interactive Map */}
-        <div className={`flex-1 relative bg-gray-100 dark:bg-gray-900 z-0 transition-all ${mobileView === 'list' ? 'hidden lg:block' : 'block'}`}>
+        <div className={`flex-1 relative bg-ink-100 dark:bg-ink-900 z-0 transition-all ${mobileView === 'list' ? 'hidden lg:block' : 'block'}`}>
            <div ref={mapContainerRef} className="absolute inset-0 z-0" />
            <div className="absolute top-6 left-6 z-10 flex flex-col gap-3">
-              <div className="bg-white/90 dark:bg-black/90 backdrop-blur-md px-5 py-3 rounded-2xl shadow-2xl border border-white/20 flex items-center gap-3">
-                 <div className="size-3 rounded-full bg-primary animate-pulse"></div>
-                 <span className="text-[10px] font-black uppercase tracking-widest text-text-main dark:text-white">Réseau EasyTravel Live</span>
+              <div className="bg-white/90 dark:bg-surface-dark/90 backdrop-blur-xl px-4 py-2.5 rounded-full shadow-elevated border border-ink-100 dark:border-white/10 flex items-center gap-2.5">
+                 <span className="relative flex items-center justify-center">
+                   <span className="absolute size-2.5 rounded-full bg-primary/50 animate-ping" />
+                   <span className="relative size-2 rounded-full bg-primary" />
+                 </span>
+                 <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-main dark:text-white">Réseau EasyTravel · Live</span>
               </div>
            </div>
            {userCoords && (
              <div className="absolute bottom-6 right-6 lg:bottom-12 lg:right-12 z-10">
-                <button 
+                <button
                   onClick={() => mapInstanceRef.current.flyTo([userCoords.lat, userCoords.lng], 13)}
-                  className="size-12 bg-white dark:bg-surface-dark rounded-full shadow-2xl flex items-center justify-center text-primary border border-gray-100 dark:border-gray-800 active:scale-95 transition-transform"
+                  className="size-11 bg-white dark:bg-surface-dark rounded-full shadow-elevated flex items-center justify-center text-teal-accent dark:text-primary border border-ink-100 dark:border-white/10 hover:scale-105 active:scale-95 transition-transform"
                 >
                   <span className="material-symbols-outlined">my_location</span>
                 </button>
@@ -638,6 +893,191 @@ const SearchResultsPage: React.FC = () => {
         </div>
 
       </div>
+
+      {/* Compare bar (floating) */}
+      {compareTrips.length > 0 && currentStep !== 'summary' && (
+        <div className="fixed bottom-0 left-0 right-0 z-[90] px-4 pb-4 pointer-events-none">
+          <div className="pointer-events-auto mx-auto max-w-4xl bg-text-main dark:bg-white text-white dark:text-text-main rounded-full shadow-elevated border border-white/10 dark:border-ink-100 px-4 py-2.5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="material-symbols-outlined text-primary text-[18px]">compare_arrows</span>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/60 dark:text-text-muted hidden sm:inline">Comparer</span>
+              <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+                {compareTrips.map(trip => (
+                  <span
+                    key={trip.id}
+                    className="inline-flex items-center gap-1 rounded-full bg-white/10 dark:bg-ink-100 text-xs font-semibold tracking-tight px-2.5 py-1 whitespace-nowrap"
+                  >
+                    {trip.agencyName} · {trip.departureTime}
+                    <button
+                      type="button"
+                      onClick={() => toggleCompare(trip.id)}
+                      aria-label="Retirer"
+                      className="ml-0.5 size-4 rounded-full hover:bg-white/20 dark:hover:bg-ink-200 flex items-center justify-center"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">close</span>
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setCompareTripIds([])}
+                className="text-[11px] font-semibold tracking-tight text-white/60 dark:text-text-muted hover:text-white dark:hover:text-text-main transition-colors hidden sm:inline"
+              >
+                Vider
+              </button>
+              <button
+                type="button"
+                disabled={compareTrips.length < 2}
+                onClick={() => setShowCompare(true)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-primary text-text-main text-xs font-semibold tracking-tight px-4 py-2 shadow-subtle hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0"
+              >
+                Comparer {compareTrips.length}
+                <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Compare modal */}
+      {showCompare && compareTrips.length >= 2 && (
+        <div
+          className="fixed inset-0 z-[120] bg-ink-950/70 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-6 animate-fadeIn"
+          onClick={() => setShowCompare(false)}
+        >
+          <div
+            className="bg-white dark:bg-surface-dark w-full max-w-5xl max-h-[92vh] md:max-h-[88vh] rounded-t-3xl md:rounded-3xl shadow-elevated border border-ink-100 dark:border-white/10 flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 md:px-8 py-5 border-b border-ink-100 dark:border-white/10">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-accent dark:text-primary mb-1">Comparaison</div>
+                <h3 className="font-display text-xl md:text-2xl font-semibold tracking-tightest text-text-main dark:text-white">
+                  {compareTrips.length} trajets <span className="font-serif-italic italic font-normal text-teal-accent dark:text-primary">côte à côte</span>
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCompare(false)}
+                aria-label="Fermer"
+                className="size-9 rounded-full bg-ink-50 dark:bg-white/5 hover:bg-ink-100 dark:hover:bg-white/10 flex items-center justify-center transition-colors"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4 md:p-6">
+              <div className={`grid gap-4 ${compareTrips.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
+                {compareTrips.map(trip => {
+                  const cheapest = Math.min(...compareTrips.map(t => t.price));
+                  const fastest = Math.min(...compareTrips.map(t => t.durationMin ?? Infinity));
+                  const earliest = compareTrips.reduce((a, b) => (a.departureTime < b.departureTime ? a : b)).id;
+                  return (
+                    <div
+                      key={trip.id}
+                      className="relative rounded-2xl border border-ink-100 dark:border-white/10 bg-white dark:bg-white/[0.03] shadow-subtle p-5 flex flex-col gap-4"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleCompare(trip.id)}
+                        aria-label="Retirer de la comparaison"
+                        className="absolute top-3 right-3 size-7 rounded-full bg-ink-50 dark:bg-white/5 hover:bg-ink-100 dark:hover:bg-white/10 flex items-center justify-center text-text-muted"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">close</span>
+                      </button>
+
+                      <div className="flex items-center gap-3">
+                        <div className={`size-10 rounded-xl ${trip.color} flex items-center justify-center text-white shadow-subtle`}>
+                          <span className="material-symbols-outlined text-lg">{trip.agencyLogo}</span>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-display font-semibold tracking-tight text-text-main dark:text-white truncate">{trip.agencyName}</div>
+                          <div className="text-[11px] text-text-muted tracking-tight">{trip.date}</div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-1.5">Prix total</div>
+                        <div className="font-display text-2xl font-semibold tracking-tightest tabular-nums text-text-main dark:text-white inline-flex items-baseline gap-1.5">
+                          {trip.price.toLocaleString()}
+                          <span className="text-xs font-medium text-text-muted">FCFA</span>
+                          {trip.price === cheapest && (
+                            <span className="ml-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-teal-accent dark:text-primary">· Le + bas</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-1">Départ</div>
+                          <div className="font-display text-lg font-semibold tabular-nums text-text-main dark:text-white">{trip.departureTime}</div>
+                          <div className="text-[11px] text-text-muted truncate mt-0.5">{trip.departureLocation}</div>
+                          {trip.id === earliest && (
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-teal-accent dark:text-primary mt-0.5">Plus tôt</div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-1">Arrivée</div>
+                          <div className="font-display text-lg font-semibold tabular-nums text-text-main dark:text-white">{trip.arrivalTime}</div>
+                          <div className="text-[11px] text-text-muted truncate mt-0.5">{trip.arrivalLocation}</div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-1">Durée</div>
+                        <div className="font-display text-base font-semibold tabular-nums text-text-main dark:text-white inline-flex items-baseline gap-2">
+                          {trip.duration}
+                          {(trip.durationMin ?? Infinity) === fastest && (
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-teal-accent dark:text-primary">· Le + rapide</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-2">Services</div>
+                        {trip.amenities.length === 0 ? (
+                          <div className="text-xs text-text-muted">Aucun service renseigné</div>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {trip.amenities.map(a => (
+                              <span
+                                key={a}
+                                className="inline-flex items-center gap-1 rounded-full bg-ink-50 dark:bg-white/5 border border-ink-100 dark:border-white/10 px-2 py-0.5 text-[11px] font-medium text-text-main dark:text-white tracking-tight"
+                              >
+                                <span className="material-symbols-outlined text-[12px]">{getAmenityIcon(a)}</span>
+                                {t(`amenity.${a}`)}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-1">Places</div>
+                        <div className="text-sm font-medium text-text-main dark:text-white tabular-nums">
+                          {trip.seatsAvailable} / {trip.seatsTotal} disponibles
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => { handleTripSelect(trip); setShowCompare(false); }}
+                        className="mt-auto inline-flex items-center justify-center gap-1.5 w-full rounded-full bg-text-main dark:bg-white text-white dark:text-text-main px-5 py-2.5 text-xs font-semibold tracking-tight shadow-subtle hover:shadow-card hover:-translate-y-0.5 transition-all"
+                      >
+                        Choisir ce trajet
+                        <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

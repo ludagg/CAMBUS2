@@ -138,6 +138,10 @@ export async function POST(req: NextRequest) {
     requireRole(session, ['USER', 'SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENCY_ADMIN', 'STATION_MANAGER'])
     const body = bookingSchema.parse(await req.json())
 
+    if (body.paymentMethod === 'CASH' && session!.role === 'USER') {
+      return bad('Le paiement en espèces est uniquement disponible au guichet.', 403)
+    }
+
     const idempotencyKey = req.headers.get('idempotency-key')?.trim() || null
     if (idempotencyKey) {
       const existing = await prisma.bookingGroup.findUnique({
@@ -232,9 +236,11 @@ export async function POST(req: NextRequest) {
           })
         }
 
+        const isStaff = session!.role !== 'USER'
+        const isCounterSale = isStaff && body.paymentMethod === 'CASH'
         const group = await tx.bookingGroup.create({
           data: {
-            userId: session!.sub,
+            userId: isCounterSale ? null : session!.sub,
             tripType: retDep ? 'ROUND_TRIP' : 'ONE_WAY',
             contactEmail: body.contactEmail,
             contactPhone: body.contactPhone,
@@ -244,6 +250,8 @@ export async function POST(req: NextRequest) {
             status: initialStatus,
             idempotencyKey,
             expiresAt,
+            soldByUserId: isStaff ? session!.sub : null,
+            channel: isCounterSale ? 'COUNTER' : 'ONLINE',
           },
         })
 

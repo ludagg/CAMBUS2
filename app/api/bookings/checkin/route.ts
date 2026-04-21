@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
+import { boardBookingAndSyncGroup } from '@/lib/booking-invariants'
 
 const schema = z.object({
   qrCode: z.string().min(1),
@@ -31,10 +32,7 @@ export async function POST(req: NextRequest) {
     if (booking.status === 'BOARDED') return bad('Billet déjà validé.')
     if (booking.status !== 'CONFIRMED') return bad(`Statut invalide: ${booking.status}`)
 
-    await prisma.booking.update({
-      where: { id: booking.id },
-      data: { status: 'BOARDED' },
-    })
+    await boardBookingAndSyncGroup(booking.id)
 
     return NextResponse.json({
       data: {

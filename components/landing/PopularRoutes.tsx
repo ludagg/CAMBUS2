@@ -1,6 +1,8 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { useLanguage } from '../../contexts/LanguageContext';
+import SectionEyebrow from './SectionEyebrow';
 
 interface RouteItem {
   from: string;
@@ -31,6 +33,8 @@ const fmtDur = (m: number) => {
 
 const PopularRoutes: React.FC = () => {
   const { setSearchParams, navigateTo } = useNavigation();
+  const { t, language } = useLanguage();
+  const fmtXAFLocal = (n: number) => n.toLocaleString(language === 'en' ? 'en-US' : 'fr-FR') + ' XAF';
   const [routes, setRoutes] = useState<RouteItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -78,60 +82,75 @@ const PopularRoutes: React.FC = () => {
   };
 
   return (
-    <section className="py-20 md:py-24 px-6 md:px-10 bg-background-light dark:bg-surface-dark/50">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-end justify-between flex-wrap gap-4 mb-12">
-          <div>
-            <div className="inline-flex items-center gap-2 bg-primary/10 text-teal-accent dark:text-primary text-xs font-black uppercase tracking-widest px-4 py-2 rounded-full mb-4">
-              <span className="material-symbols-outlined text-sm">trending_up</span>
-              Trajets populaires
-            </div>
-            <h2 className="text-2xl md:text-4xl font-black text-text-main dark:text-white">
-              Les destinations les plus réservées
+    <section className="relative py-24 md:py-32 px-6 md:px-10 bg-background-light dark:bg-background-dark">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-14 md:mb-16">
+          <div className="max-w-2xl">
+            <SectionEyebrow align="left">{t('routes.eyebrow')}</SectionEyebrow>
+            <h2 className="mt-5 font-display text-3xl md:text-5xl font-semibold text-text-main dark:text-white tracking-tightest leading-[1.05]">
+              {t('routes.title')}
+              <br />
+              <span className="font-serif-italic text-teal-accent dark:text-primary font-normal italic">{t('routes.title.accent')}</span>
             </h2>
-            <p className="text-text-muted dark:text-gray-400 mt-2 max-w-2xl">
-              Des prix négociés sur les axes stratégiques du Cameroun, mis à jour en temps réel.
+            <p className="mt-5 text-text-muted dark:text-gray-400 leading-relaxed max-w-xl">
+              {t('routes.subtitle')}
             </p>
           </div>
+          <button
+            onClick={() => navigateTo('home')}
+            className="hidden md:inline-flex items-center gap-1.5 text-sm font-medium text-text-main dark:text-gray-200 hover:text-teal-accent dark:hover:text-primary transition-colors"
+          >
+            {t('routes.view_all')}
+            <span className="material-symbols-outlined text-base">arrow_forward</span>
+          </button>
         </div>
 
         {loading ? (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="aspect-[4/3] rounded-2xl bg-gray-100 dark:bg-gray-900 animate-pulse" />
+              <div key={i} className="aspect-[4/3] rounded-2xl bg-ink-100 dark:bg-ink-800 animate-pulse" />
             ))}
           </div>
         ) : routes.length === 0 ? (
-          <p className="text-center text-text-muted py-16">Aucun départ pour le moment. Revenez bientôt.</p>
+          <p className="text-center text-text-muted py-16">{t('routes.empty')}</p>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {routes.map((r, idx) => (
               <button
                 key={idx}
                 onClick={() => handleClick(r)}
-                className="group relative text-left overflow-hidden rounded-2xl aspect-[4/3] shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300"
+                className="group relative text-left overflow-hidden rounded-2xl aspect-[4/3] ring-1 ring-ink-100 dark:ring-white/10 hover:ring-primary/40 shadow-subtle hover:shadow-card transition-all duration-300"
               >
                 <div
-                  className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-110"
+                  className="absolute inset-0 bg-cover bg-center transition-transform duration-[1200ms] group-hover:scale-[1.06]"
                   style={{ backgroundImage: `url('${r.image}')` }}
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
-                <div className="absolute top-4 right-4 bg-white/10 backdrop-blur-md border border-white/30 rounded-full px-3 py-1 text-[11px] font-black text-white">
+                <div className="absolute inset-0 bg-gradient-to-t from-ink-950/90 via-ink-950/40 to-transparent" />
+
+                <div className="absolute top-4 left-4 inline-flex items-center gap-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20 px-2.5 py-1 text-[11px] font-medium text-white/90">
+                  <span className="material-symbols-outlined text-[14px]">schedule</span>
                   {fmtDur(r.durationMin)}
                 </div>
-                <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
-                  <div className="flex items-center gap-2 text-xs text-gray-300 font-bold mb-2">
-                    <span className="material-symbols-outlined text-sm">directions_bus</span>
-                    {r.dailyCount}+ départ{r.dailyCount > 1 ? 's' : ''} / jour
+
+                <div className="absolute inset-x-0 bottom-0 p-6 text-white">
+                  <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.16em] text-white/60 mb-3">
+                    <span className="material-symbols-outlined text-[14px]">directions_bus</span>
+                    {r.dailyCount}+ {t('routes.connections')}
                   </div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-2xl font-black">{r.from}</span>
-                    <span className="material-symbols-outlined text-primary">arrow_forward</span>
-                    <span className="text-2xl font-black">{r.to}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="font-display text-2xl md:text-3xl font-semibold tracking-tight">{r.from}</span>
+                    <span className="material-symbols-outlined text-primary text-xl">arrow_forward</span>
+                    <span className="font-display text-2xl md:text-3xl font-semibold tracking-tight">{r.to}</span>
                   </div>
-                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary text-text-main text-sm font-black">
-                    À partir de {fmtXAF(r.priceFromXAF)}
-                    <span className="material-symbols-outlined text-base">arrow_outward</span>
+                  <div className="mt-4 flex items-end justify-between">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-white/50">{t('routes.from')}</div>
+                      <div className="font-display text-lg font-semibold text-white mt-0.5">{fmtXAFLocal(r.priceFromXAF)}</div>
+                    </div>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-primary text-text-main px-3 py-1.5 text-xs font-semibold tracking-tight shadow-card group-hover:translate-x-0.5 transition-transform">
+                      {t('nav.book_now')}
+                      <span className="material-symbols-outlined text-sm">arrow_outward</span>
+                    </span>
                   </div>
                 </div>
               </button>

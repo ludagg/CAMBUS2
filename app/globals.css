@@ -2,6 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    --grid-color: rgba(12, 20, 16, 0.06);
+    --grid-color-dark: rgba(255, 255, 255, 0.05);
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    font-feature-settings: 'ss01', 'cv11';
+  }
+  h1, h2, h3, h4 {
+    font-family: '"Inter Tight"', Inter, system-ui, sans-serif;
+    letter-spacing: -0.02em;
+  }
+  .font-serif-italic {
+    font-family: '"Instrument Serif"', Georgia, serif;
+    font-style: italic;
+    font-weight: 400;
+  }
+}
+
+@layer components {
+  .bg-grid-subtle {
+    background-image:
+      linear-gradient(to right, var(--grid-color) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+  .dark .bg-grid-subtle {
+    background-image:
+      linear-gradient(to right, var(--grid-color-dark) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-color-dark) 1px, transparent 1px);
+  }
+  .mask-fade-b {
+    mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+  }
+  .mask-fade-x {
+    mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+  }
+}
+
 @keyframes slideDown {
   from { opacity: 0; transform: translateY(-10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -49,3 +95,9 @@
   50% { opacity: 0.6; }
 }
 .animate-pulse-soft { animation: pulse-soft 1.8s ease-in-out infinite; }
+
+@keyframes reveal {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-reveal { animation: reveal 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; }

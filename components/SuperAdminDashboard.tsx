@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
 import AdminModal from './AdminModal';
+import AnalyticsPanel from './AnalyticsPanel';
+import DepartureControlPanel from './DepartureControlPanel';
 
 interface Company {
   id: string;
@@ -49,7 +51,7 @@ interface Stats {
 
 const SuperAdminDashboard: React.FC = () => {
   const { user, logout } = useNavigation();
-  const [activeTab, setActiveTab] = useState<'overview' | 'companies' | 'agencies' | 'cities' | 'users'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'companies' | 'agencies' | 'cities' | 'users' | 'operations' | 'analytics'>('overview');
   const [companies, setCompanies] = useState<Company[]>([]);
   const [agencies, setAgencies] = useState<Agency[]>([]);
   const [cities, setCities] = useState<City[]>([]);
@@ -110,17 +112,28 @@ const SuperAdminDashboard: React.FC = () => {
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Tabs */}
         <div className="flex gap-2 overflow-x-auto pb-3 mb-6 border-b border-gray-200 dark:border-gray-800">
-          {(['overview', 'companies', 'agencies', 'cities', 'users'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-lg font-black text-sm capitalize whitespace-nowrap transition-colors ${
-                activeTab === tab ? 'bg-primary text-text-main' : 'text-text-muted hover:bg-gray-100 dark:hover:bg-gray-800'
-              }`}
-            >
-              {tab === 'overview' ? 'Vue d\'ensemble' : tab}
-            </button>
-          ))}
+          {(['overview', 'companies', 'agencies', 'cities', 'users', 'operations', 'analytics'] as const).map((tab) => {
+            const labels: Record<typeof tab, string> = {
+              overview: "Vue d'ensemble",
+              companies: 'Compagnies',
+              agencies: 'Agences',
+              cities: 'Villes',
+              users: 'Utilisateurs',
+              operations: 'Opérations',
+              analytics: 'Analytics',
+            };
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-2 rounded-lg font-black text-sm whitespace-nowrap transition-colors ${
+                  activeTab === tab ? 'bg-primary text-text-main' : 'text-text-muted hover:bg-gray-100 dark:hover:bg-gray-800'
+                }`}
+              >
+                {labels[tab]}
+              </button>
+            );
+          })}
         </div>
 
         {isLoading && <div className="text-center py-20"><span className="material-symbols-outlined animate-spin text-5xl text-primary">progress_activity</span></div>}
@@ -222,6 +235,9 @@ const SuperAdminDashboard: React.FC = () => {
             ))}
           </div>
         )}
+
+        {!isLoading && activeTab === 'operations' && <DepartureControlPanel />}
+        {!isLoading && activeTab === 'analytics' && <AnalyticsPanel />}
       </div>
 
       {companyModalOpen && (

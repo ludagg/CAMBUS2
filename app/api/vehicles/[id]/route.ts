@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
-import { handleError } from '@/lib/api'
+import { handleError, bad } from '@/lib/api'
 import { assertOwnsVehicle } from '@/lib/scoping'
+import { countActiveBookingsForVehicle } from '@/lib/booking-invariants'
+import { logAudit } from '@/lib/audit'
 
 const seatLayoutSchema = z
   .object({
@@ -45,13 +47,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getSession()
     requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENCY_ADMIN'])
     const { id } = await params
     await assertOwnsVehicle(session!, id)
+    const active = await countActiveBookingsForVehicle(id)
+    if (active > 0) {
+      return bad(
+        `Impossible de retirer ce véhicule: ${active} réservation(s) active(s) sur des départs à venir. Réassignez un autre véhicule d'abord.`,
+        409,
+      )
+    }
     await prisma.vehicle.update({ where: { id }, data: { status: 'INACTIVE' } })
+    await logAudit(
+      { action: 'vehicle.disable', entityType: 'Vehicle', entityId: id },
+      { session, req },
+    )
     return NextResponse.json({ data: { ok: true } })
   } catch (err) {
     return handleError(err)

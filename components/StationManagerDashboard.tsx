@@ -2,6 +2,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
+import CounterSalePanel from './CounterSalePanel';
+import DepartureControlPanel from './DepartureControlPanel';
+import AnalyticsPanel from './AnalyticsPanel';
+import QrScanner from './QrScanner';
 
 interface Manifest {
   id: string;
@@ -30,6 +34,8 @@ const StationManagerDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [qrInput, setQrInput] = useState('');
   const [lastCheckin, setLastCheckin] = useState<{ ok: boolean; message: string } | null>(null);
+  const [tab, setTab] = useState<'manifest' | 'counter' | 'operations' | 'analytics'>('manifest');
+  const [scanMode, setScanMode] = useState<'manual' | 'camera'>('manual');
 
   const fetchManifest = useCallback(async () => {
     setIsLoading(true);
@@ -86,21 +92,80 @@ const StationManagerDashboard: React.FC = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800 mb-6">
+          {(['manifest', 'counter', 'operations', 'analytics'] as const).map((t) => {
+            const labels: Record<typeof t, string> = {
+              manifest: 'Manifeste & check-in',
+              counter: 'Vente au guichet',
+              operations: 'Opérations',
+              analytics: 'Analytics',
+            };
+            return (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`px-4 py-2 font-black text-sm ${
+                  tab === t ? 'text-primary border-b-2 border-primary' : 'text-text-muted'
+                }`}
+              >
+                {labels[t]}
+              </button>
+            );
+          })}
+        </div>
+
+        {tab === 'counter' && <CounterSalePanel />}
+        {tab === 'operations' && <DepartureControlPanel />}
+        {tab === 'analytics' && <AnalyticsPanel />}
+
+        {tab === 'manifest' && (<>
         {/* Check-in */}
         <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-6 mb-6">
-          <h2 className="font-black text-text-main dark:text-white mb-3 flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary">qr_code_scanner</span> Validation de billet
-          </h2>
-          <div className="flex gap-2 flex-wrap">
-            <input
-              value={qrInput}
-              onChange={(e) => setQrInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') doCheckin(qrInput); }}
-              placeholder="Code QR / référence"
-              className="flex-1 min-w-64 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-2 font-mono text-sm bg-white dark:bg-background-dark text-text-main dark:text-white"
-            />
-            <button onClick={() => doCheckin(qrInput)} className="px-6 py-2 bg-primary text-text-main rounded-lg font-black text-sm">Valider</button>
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+            <h2 className="font-black text-text-main dark:text-white flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary">qr_code_scanner</span> Validation de billet
+            </h2>
+            <div className="flex items-center gap-1 p-1 rounded-full bg-gray-100 dark:bg-gray-800 text-xs font-black">
+              <button
+                type="button"
+                onClick={() => setScanMode('camera')}
+                className={`px-3 py-1.5 rounded-full flex items-center gap-1 transition-colors ${
+                  scanMode === 'camera' ? 'bg-primary text-text-main' : 'text-text-muted hover:text-text-main'
+                }`}
+                aria-pressed={scanMode === 'camera'}
+              >
+                <span className="material-symbols-outlined text-[16px]">videocam</span>
+                Caméra
+              </button>
+              <button
+                type="button"
+                onClick={() => setScanMode('manual')}
+                className={`px-3 py-1.5 rounded-full flex items-center gap-1 transition-colors ${
+                  scanMode === 'manual' ? 'bg-primary text-text-main' : 'text-text-muted hover:text-text-main'
+                }`}
+                aria-pressed={scanMode === 'manual'}
+              >
+                <span className="material-symbols-outlined text-[16px]">keyboard</span>
+                Saisie
+              </button>
+            </div>
           </div>
+
+          {scanMode === 'camera' ? (
+            <QrScanner onDecode={(value) => doCheckin(value)} />
+          ) : (
+            <div className="flex gap-2 flex-wrap">
+              <input
+                value={qrInput}
+                onChange={(e) => setQrInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') doCheckin(qrInput); }}
+                placeholder="Code QR / référence"
+                className="flex-1 min-w-64 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-2 font-mono text-sm bg-white dark:bg-background-dark text-text-main dark:text-white"
+              />
+              <button onClick={() => doCheckin(qrInput)} className="px-6 py-2 bg-primary text-text-main rounded-lg font-black text-sm">Valider</button>
+            </div>
+          )}
+
           {lastCheckin && (
             <div className={`mt-3 text-sm font-black ${lastCheckin.ok ? 'text-green-600' : 'text-red-600'}`}>
               {lastCheckin.ok ? '✔ ' : '✖ '}{lastCheckin.message}
@@ -123,7 +188,19 @@ const StationManagerDashboard: React.FC = () => {
                       <div className="text-xs text-text-muted">{d.company}</div>
                     </div>
                   </div>
-                  <div className="text-xs font-black text-text-muted">{d.seatsTotal - d.seatsAvailable}/{d.seatsTotal} billets</div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-xs font-black text-text-muted">{d.seatsTotal - d.seatsAvailable}/{d.seatsTotal} billets</div>
+                    <a
+                      href={`/admin/manifest/${d.id}/print`}
+                      target="_blank"
+                      rel="noopener"
+                      className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-[10px] font-black flex items-center gap-1 hover:bg-gray-200"
+                      aria-label="Manifeste imprimable"
+                    >
+                      <span className="material-symbols-outlined text-sm">print</span>
+                      Manifeste
+                    </a>
+                  </div>
                 </div>
                 <div className="p-4 space-y-1">
                   {d.bookings.length === 0 && <div className="text-xs text-text-muted">Aucune réservation.</div>}
@@ -145,6 +222,7 @@ const StationManagerDashboard: React.FC = () => {
             {manifest.length === 0 && <p className="text-text-muted text-center py-10">Aucun départ ce jour.</p>}
           </div>
         )}
+        </>)}
       </div>
     </div>
   );

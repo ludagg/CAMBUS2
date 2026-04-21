@@ -11,6 +11,7 @@ export type Page =
   | 'login'
   | 'signup'
   | 'bookings'
+  | 'account'
   | 'super_admin'
   | 'company_admin'
   | 'agency_admin'
@@ -22,6 +23,7 @@ const pageToPath: Record<Page, string> = {
   results: '/results',
   checkout: '/checkout',
   bookings: '/bookings',
+  account: '/account',
   login: '/login',
   signup: '/signup',
   super_admin: '/admin/super',
@@ -36,6 +38,7 @@ const pathToPage: Record<string, Page> = {
   '/results': 'results',
   '/checkout': 'checkout',
   '/bookings': 'bookings',
+  '/account': 'account',
   '/login': 'login',
   '/signup': 'signup',
   '/admin/super': 'super_admin',
@@ -117,6 +120,7 @@ interface NavigationContextType {
   login: (email: string, password: string) => Promise<void>;
   signup: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const NavigationContext = createContext<NavigationContextType | undefined>(undefined);
@@ -147,20 +151,22 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
     [router],
   );
 
-  useEffect(() => {
-    const fetchMe = async () => {
-      try {
-        const res = await fetch('/api/auth/me', { cache: 'no-store' });
-        const json = await res.json();
-        setUser(json.data);
-      } catch {
-        setUser(null);
-      } finally {
-        setAuthLoading(false);
-      }
-    };
-    fetchMe();
+  const refreshUser = useCallback(async () => {
+    try {
+      const res = await fetch('/api/auth/me', { cache: 'no-store' });
+      const json = await res.json();
+      setUser(json.data ?? null);
+    } catch {
+      setUser(null);
+    }
   }, []);
+
+  useEffect(() => {
+    (async () => {
+      await refreshUser();
+      setAuthLoading(false);
+    })();
+  }, [refreshUser]);
 
   const login = async (email: string, password: string) => {
     const res = await fetch('/api/auth/login', {
@@ -213,6 +219,7 @@ export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children
         login,
         signup,
         logout,
+        refreshUser,
       }}
     >
       {children}

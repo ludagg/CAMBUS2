@@ -1,11 +1,6 @@
 import { prisma } from './prisma'
-import {
-  getEmailProvider,
-  getSmsProvider,
-  renderBookingEmail,
-  renderBookingSms,
-  toE164Cameroon,
-} from './notifications'
+import { sendBookingNotifications } from './send-booking-notifications'
+import { promoteWaitlistForDeparture } from './waitlist'
 
 /**
  * Confirm a payment: flip payment + group + bookings to CONFIRMED and trigger
@@ -43,6 +38,8 @@ export async function confirmPayment(paymentId: string): Promise<void> {
     console.error('[notifications] failed for group', payment.groupId, err)
   })
 }
+
+export { sendBookingNotifications }
 
 /**
  * Fail a payment: flip payment + group + bookings to CANCELLED/FAILED,
@@ -89,81 +86,16 @@ export async function failPayment(paymentId: string, reason: string): Promise<vo
       }),
     ),
   ])
-}
 
-async function sendBookingNotifications(groupId: string): Promise<void> {
-  const group = await prisma.bookingGroup.findUnique({
-    where: { id: groupId },
-    include: {
-      bookings: {
-        include: {
-          departure: {
-            include: {
-              route: {
-                include: {
-                  originCity: { select: { name: true } },
-                  destinationCity: { select: { name: true } },
-                },
-              },
-              originStation: { select: { name: true } },
-              destStation: { select: { name: true } },
-            },
-          },
-        },
-      },
-    },
-  })
-  if (!group || group.notifiedAt) return
-
-  const publicBaseUrl = process.env.PUBLIC_BASE_URL || 'https://easytravel.cm'
-  const email = renderBookingEmail({
-    contactName: group.contactName || 'Client Easy Travel',
-    currency: group.currency,
-    totalCents: group.totalCents,
-    publicBaseUrl,
-    bookings: group.bookings.map((b) => ({
-      from: b.departure.route.originCity.name,
-      to: b.departure.route.destinationCity.name,
-      date: b.departure.departureAt.toISOString().split('T')[0],
-      departureTime: b.departure.departureAt.toLocaleTimeString('fr-FR', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      }),
-      seats: b.seats,
-      qrCode: b.qrCode,
-      leg: b.leg,
-    })),
-  })
-
-  await Promise.allSettled([
-    getEmailProvider().send({
-      to: group.contactEmail,
-      subject: email.subject,
-      html: email.html,
-      text: email.text,
-    }),
-    ...group.bookings.map((b) =>
-      getSmsProvider().send({
-        to: toE164Cameroon(group.contactPhone),
-        body: renderBookingSms({
-          fromCity: b.departure.route.originCity.name,
-          toCity: b.departure.route.destinationCity.name,
-          departureAt: b.departure.departureAt.toLocaleString('fr-FR', {
-            day: '2-digit',
-            month: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-          seats: b.seats,
-          publicBaseUrl,
-        }),
-      }),
-    ),
-  ])
-
-  await prisma.bookingGroup.update({
-    where: { id: groupId },
-    data: { notifiedAt: new Date() },
-  })
+  // Best-effort waitlist promotion — failures don't roll back the cancellation.
+  const seen = new Set<string>()
+  for (const b of payment.group.bookings) {
+    if (seen.has(b.departureId)) continue
+    seen.add(b.departureId)
+    try {
+      await promoteWaitlistForDeparture(b.departureId)
+    } catch (err) {
+      console.error('[fail-payment] waitlist promotion failed', b.departureId, err)
+    }
+  }
 }
