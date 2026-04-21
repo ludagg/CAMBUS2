@@ -118,6 +118,34 @@ export async function POST(req: NextRequest) {
       if (retDep.seatsAvailable < body.passengers.length) return bad('Places insuffisantes pour le retour.')
     }
 
+    // Validate selected seats against already booked ones (no double booking)
+    const outSeats = body.outboundSeats ?? []
+    const retSeats = body.returnSeats ?? []
+    if (outSeats.length > 0 && new Set(outSeats).size !== outSeats.length) {
+      return bad('Sièges aller en doublon.')
+    }
+    if (retSeats.length > 0 && new Set(retSeats).size !== retSeats.length) {
+      return bad('Sièges retour en doublon.')
+    }
+    if (outSeats.length > 0) {
+      const existing = await prisma.booking.findMany({
+        where: { departureId: outDep.id, status: { in: ['PENDING', 'CONFIRMED', 'BOARDED'] } },
+        select: { seats: true },
+      })
+      const taken = new Set(existing.flatMap((b) => b.seats))
+      const conflict = outSeats.find((s) => taken.has(s))
+      if (conflict) return bad(`Siège aller ${conflict} déjà réservé, veuillez en choisir un autre.`)
+    }
+    if (retDep && retSeats.length > 0) {
+      const existing = await prisma.booking.findMany({
+        where: { departureId: retDep.id, status: { in: ['PENDING', 'CONFIRMED', 'BOARDED'] } },
+        select: { seats: true },
+      })
+      const taken = new Set(existing.flatMap((b) => b.seats))
+      const conflict = retSeats.find((s) => taken.has(s))
+      if (conflict) return bad(`Siège retour ${conflict} déjà réservé, veuillez en choisir un autre.`)
+    }
+
     const outPrice = outDep.priceCents * body.passengers.length
     const retPrice = retDep ? retDep.priceCents * body.passengers.length : 0
     const totalCents = outPrice + retPrice

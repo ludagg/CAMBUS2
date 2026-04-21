@@ -155,6 +155,7 @@ model Vehicle {
   model      String
   capacity   Int
   amenities  String[]    @default([])
+  seatLayout Json?
   status     Status      @default(ACTIVE)
   agency     Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   departures Departure[]

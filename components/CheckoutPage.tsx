@@ -2,8 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
-
-const SEAT_FEE = 1000; // Extra cost per seat selection
+import SeatMap from './SeatMap';
 
 type PaymentStatusResponse = {
   status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
@@ -46,9 +45,7 @@ const CheckoutPage: React.FC = () => {
   // Seat Selection State
   const [outboundSeats, setOutboundSeats] = useState<string[]>([]);
   const [returnSeats, setReturnSeats] = useState<string[]>([]);
-  const [isSeatModalOpen, setIsSeatModalOpen] = useState(false);
-  const [seatSelectionContext, setSeatSelectionContext] = useState<'outbound' | 'return'>('outbound');
-  
+
   // Total passengers (assuming children also need seats)
   const totalSeatsNeeded = bookingDetails ? bookingDetails.passengers.adults + bookingDetails.passengers.children : 1;
 
@@ -62,28 +59,6 @@ const CheckoutPage: React.FC = () => {
     const newInfo = [...passengersInfo];
     newInfo[index] = { ...newInfo[index], [field]: value };
     setPassengersInfo(newInfo);
-  };
-
-  // Seat Modal Logic
-  const openSeatModal = (context: 'outbound' | 'return') => {
-    setSeatSelectionContext(context);
-    setIsSeatModalOpen(true);
-  };
-
-  const toggleSeat = (seatId: string) => {
-    const currentSeats = seatSelectionContext === 'outbound' ? outboundSeats : returnSeats;
-    const setSeats = seatSelectionContext === 'outbound' ? setOutboundSeats : setReturnSeats;
-
-    if (currentSeats.includes(seatId)) {
-      setSeats(currentSeats.filter(id => id !== seatId));
-    } else {
-      if (currentSeats.length < totalSeatsNeeded) {
-        setSeats([...currentSeats, seatId]);
-      } else {
-        // Optional: Replace last selection or show warning.
-        // For UX, let's just not add more than limit.
-      }
-    }
   };
 
   const handlePayment = async (e: React.FormEvent) => {
@@ -189,81 +164,9 @@ const CheckoutPage: React.FC = () => {
   };
 
   const calculateTotal = () => {
-    const seatFees = (outboundSeats.length + returnSeats.length) * SEAT_FEE;
-    return bookingDetails.totalPrice + seatFees;
+    return bookingDetails.totalPrice;
   };
 
-  // Mock Seat Layout Generator
-  const renderSeatMap = () => {
-    // Generate 10 rows, 4 cols (2-2 layout)
-    // Some seats randomly occupied
-    const rows = 10;
-    const currentSelection = seatSelectionContext === 'outbound' ? outboundSeats : returnSeats;
-    
-    // We use a deterministic random based on context so occupied seats stay same
-    const isTaken = (r: number, c: number) => {
-       const seed = (r * 10 + c) * (seatSelectionContext === 'outbound' ? 2 : 3);
-       return (seed % 7) === 0; // Approx 15% occupancy
-    };
-
-    let grid = [];
-    for (let r = 1; r <= rows; r++) {
-      let rowCells = [];
-      // Left side (A, B)
-      ['A', 'B'].forEach(col => {
-        const seatId = `${r}${col}`;
-        const taken = isTaken(r, col.charCodeAt(0));
-        const selected = currentSelection.includes(seatId);
-        
-        rowCells.push(
-          <button
-            key={seatId}
-            disabled={taken}
-            onClick={() => toggleSeat(seatId)}
-            className={`size-10 rounded-lg flex items-center justify-center font-bold text-xs transition-all border-b-4 active:border-b-0 active:translate-y-1 ${
-               taken 
-               ? 'bg-red-100 text-red-400 border-red-200 cursor-not-allowed'
-               : selected
-                 ? 'bg-primary text-text-main border-green-600 shadow-lg scale-105'
-                 : 'bg-gray-100 dark:bg-gray-700 text-gray-500 border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'
-            }`}
-          >
-             {taken ? <span className="material-symbols-outlined text-lg">close</span> : seatId}
-          </button>
-        );
-      });
-
-      // Aisle
-      rowCells.push(<div key={`aisle-${r}`} className="w-8 text-center text-gray-300 text-xs flex items-center justify-center">{r}</div>);
-
-      // Right side (C, D)
-      ['C', 'D'].forEach(col => {
-        const seatId = `${r}${col}`;
-        const taken = isTaken(r, col.charCodeAt(0));
-        const selected = currentSelection.includes(seatId);
-
-        rowCells.push(
-          <button
-            key={seatId}
-            disabled={taken}
-            onClick={() => toggleSeat(seatId)}
-            className={`size-10 rounded-lg flex items-center justify-center font-bold text-xs transition-all border-b-4 active:border-b-0 active:translate-y-1 ${
-               taken 
-               ? 'bg-red-100 text-red-400 border-red-200 cursor-not-allowed'
-               : selected
-                 ? 'bg-primary text-text-main border-green-600 shadow-lg scale-105'
-                 : 'bg-gray-100 dark:bg-gray-700 text-gray-500 border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'
-            }`}
-          >
-             {taken ? <span className="material-symbols-outlined text-lg">close</span> : seatId}
-          </button>
-        );
-      });
-
-      grid.push(<div key={r} className="flex gap-2 mb-2 justify-center">{rowCells}</div>);
-    }
-    return grid;
-  };
 
   // FAILED PAYMENT VIEW
   if (paymentStatus?.status === 'FAILED') {
@@ -425,53 +328,24 @@ const CheckoutPage: React.FC = () => {
                </div>
             </div>
 
-            {/* Seat Selection */}
-            <div className="bg-white dark:bg-surface-dark rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
-               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-                  <div>
-                    <div className="flex items-center gap-2 text-text-main dark:text-white font-bold text-lg">
-                        <span className="material-symbols-outlined text-primary">event_seat</span>
-                        {t('checkout.seats.title')}
-                    </div>
-                    <p className="text-sm text-text-muted">{t('checkout.seats.desc')}</p>
-                  </div>
-                  <div className="text-right">
-                     <span className="block text-xs text-text-muted uppercase font-bold">{t('checkout.seats.price')}</span>
-                     <span className="text-primary font-black text-lg">+{SEAT_FEE} FCFA</span>
-                  </div>
-               </div>
-
-               <div className="flex gap-4">
-                   <button 
-                     type="button"
-                     onClick={() => openSeatModal('outbound')}
-                     className="flex-1 py-3 px-4 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl hover:border-primary hover:bg-primary/5 transition-all flex items-center justify-between group"
-                   >
-                      <div className="text-left">
-                          <div className="text-xs text-text-muted font-bold uppercase mb-1">{t('checkout.seats.select_outbound')}</div>
-                          <div className="font-bold text-text-main dark:text-white">
-                              {outboundSeats.length > 0 ? outboundSeats.join(', ') : `${outboundSeats.length}/${totalSeatsNeeded} selected`}
-                          </div>
-                      </div>
-                      <span className="material-symbols-outlined text-gray-400 group-hover:text-primary">arrow_forward_ios</span>
-                   </button>
-                   
-                   {bookingDetails.returnTrip && (
-                       <button 
-                        type="button"
-                        onClick={() => openSeatModal('return')}
-                        className="flex-1 py-3 px-4 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl hover:border-primary hover:bg-primary/5 transition-all flex items-center justify-between group"
-                        >
-                        <div className="text-left">
-                            <div className="text-xs text-text-muted font-bold uppercase mb-1">{t('checkout.seats.select_return')}</div>
-                            <div className="font-bold text-text-main dark:text-white">
-                                {returnSeats.length > 0 ? returnSeats.join(', ') : `${returnSeats.length}/${totalSeatsNeeded} selected`}
-                            </div>
-                        </div>
-                        <span className="material-symbols-outlined text-gray-400 group-hover:text-primary">arrow_forward_ios</span>
-                        </button>
-                   )}
-               </div>
+            {/* Visual Seat Selection */}
+            <div className="space-y-4">
+              <SeatMap
+                departureId={String(bookingDetails.outbound.id)}
+                totalSeatsNeeded={totalSeatsNeeded}
+                selectedSeats={outboundSeats}
+                onChange={setOutboundSeats}
+                label="Sièges — Aller"
+              />
+              {bookingDetails.returnTrip && (
+                <SeatMap
+                  departureId={String(bookingDetails.returnTrip.id)}
+                  totalSeatsNeeded={totalSeatsNeeded}
+                  selectedSeats={returnSeats}
+                  onChange={setReturnSeats}
+                  label="Sièges — Retour"
+                />
+              )}
             </div>
 
             {/* Payment Method */}
@@ -615,8 +489,8 @@ const CheckoutPage: React.FC = () => {
                    </div>
                    {(outboundSeats.length > 0 || returnSeats.length > 0) && (
                       <div className="flex justify-between items-center text-sm text-primary">
-                          <span>{t('checkout.summary.extras')}</span>
-                          <span className="font-medium">+{(outboundSeats.length + returnSeats.length) * SEAT_FEE} FCFA</span>
+                          <span>Sièges</span>
+                          <span className="font-medium">{[...outboundSeats, ...returnSeats].join(" · ")}</span>
                       </div>
                    )}
                    
@@ -632,61 +506,6 @@ const CheckoutPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Seat Selection Modal */}
-      {isSeatModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white dark:bg-surface-dark w-full max-w-lg rounded-2xl p-6 shadow-2xl border border-gray-100 dark:border-gray-800 max-h-[90vh] overflow-y-auto flex flex-col">
-             <div className="flex items-center justify-between mb-4 border-b border-gray-100 dark:border-gray-700 pb-2">
-                <h3 className="text-xl font-bold text-text-main dark:text-white">{t('checkout.seats.modal_title')}</h3>
-                <button onClick={() => setIsSeatModalOpen(false)} className="size-8 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center">
-                   <span className="material-symbols-outlined">close</span>
-                </button>
-             </div>
-             
-             {/* Legend */}
-             <div className="flex justify-center gap-6 mb-6 text-xs text-text-muted">
-                <div className="flex items-center gap-1">
-                   <div className="size-4 rounded bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600"></div>
-                   {t('checkout.seats.legend.available')}
-                </div>
-                <div className="flex items-center gap-1">
-                   <div className="size-4 rounded bg-red-100 border border-red-200 flex items-center justify-center"><span className="material-symbols-outlined text-[10px] text-red-400">close</span></div>
-                   {t('checkout.seats.legend.taken')}
-                </div>
-                <div className="flex items-center gap-1">
-                   <div className="size-4 rounded bg-primary border border-green-600"></div>
-                   {t('checkout.seats.legend.selected')}
-                </div>
-             </div>
-
-             {/* Bus Front */}
-             <div className="mb-4 bg-gray-50 dark:bg-[#102216] rounded-lg p-2 flex justify-between items-center text-xs text-text-muted uppercase font-bold tracking-wider">
-                 <span>{t('checkout.seats.front')}</span>
-                 <div className="flex flex-col items-center">
-                    <span className="material-symbols-outlined text-xl">steering_wheel</span>
-                    {t('checkout.seats.driver')}
-                 </div>
-             </div>
-
-             {/* Grid */}
-             <div className="bg-white dark:bg-surface-dark border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-4 mb-6">
-                {renderSeatMap()}
-             </div>
-
-             <div className="flex items-center justify-between gap-4 mt-auto">
-                 <div className="text-sm">
-                    <div className="text-text-muted">Selected: <span className="font-bold text-text-main dark:text-white">{(seatSelectionContext === 'outbound' ? outboundSeats : returnSeats).length}</span> / {totalSeatsNeeded}</div>
-                 </div>
-                 <button 
-                   onClick={() => setIsSeatModalOpen(false)}
-                   className="px-6 py-2 bg-primary text-text-main font-bold rounded-lg hover:bg-[#0fd651]"
-                 >
-                    {t('checkout.seats.confirm')}
-                 </button>
-             </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );
