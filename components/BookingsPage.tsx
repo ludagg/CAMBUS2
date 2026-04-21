@@ -45,6 +45,16 @@ const BookingsPage: React.FC = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [ticketLeg, setTicketLeg] = useState<BookingLeg | null>(null);
+  const [ticketGroupId, setTicketGroupId] = useState<string | null>(null);
+
+  const openTicket = (group: Booking, leg: BookingLeg) => {
+    setTicketGroupId(group.id);
+    setTicketLeg(leg);
+  };
+  const closeTicket = () => {
+    setTicketLeg(null);
+    setTicketGroupId(null);
+  };
   const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
@@ -181,7 +191,7 @@ const BookingsPage: React.FC = () => {
                     {group.bookings.map((leg) => (
                       <button
                         key={leg.id}
-                        onClick={() => setTicketLeg(leg)}
+                        onClick={() => openTicket(group, leg)}
                         className="text-left border border-ink-100 dark:border-white/10 rounded-2xl p-4 hover:border-text-main/40 dark:hover:border-white/25 hover:shadow-subtle transition-all group bg-white dark:bg-white/[0.02]"
                       >
                         <div className="flex items-center justify-between mb-2">
@@ -227,7 +237,7 @@ const BookingsPage: React.FC = () => {
                         </button>
                       )}
                       {group.status === 'CONFIRMED' && group.bookings[0] && (
-                        <button onClick={() => setTicketLeg(group.bookings[0])} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-text-main dark:bg-white text-white dark:text-text-main text-sm font-semibold tracking-tight shadow-subtle hover:shadow-card hover:-translate-y-0.5 transition-all">
+                        <button onClick={() => openTicket(group, group.bookings[0])} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-text-main dark:bg-white text-white dark:text-text-main text-sm font-semibold tracking-tight shadow-subtle hover:shadow-card hover:-translate-y-0.5 transition-all">
                           <span className="material-symbols-outlined text-[18px]">qr_code_2</span>
                           {t('bookings.view')}
                         </button>
@@ -255,7 +265,7 @@ const BookingsPage: React.FC = () => {
         </div>
       </div>
 
-      <TicketModal leg={ticketLeg} onClose={() => setTicketLeg(null)} />
+      <TicketModal leg={ticketLeg} groupId={ticketGroupId} onClose={closeTicket} />
 
       {cancelSuccess && (
         <div

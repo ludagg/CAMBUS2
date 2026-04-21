@@ -393,6 +393,21 @@ const fr: Record<string, string> = {
   'bookings.status.pending': 'En attente',
   'bookings.status.boarded': 'Embarqué',
 
+  // Ticket modal / PDF / resend
+  'ticket.brand': 'Billet Easy Travel',
+  'ticket.date': 'Date',
+  'ticket.seats': 'Sièges',
+  'ticket.passengers': 'Passager(s)',
+  'ticket.scan_at_boarding': "Scan à l'embarquement",
+  'ticket.download_pdf': 'Télécharger PDF',
+  'ticket.pdf.error': "Impossible de générer le PDF. Réessayez.",
+  'ticket.resend.email': 'Renvoyer par email',
+  'ticket.resend.sms': 'Renvoyer par SMS',
+  'ticket.resend.email.sent': 'Billet renvoyé par email ✓',
+  'ticket.resend.sms.sent': 'Billet renvoyé par SMS ✓',
+  'checkout.outbound': 'Aller',
+  'checkout.return': 'Retour',
+
   // Admin (kept short; not touching admin UI in this pass)
   'admin.dashboard': 'Tableau de bord',
   'admin.logout': 'Déconnexion',
@@ -843,6 +858,21 @@ const en: Record<string, string> = {
   'bookings.status.cancelled': 'Cancelled',
   'bookings.status.pending': 'Pending',
   'bookings.status.boarded': 'Boarded',
+
+  // Ticket modal / PDF / resend
+  'ticket.brand': 'Easy Travel ticket',
+  'ticket.date': 'Date',
+  'ticket.seats': 'Seats',
+  'ticket.passengers': 'Passenger(s)',
+  'ticket.scan_at_boarding': 'Scan at boarding',
+  'ticket.download_pdf': 'Download PDF',
+  'ticket.pdf.error': 'Unable to generate the PDF. Please try again.',
+  'ticket.resend.email': 'Resend by email',
+  'ticket.resend.sms': 'Resend by SMS',
+  'ticket.resend.email.sent': 'Ticket resent by email ✓',
+  'ticket.resend.sms.sent': 'Ticket resent by SMS ✓',
+  'checkout.outbound': 'Outbound',
+  'checkout.return': 'Return',
 
   // Admin
   'admin.dashboard': 'Dashboard',
