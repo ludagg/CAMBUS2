@@ -24,11 +24,11 @@ const CheckoutPage: React.FC = () => {
   const [paymentGroupId, setPaymentGroupId] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatusResponse | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
-  const [idempotencyKey] = useState(() =>
+  const makeIdempotencyKey = () =>
     typeof crypto !== 'undefined' && 'randomUUID' in crypto
       ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  );
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const [idempotencyKey, setIdempotencyKey] = useState(makeIdempotencyKey);
 
   // Redirect if not logged in
   useEffect(() => {
@@ -118,12 +118,18 @@ const CheckoutPage: React.FC = () => {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Impossible de finaliser la réservation.');
 
+      const status = json.data?.status;
       if (json.data?.requiresConfirmation) {
         setPaymentId(json.data.paymentId);
         setPaymentGroupId(json.data.groupId);
         setPaymentStatus({ status: 'PENDING', provider: momoProvider === 'MOMO' ? 'MTN Mobile Money' : 'Orange Money', phoneNumber: momoPhone });
-      } else {
+      } else if (status === 'FAILED' || status === 'CANCELLED') {
+        setPaymentError(json.data?.failureReason || 'Paiement précédent échoué. Veuillez recommencer.');
+        setIdempotencyKey(makeIdempotencyKey());
+      } else if (status === 'SUCCEEDED' || status === 'CONFIRMED' || !status) {
         setIsSuccess(true);
+      } else {
+        setPaymentError(`Statut de paiement inattendu: ${status}`);
       }
     } catch (error: unknown) {
       console.error('Error saving booking:', error);
@@ -160,6 +166,7 @@ const CheckoutPage: React.FC = () => {
     setPaymentStatus(null);
     setPaymentError(null);
     setIsProcessing(false);
+    setIdempotencyKey(makeIdempotencyKey());
   };
 
   const formatDate = (dateString: string) => {
