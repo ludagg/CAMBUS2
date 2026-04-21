@@ -4,6 +4,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
 import AdminModal from './AdminModal';
 import { Field, inputCls } from './SuperAdminDashboard';
+import SeatLayoutEditor from './SeatLayoutEditor';
+import type { SeatLayout } from '../lib/seat-layout';
 
 interface Company {
   id: string;
@@ -45,6 +47,7 @@ interface Vehicle {
   capacity: number;
   amenities: string[];
   status?: string;
+  seatLayout?: SeatLayout | null;
 }
 
 const CompanyAdminDashboard: React.FC = () => {
@@ -59,6 +62,7 @@ const CompanyAdminDashboard: React.FC = () => {
   const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
   const [selectedAgencyId, setSelectedAgencyId] = useState<string>('');
   const [agencyVehicles, setAgencyVehicles] = useState<Vehicle[]>([]);
+  const [layoutVehicle, setLayoutVehicle] = useState<Vehicle | null>(null);
 
   const loadCompanies = useCallback(async () => {
     setIsLoading(true);
@@ -225,14 +229,29 @@ const CompanyAdminDashboard: React.FC = () => {
                 <div className="grid md:grid-cols-2 gap-3">
                   {agencyVehicles.map((v) => (
                     <div key={v.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-4 flex justify-between gap-3">
-                      <div>
+                      <div className="min-w-0">
                         <div className="font-black text-text-main dark:text-white">{v.plate}</div>
                         <div className="text-xs text-text-muted">{v.model} • {v.capacity} places</div>
-                        {v.amenities.length > 0 && <div className="flex flex-wrap gap-1 mt-2">{v.amenities.map((a) => <span key={a} className="text-[10px] font-black px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-text-muted rounded-full uppercase">{a}</span>)}</div>}
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${v.seatLayout ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 dark:bg-gray-800 text-text-muted'}`}>
+                            {v.seatLayout ? `Plan ${v.seatLayout.label ?? 'personnalisé'}` : 'Plan auto'}
+                          </span>
+                          {v.amenities.map((a) => <span key={a} className="text-[10px] font-black px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-text-muted rounded-full uppercase">{a}</span>)}
+                        </div>
                       </div>
-                      <button onClick={() => deleteVehicle(v.id)} className="text-red-600 hover:text-red-800 p-2" aria-label="Supprimer">
-                        <span className="material-symbols-outlined text-[20px]">delete</span>
-                      </button>
+                      <div className="flex flex-col items-end gap-1">
+                        <button
+                          onClick={() => setLayoutVehicle(v)}
+                          className="text-primary hover:bg-primary/10 p-2 rounded-lg"
+                          aria-label="Configurer le plan"
+                          title="Configurer le plan de sièges"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">event_seat</span>
+                        </button>
+                        <button onClick={() => deleteVehicle(v.id)} className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg" aria-label="Supprimer">
+                          <span className="material-symbols-outlined text-[20px]">delete</span>
+                        </button>
+                      </div>
                     </div>
                   ))}
                   {agencyVehicles.length === 0 && <p className="text-text-muted col-span-2 text-center py-10">Aucun véhicule.</p>}
@@ -259,6 +278,18 @@ const CompanyAdminDashboard: React.FC = () => {
           onClose={() => setVehicleModalOpen(false)}
           onSaved={async () => {
             setVehicleModalOpen(false);
+            const r = await fetch(`/api/agencies/${selectedAgencyId}/vehicles`).then((x) => x.json());
+            setAgencyVehicles(r.data ?? []);
+          }}
+        />
+      )}
+      {layoutVehicle && (
+        <SeatLayoutEditor
+          vehicleId={layoutVehicle.id}
+          initialLayout={layoutVehicle.seatLayout ?? null}
+          capacity={layoutVehicle.capacity}
+          onClose={() => setLayoutVehicle(null)}
+          onSaved={async () => {
             const r = await fetch(`/api/agencies/${selectedAgencyId}/vehicles`).then((x) => x.json());
             setAgencyVehicles(r.data ?? []);
           }}
