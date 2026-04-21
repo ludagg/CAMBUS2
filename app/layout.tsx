@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { LanguageProvider } from '../contexts/LanguageContext'
 import { NavigationProvider } from '../contexts/NavigationContext'
+import ServiceWorkerRegister from '../components/ServiceWorkerRegister'
 
 const publicBaseUrl = process.env.PUBLIC_BASE_URL || 'https://easytravel.cm'
 const appName = process.env.NEXT_PUBLIC_APP_NAME || 'Easy Travel'
@@ -59,7 +60,13 @@ export const metadata: Metadata = {
   icons: {
     icon: '/favicon.svg',
     shortcut: '/favicon.svg',
-    apple: '/apple-touch-icon.png',
+    apple: '/api/pwa/icon-192',
+  },
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    title: 'Easy Travel',
+    statusBarStyle: 'black-translucent',
   },
 }
 
@@ -122,6 +129,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {children}
           </NavigationProvider>
         </LanguageProvider>
+        <ServiceWorkerRegister />
       </body>
     </html>
   )

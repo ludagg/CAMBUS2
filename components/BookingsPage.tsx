@@ -59,6 +59,8 @@ const BookingsPage: React.FC = () => {
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancelSuccess, setCancelSuccess] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
+  const [fromCache, setFromCache] = useState(false);
 
   // Redirect if not logged in
   useEffect(() => {
@@ -68,13 +70,53 @@ const BookingsPage: React.FC = () => {
   }, [user, navigateTo]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onOnline = () => setIsOffline(false);
+    const onOffline = () => setIsOffline(true);
+    setIsOffline(!navigator.onLine);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const cacheKey = `easytravel:bookings:${user.id}`;
+
+    // Hydrate from cache synchronously so tickets display instantly / offline.
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem(cacheKey) : null;
+      if (raw) {
+        const parsed = JSON.parse(raw) as { data: Booking[]; savedAt: number };
+        if (Array.isArray(parsed.data)) {
+          setBookings(parsed.data);
+          setFromCache(true);
+          setIsLoading(false);
+        }
+      }
+    } catch (err) {
+      console.warn('[bookings] cache read failed', err);
+    }
+
     const fetchBookings = async () => {
-      if (!user) return;
-      setIsLoading(true);
+      setIsLoading((prev) => prev && !fromCache ? true : prev);
       try {
         const res = await fetch('/api/bookings', { cache: 'no-store' });
         const json = await res.json();
-        setBookings(Array.isArray(json.data) ? json.data : []);
+        const data: Booking[] = Array.isArray(json.data) ? json.data : [];
+        setBookings(data);
+        setFromCache(false);
+        try {
+          window.localStorage.setItem(
+            cacheKey,
+            JSON.stringify({ data, savedAt: Date.now() }),
+          );
+        } catch (err) {
+          console.warn('[bookings] cache write failed', err);
+        }
       } catch (error) {
         console.error('Error fetching bookings:', error);
       } finally {
@@ -83,6 +125,7 @@ const BookingsPage: React.FC = () => {
     };
 
     fetchBookings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   if (!user) return null;
@@ -130,6 +173,16 @@ const BookingsPage: React.FC = () => {
           </h1>
           <p className="text-text-muted dark:text-gray-400 text-sm md:text-base leading-relaxed max-w-xl">{t('bookings.subtitle')}</p>
         </div>
+
+        {(isOffline || fromCache) && (
+          <div className="mb-6 flex items-start gap-3 px-4 py-3 rounded-2xl border border-amber-200 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-900/40 text-amber-900 dark:text-amber-200">
+            <span className="material-symbols-outlined text-[20px] mt-px">cloud_off</span>
+            <div className="text-xs md:text-sm leading-relaxed">
+              <strong className="font-semibold">{t('bookings.offline.title')}</strong>
+              <span className="block">{t('bookings.offline.body')}</span>
+            </div>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex items-center gap-1 p-1 bg-white dark:bg-white/[0.03] rounded-full border border-ink-100 dark:border-white/10 mb-8 w-fit shadow-subtle">
