@@ -67,6 +67,7 @@ export async function GET(req: NextRequest) {
       arrivalLat: d.destStation.lat,
       arrivalLng: d.destStation.lng,
       duration: `${hours}h ${String(mins).padStart(2, '0')}m`,
+      durationMin,
       price: d.priceCents,
       currency: d.currency,
       amenities: d.amenities,

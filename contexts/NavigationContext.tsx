@@ -69,6 +69,7 @@ export interface Trip {
   arrivalLat?: number | null;
   arrivalLng?: number | null;
   duration: string;
+  durationMin?: number;
   price: number;
   currency: string;
   color: string;
