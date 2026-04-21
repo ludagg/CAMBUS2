@@ -1,4 +1,4 @@
-# Easy Travel (CAMBUS2)
+# Easy Travel (CAMBUS) 
 
 Plateforme de réservation de tickets de bus au Cameroun, pensée pour des compagnies multi-agences avec support des trajets aller et aller-retour.
 
