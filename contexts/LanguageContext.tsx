@@ -392,6 +392,8 @@ const fr: Record<string, string> = {
   'bookings.status.cancelled': 'Annulé',
   'bookings.status.pending': 'En attente',
   'bookings.status.boarded': 'Embarqué',
+  'bookings.offline.title': 'Mode hors-ligne',
+  'bookings.offline.body': "Vos billets sont affichés depuis le cache local. Le QR code reste valide tant que la course n'a pas été scannée.",
 
   // Ticket modal / PDF / resend
   'ticket.brand': 'Billet Easy Travel',
@@ -858,6 +860,8 @@ const en: Record<string, string> = {
   'bookings.status.cancelled': 'Cancelled',
   'bookings.status.pending': 'Pending',
   'bookings.status.boarded': 'Boarded',
+  'bookings.offline.title': 'Offline mode',
+  'bookings.offline.body': 'Your tickets are loaded from local cache. The QR code remains valid until the trip is scanned.',
 
   // Ticket modal / PDF / resend
   'ticket.brand': 'Easy Travel ticket',
