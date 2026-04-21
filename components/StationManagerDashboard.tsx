@@ -77,22 +77,22 @@ const StationManagerDashboard: React.FC = () => {
 
   return (
     <div className="bg-background-light dark:bg-background-dark min-h-screen">
-      <div className="bg-gradient-to-r from-sky-600 to-blue-700 text-white p-8">
+      <div className="bg-gradient-to-r from-sky-600 to-blue-700 text-white px-4 py-6 md:p-8">
         <div className="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-4">
           <div>
             <div className="text-[10px] font-black tracking-widest uppercase opacity-80">Chef de Station</div>
-            <h1 className="text-3xl font-black">Manifeste du jour</h1>
+            <h1 className="text-2xl md:text-3xl font-black">Manifeste du jour</h1>
             <p className="opacity-80 text-sm mt-1">{user?.name}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="rounded-lg px-3 py-2 text-text-main text-sm font-black" />
             <button onClick={logout} className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 font-black text-sm">Déconnexion</button>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800 mb-6">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
+        <div className="flex gap-2 overflow-x-auto pb-2 border-b border-gray-200 dark:border-gray-800 mb-6">
           {(['manifest', 'counter', 'operations', 'analytics'] as const).map((t) => {
             const labels: Record<typeof t, string> = {
               manifest: 'Manifeste & check-in',
@@ -120,7 +120,7 @@ const StationManagerDashboard: React.FC = () => {
 
         {tab === 'manifest' && (<>
         {/* Check-in */}
-        <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-6 mb-6">
+        <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 shadow-subtle p-4 md:p-6 mb-6">
           <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
             <h2 className="font-black text-text-main dark:text-white flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">qr_code_scanner</span> Validation de billet
@@ -179,7 +179,7 @@ const StationManagerDashboard: React.FC = () => {
         ) : (
           <div className="space-y-4">
             {manifest.map((d) => (
-              <div key={d.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+              <div key={d.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 shadow-subtle overflow-hidden">
                 <div className="p-4 flex items-center justify-between flex-wrap gap-3 border-b border-gray-100 dark:border-gray-800">
                   <div className="flex items-center gap-4">
                     <span className="size-3 rounded-full" style={{ backgroundColor: d.brandColor }} />
@@ -205,7 +205,7 @@ const StationManagerDashboard: React.FC = () => {
                 <div className="p-4 space-y-1">
                   {d.bookings.length === 0 && <div className="text-xs text-text-muted">Aucune réservation.</div>}
                   {d.bookings.map((b) => (
-                    <div key={b.id} className="flex items-center justify-between text-xs">
+                    <div key={b.id} className="flex items-center justify-between text-xs flex-wrap gap-2">
                       <div className="flex items-center gap-2 flex-1">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${b.status === 'BOARDED' ? 'bg-gray-200 text-gray-700' : 'bg-green-100 text-green-700'}`}>{b.status}</span>
                         <span className="text-text-main dark:text-white">{b.passengers.map((p) => p.name).join(', ') || 'Passager'}</span>
