@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError } from '@/lib/api'
+import { assertOwnsCompany } from '@/lib/scoping'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -32,6 +33,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const session = await getSession()
     requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN'])
     const { id } = await params
+    await assertOwnsCompany(session!, id)
     const body = updateSchema.parse(await req.json())
     const company = await prisma.company.update({ where: { id }, data: body })
     return NextResponse.json({ data: company })

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError } from '@/lib/api'
+import { assertOwnsVehicle } from '@/lib/scoping'
 
 const seatLayoutSchema = z
   .object({
@@ -30,6 +31,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const session = await getSession()
     requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENCY_ADMIN'])
     const { id } = await params
+    await assertOwnsVehicle(session!, id)
     const body = updateSchema.parse(await req.json())
     const { seatLayout, ...rest } = body
     const data: Record<string, unknown> = { ...rest }
@@ -48,6 +50,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     const session = await getSession()
     requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENCY_ADMIN'])
     const { id } = await params
+    await assertOwnsVehicle(session!, id)
     await prisma.vehicle.update({ where: { id }, data: { status: 'INACTIVE' } })
     return NextResponse.json({ data: { ok: true } })
   } catch (err) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError } from '@/lib/api'
+import { assertOwnsCompany } from '@/lib/scoping'
 import { z } from 'zod'
 
 export async function GET(req: NextRequest) {
@@ -37,6 +38,7 @@ export async function POST(req: NextRequest) {
     const session = await getSession()
     requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN'])
     const body = createSchema.parse(await req.json())
+    await assertOwnsCompany(session!, body.companyId)
     const agency = await prisma.agency.create({
       data: body,
       include: { company: { select: { name: true } }, city: { select: { name: true } } },

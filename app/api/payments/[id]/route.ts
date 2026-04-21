@@ -3,17 +3,16 @@ import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
 import { getProvider, type PaymentProviderId } from '@/lib/payment'
+import { confirmPayment, failPayment } from '@/lib/booking-confirm'
 
 /**
  * GET /api/payments/:id
  *
- * Returns the current status of a payment. If the payment is still PENDING and
- * uses a Mobile Money provider, we call the provider to refresh its status
- * (simulated: auto-SUCCEEDED after 4s, auto-FAILED if phone ends with `000`).
+ * Returns the current status of a payment. If still PENDING on a Mobile Money
+ * provider, we poll the provider to refresh. If the payment expired
+ * (BookingGroup.expiresAt past), we auto-fail to release seats.
  *
- * When the payment transitions to SUCCEEDED we flip the booking group and its
- * bookings to CONFIRMED. When it transitions to FAILED we release the reserved
- * seats and mark the group/bookings CANCELLED.
+ * On transition to SUCCEEDED we fire the confirmation email + SMS.
  */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -23,9 +22,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params
     const payment = await prisma.payment.findUnique({
       where: { id },
-      include: {
-        group: { include: { bookings: { include: { departure: true } } } },
-      },
+      include: { group: true },
     })
     if (!payment) return bad('Paiement introuvable.', 404)
     if (payment.group.userId && payment.group.userId !== session!.sub && session!.role === 'USER') {
@@ -34,53 +31,22 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
     const isMobileMoney = payment.method === 'MOMO' || payment.method === 'OM'
 
-    if (payment.status === 'PENDING' && isMobileMoney && payment.providerRef && payment.phoneNumber) {
-      const provider = getProvider(payment.method as PaymentProviderId)
-      const remote = await provider.getStatus(payment.providerRef, payment.createdAt, payment.phoneNumber)
-
-      if (remote.status === 'SUCCEEDED') {
-        await prisma.$transaction([
-          prisma.payment.update({
-            where: { id: payment.id },
-            data: { status: 'SUCCEEDED' },
-          }),
-          prisma.bookingGroup.update({
-            where: { id: payment.groupId },
-            data: { status: 'CONFIRMED' },
-          }),
-          prisma.booking.updateMany({
-            where: { groupId: payment.groupId },
-            data: { status: 'CONFIRMED' },
-          }),
-        ])
-      } else if (remote.status === 'FAILED') {
-        const passengerCounts = await prisma.passenger.groupBy({
-          by: ['bookingId'],
-          where: { bookingId: { in: payment.group.bookings.map((b) => b.id) } },
-          _count: { _all: true },
-        })
-
-        await prisma.$transaction([
-          prisma.payment.update({
-            where: { id: payment.id },
-            data: { status: 'FAILED', failureReason: remote.failureReason ?? 'Payment failed' },
-          }),
-          prisma.bookingGroup.update({
-            where: { id: payment.groupId },
-            data: { status: 'CANCELLED' },
-          }),
-          prisma.booking.updateMany({
-            where: { groupId: payment.groupId },
-            data: { status: 'CANCELLED' },
-          }),
-          ...payment.group.bookings.map((b) => {
-            const count = passengerCounts.find((p) => p.bookingId === b.id)?._count._all ?? 1
-            return prisma.departure.update({
-              where: { id: b.departureId },
-              data: { seatsAvailable: { increment: count } },
-            })
-          }),
-        ])
+    if (payment.status === 'PENDING') {
+      const expired = payment.group.expiresAt && payment.group.expiresAt.getTime() < Date.now()
+      if (expired) {
+        await failPayment(payment.id, 'Délai de confirmation dépassé.')
+      } else if (isMobileMoney && payment.providerRef && payment.phoneNumber) {
+        const provider = getProvider(payment.method as PaymentProviderId)
+        const remote = await provider.getStatus(
+          payment.providerRef,
+          payment.createdAt,
+          payment.phoneNumber,
+        )
+        if (remote.status === 'SUCCEEDED') {
+          await confirmPayment(payment.id)
+        } else if (remote.status === 'FAILED') {
+          await failPayment(payment.id, remote.failureReason ?? 'Paiement refusé.')
+        }
       }
     }
 

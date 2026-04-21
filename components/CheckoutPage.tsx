@@ -24,6 +24,11 @@ const CheckoutPage: React.FC = () => {
   const [paymentGroupId, setPaymentGroupId] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatusResponse | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [idempotencyKey] = useState(() =>
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
 
   // Redirect if not logged in
   useEffect(() => {
@@ -104,7 +109,10 @@ const CheckoutPage: React.FC = () => {
 
       const res = await fetch('/api/bookings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey,
+        },
         body: JSON.stringify(payload),
       });
       const json = await res.json();

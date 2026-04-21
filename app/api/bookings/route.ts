@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
 import { getProvider, normalizeCameroonPhone, type PaymentProviderId } from '@/lib/payment'
+import {
+  computeSeatPriceCents,
+  defaultLayoutForCapacity,
+  DEFAULT_VIP_MULTIPLIER,
+  type SeatLayout,
+} from '@/lib/seat-layout'
+
+const PENDING_EXPIRY_MIN = 10
 
 export async function GET() {
   try {
@@ -87,15 +96,69 @@ const bookingSchema = z.object({
   returnSeats: z.array(z.string()).optional(),
   contactEmail: z.string().email(),
   contactPhone: z.string().min(1),
+  contactName: z.string().optional(),
   paymentMethod: z.enum(['MOMO', 'OM', 'CARD', 'CASH']),
   paymentPhone: z.string().optional(),
 })
+
+function resolveLayout(seatLayout: Prisma.JsonValue | null, capacity: number): SeatLayout {
+  if (seatLayout && typeof seatLayout === 'object' && !Array.isArray(seatLayout)) {
+    const obj = seatLayout as Record<string, unknown>
+    return {
+      rows: Number(obj.rows ?? 0),
+      cols: Number(obj.cols ?? 0),
+      aisleAfterCol: Number(obj.aisleAfterCol ?? 0),
+      vipRows: Array.isArray(obj.vipRows) ? (obj.vipRows as number[]) : [],
+      disabledCells: Array.isArray(obj.disabledCells) ? (obj.disabledCells as string[]) : [],
+      label: String(obj.label ?? ''),
+      vipMultiplier: Number(obj.vipMultiplier ?? DEFAULT_VIP_MULTIPLIER),
+    }
+  }
+  return defaultLayoutForCapacity(capacity)
+}
+
+function sumSeats(
+  baseCents: number,
+  layout: SeatLayout,
+  seats: string[],
+  passengerCount: number,
+): number {
+  if (seats.length === 0) return baseCents * passengerCount
+  // Price per selected seat; if fewer selected than passengers, remaining pay base.
+  let total = 0
+  for (const s of seats) total += computeSeatPriceCents(baseCents, layout, s)
+  const remaining = Math.max(0, passengerCount - seats.length)
+  total += remaining * baseCents
+  return total
+}
 
 export async function POST(req: NextRequest) {
   try {
     const session = await getSession()
     requireRole(session, ['USER', 'SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENCY_ADMIN', 'STATION_MANAGER'])
     const body = bookingSchema.parse(await req.json())
+
+    const idempotencyKey = req.headers.get('idempotency-key')?.trim() || null
+    if (idempotencyKey) {
+      const existing = await prisma.bookingGroup.findUnique({
+        where: { idempotencyKey },
+        include: { payment: true },
+      })
+      if (existing) {
+        return NextResponse.json(
+          {
+            data: {
+              groupId: existing.id,
+              paymentId: existing.payment?.id ?? null,
+              status: existing.payment?.status ?? existing.status,
+              requiresConfirmation: existing.payment?.status === 'PENDING',
+              idempotent: true,
+            },
+          },
+          { status: 200 },
+        )
+      }
+    }
 
     const isMobileMoney = body.paymentMethod === 'MOMO' || body.paymentMethod === 'OM'
     let normalizedPhone: string | null = null
@@ -107,18 +170,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const outDep = await prisma.departure.findUnique({ where: { id: body.outboundDepartureId } })
+    const outDep = await prisma.departure.findUnique({
+      where: { id: body.outboundDepartureId },
+      include: { vehicle: { select: { seatLayout: true, capacity: true } } },
+    })
     if (!outDep) return bad('Départ aller introuvable.', 404)
     if (outDep.seatsAvailable < body.passengers.length) return bad('Places insuffisantes pour l\'aller.')
 
-    let retDep = null
+    let retDep: Awaited<ReturnType<typeof prisma.departure.findUnique>> | null = null
     if (body.returnDepartureId) {
-      retDep = await prisma.departure.findUnique({ where: { id: body.returnDepartureId } })
+      retDep = await prisma.departure.findUnique({
+        where: { id: body.returnDepartureId },
+        include: { vehicle: { select: { seatLayout: true, capacity: true } } },
+      })
       if (!retDep) return bad('Départ retour introuvable.', 404)
       if (retDep.seatsAvailable < body.passengers.length) return bad('Places insuffisantes pour le retour.')
     }
 
-    // Validate selected seats against already booked ones (no double booking)
     const outSeats = body.outboundSeats ?? []
     const retSeats = body.returnSeats ?? []
     if (outSeats.length > 0 && new Set(outSeats).size !== outSeats.length) {
@@ -127,128 +195,167 @@ export async function POST(req: NextRequest) {
     if (retSeats.length > 0 && new Set(retSeats).size !== retSeats.length) {
       return bad('Sièges retour en doublon.')
     }
-    if (outSeats.length > 0) {
-      const existing = await prisma.booking.findMany({
-        where: { departureId: outDep.id, status: { in: ['PENDING', 'CONFIRMED', 'BOARDED'] } },
-        select: { seats: true },
-      })
-      const taken = new Set(existing.flatMap((b) => b.seats))
-      const conflict = outSeats.find((s) => taken.has(s))
-      if (conflict) return bad(`Siège aller ${conflict} déjà réservé, veuillez en choisir un autre.`)
-    }
-    if (retDep && retSeats.length > 0) {
-      const existing = await prisma.booking.findMany({
-        where: { departureId: retDep.id, status: { in: ['PENDING', 'CONFIRMED', 'BOARDED'] } },
-        select: { seats: true },
-      })
-      const taken = new Set(existing.flatMap((b) => b.seats))
-      const conflict = retSeats.find((s) => taken.has(s))
-      if (conflict) return bad(`Siège retour ${conflict} déjà réservé, veuillez en choisir un autre.`)
-    }
 
-    const outPrice = outDep.priceCents * body.passengers.length
-    const retPrice = retDep ? retDep.priceCents * body.passengers.length : 0
+    const outLayout = resolveLayout(
+      (outDep as unknown as { vehicle: { seatLayout: Prisma.JsonValue | null; capacity: number } | null }).vehicle?.seatLayout ?? null,
+      (outDep as unknown as { vehicle: { capacity: number } | null }).vehicle?.capacity ?? 50,
+    )
+    const retLayout = retDep
+      ? resolveLayout(
+          (retDep as unknown as { vehicle: { seatLayout: Prisma.JsonValue | null; capacity: number } | null }).vehicle?.seatLayout ?? null,
+          (retDep as unknown as { vehicle: { capacity: number } | null }).vehicle?.capacity ?? 50,
+        )
+      : null
+
+    const outPrice = sumSeats(outDep.priceCents, outLayout, outSeats, body.passengers.length)
+    const retPrice = retDep && retLayout
+      ? sumSeats(retDep.priceCents, retLayout, retSeats, body.passengers.length)
+      : 0
     const totalCents = outPrice + retPrice
 
-    const result = await prisma.$transaction(async (tx) => {
-      // Reserve seats immediately; they're released if payment fails.
-      await tx.departure.update({
-        where: { id: outDep.id },
-        data: { seatsAvailable: { decrement: body.passengers.length } },
-      })
-      if (retDep) {
+    const initialStatus = isMobileMoney ? 'PENDING' : 'CONFIRMED'
+    const expiresAt = isMobileMoney
+      ? new Date(Date.now() + PENDING_EXPIRY_MIN * 60 * 1000)
+      : null
+
+    let result: { groupId: string; paymentId: string; paymentStatus: string }
+    try {
+      result = await prisma.$transaction(async (tx) => {
         await tx.departure.update({
-          where: { id: retDep.id },
+          where: { id: outDep.id },
           data: { seatsAvailable: { decrement: body.passengers.length } },
         })
-      }
+        if (retDep) {
+          await tx.departure.update({
+            where: { id: retDep.id },
+            data: { seatsAvailable: { decrement: body.passengers.length } },
+          })
+        }
 
-      const initialStatus = isMobileMoney ? 'PENDING' : 'CONFIRMED'
-
-      const group = await tx.bookingGroup.create({
-        data: {
-          userId: session!.sub,
-          tripType: retDep ? 'ROUND_TRIP' : 'ONE_WAY',
-          contactEmail: body.contactEmail,
-          contactPhone: body.contactPhone,
-          totalCents,
-          currency: outDep.currency,
-          status: initialStatus,
-        },
-      })
-
-      const outBooking = await tx.booking.create({
-        data: {
-          groupId: group.id,
-          departureId: outDep.id,
-          leg: 'OUTBOUND',
-          seats: body.outboundSeats ?? [],
-          priceCents: outPrice,
-          status: initialStatus,
-        },
-      })
-
-      for (const p of body.passengers) {
-        await tx.passenger.create({
+        const group = await tx.bookingGroup.create({
           data: {
-            bookingId: outBooking.id,
-            fullName: p.fullName,
-            idNumber: p.idNumber,
-            seat: p.seat,
+            userId: session!.sub,
+            tripType: retDep ? 'ROUND_TRIP' : 'ONE_WAY',
+            contactEmail: body.contactEmail,
+            contactPhone: body.contactPhone,
+            contactName: body.contactName,
+            totalCents,
+            currency: outDep.currency,
+            status: initialStatus,
+            idempotencyKey,
+            expiresAt,
           },
         })
-      }
 
-      if (retDep) {
-        const retBooking = await tx.booking.create({
+        const outBooking = await tx.booking.create({
           data: {
             groupId: group.id,
-            departureId: retDep.id,
-            leg: 'RETURN',
-            seats: body.returnSeats ?? [],
-            priceCents: retPrice,
+            departureId: outDep.id,
+            leg: 'OUTBOUND',
+            seats: outSeats,
+            priceCents: outPrice,
             status: initialStatus,
           },
         })
+
+        for (const s of outSeats) {
+          await tx.bookingSeat.create({
+            data: { departureId: outDep.id, seatId: s, bookingId: outBooking.id },
+          })
+        }
+
         for (const p of body.passengers) {
           await tx.passenger.create({
             data: {
-              bookingId: retBooking.id,
+              bookingId: outBooking.id,
               fullName: p.fullName,
               idNumber: p.idNumber,
               seat: p.seat,
             },
           })
         }
-      }
 
-      const payment = await tx.payment.create({
-        data: {
-          groupId: group.id,
-          method: body.paymentMethod,
-          provider: isMobileMoney ? getProvider(body.paymentMethod as PaymentProviderId).name : null,
-          phoneNumber: normalizedPhone,
-          amountCents: totalCents,
-          currency: outDep.currency,
-          status: isMobileMoney ? 'PENDING' : 'SUCCEEDED',
-          providerRef: isMobileMoney ? null : `SIM-${body.paymentMethod}-${Date.now()}`,
-        },
+        if (retDep) {
+          const retBooking = await tx.booking.create({
+            data: {
+              groupId: group.id,
+              departureId: retDep.id,
+              leg: 'RETURN',
+              seats: retSeats,
+              priceCents: retPrice,
+              status: initialStatus,
+            },
+          })
+          for (const s of retSeats) {
+            await tx.bookingSeat.create({
+              data: { departureId: retDep.id, seatId: s, bookingId: retBooking.id },
+            })
+          }
+          for (const p of body.passengers) {
+            await tx.passenger.create({
+              data: {
+                bookingId: retBooking.id,
+                fullName: p.fullName,
+                idNumber: p.idNumber,
+                seat: p.seat,
+              },
+            })
+          }
+        }
+
+        const payment = await tx.payment.create({
+          data: {
+            groupId: group.id,
+            method: body.paymentMethod,
+            provider: isMobileMoney ? getProvider(body.paymentMethod as PaymentProviderId).name : null,
+            phoneNumber: normalizedPhone,
+            amountCents: totalCents,
+            currency: outDep.currency,
+            status: isMobileMoney ? 'PENDING' : 'SUCCEEDED',
+            providerRef: isMobileMoney ? null : `SIM-${body.paymentMethod}-${Date.now()}`,
+          },
+        })
+
+        return { groupId: group.id, paymentId: payment.id, paymentStatus: payment.status }
       })
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const target = (err.meta?.target as string[] | undefined) ?? []
+        if (target.includes('idempotencyKey')) {
+          const existing = await prisma.bookingGroup.findUnique({
+            where: { idempotencyKey: idempotencyKey! },
+            include: { payment: true },
+          })
+          if (existing) {
+            return NextResponse.json(
+              {
+                data: {
+                  groupId: existing.id,
+                  paymentId: existing.payment?.id ?? null,
+                  status: existing.payment?.status ?? existing.status,
+                  requiresConfirmation: existing.payment?.status === 'PENDING',
+                  idempotent: true,
+                },
+              },
+              { status: 200 },
+            )
+          }
+        }
+        return bad('Un des sièges sélectionnés vient d\'être réservé par un autre passager. Veuillez réessayer.', 409)
+      }
+      throw err
+    }
 
-      return { group, payment }
-    })
-
-    // If Mobile Money, initiate the provider session (mock returns a reference)
     if (isMobileMoney && normalizedPhone) {
       const provider = getProvider(body.paymentMethod as PaymentProviderId)
       const init = await provider.initiate({
         amountCents: totalCents,
         currency: outDep.currency,
         phoneNumber: normalizedPhone,
-        reference: result.group.id,
+        reference: result.groupId,
       })
       await prisma.payment.update({
-        where: { id: result.payment.id },
+        where: { id: result.paymentId },
         data: { providerRef: init.externalRef },
       })
     }
@@ -256,13 +363,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         data: {
-          groupId: result.group.id,
-          paymentId: result.payment.id,
-          status: result.payment.status,
+          groupId: result.groupId,
+          paymentId: result.paymentId,
+          status: result.paymentStatus,
           requiresConfirmation: isMobileMoney,
         },
       },
-      { status: 201 }
+      { status: 201 },
     )
   } catch (err) {
     return handleError(err)
