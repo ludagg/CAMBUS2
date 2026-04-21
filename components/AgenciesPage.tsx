@@ -160,63 +160,66 @@ const AgenciesPage: React.FC = () => {
 
   if (selectedAgency) {
     return (
-      <div className="bg-background-light dark:bg-background-dark min-h-screen pt-6 pb-20 px-4 md:px-6 animate-fadeIn">
+      <div className="bg-background-light dark:bg-background-dark min-h-screen pt-8 pb-20 px-4 md:px-6 animate-fadeIn">
         <div className="max-w-7xl mx-auto">
           {/* Back Button */}
-          <button 
+          <button
             onClick={() => setSelectedAgency(null)}
-            className="flex items-center gap-2 text-text-muted hover:text-primary transition-colors mb-6 font-bold"
+            className="inline-flex items-center gap-2 text-text-muted hover:text-text-main dark:hover:text-white transition-colors mb-6 font-medium text-sm tracking-tight"
           >
-            <span className="material-symbols-outlined">arrow_back</span>
+            <span className="material-symbols-outlined text-[18px]">arrow_back</span>
             {t('agencies.back')}
           </button>
 
-          <div className="flex flex-col lg:flex-row gap-8">
+          <div className="flex flex-col lg:flex-row gap-6">
             {/* Left Column: Info & Stations List */}
-            <div className="lg:w-1/3 flex flex-col gap-6">
+            <div className="lg:w-[380px] flex flex-col gap-5">
               {/* Header Card */}
-              <div className="bg-white dark:bg-surface-dark rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className={`size-16 rounded-xl ${selectedAgency.color} flex items-center justify-center text-white shadow-lg`}>
-                    <span className="material-symbols-outlined text-3xl">{selectedAgency.logo}</span>
+              <div className="bg-white dark:bg-surface-dark rounded-2xl p-6 shadow-subtle border border-ink-100 dark:border-white/10">
+                <div className="flex items-center gap-4">
+                  <div className={`size-14 rounded-2xl ${selectedAgency.color} flex items-center justify-center text-white shadow-subtle`}>
+                    <span className="material-symbols-outlined text-2xl">{selectedAgency.logo}</span>
                   </div>
-                  <div>
-                    <h2 className="text-2xl font-black text-text-main dark:text-white">{selectedAgency.name}</h2>
-                    <div className="flex items-center gap-2 text-sm text-text-muted">
-                       <span>{t('agencies.since')} {selectedAgency.since}</span>
-                       <span>•</span>
-                       <span className="flex items-center gap-1"><span className="material-symbols-outlined text-sm text-yellow-500 fill-1">star</span> {selectedAgency.rating}</span>
+                  <div className="min-w-0">
+                    <h2 className="font-display text-xl font-semibold tracking-tight text-text-main dark:text-white truncate">{selectedAgency.name}</h2>
+                    <div className="flex items-center gap-2 text-xs text-text-muted mt-1">
+                       <span className="tabular-nums">{t('agencies.since')} {selectedAgency.since}</span>
+                       <span className="text-ink-300">·</span>
+                       <span className="flex items-center gap-1">
+                         <span className="material-symbols-outlined text-[14px] text-amber-500">star</span>
+                         <span className="font-semibold text-text-main dark:text-white tabular-nums">{selectedAgency.rating}</span>
+                       </span>
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Stations List */}
-              <div className="bg-white dark:bg-surface-dark rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800 flex-1">
-                <h3 className="text-xl font-bold text-text-main dark:text-white mb-1">{t('agencies.stations')}</h3>
-                <p className="text-sm text-text-muted dark:text-gray-400 mb-6">{t('agencies.stations_subtitle')}</p>
-                
-                <div className="space-y-4">
+              <div className="bg-white dark:bg-surface-dark rounded-2xl p-6 shadow-subtle border border-ink-100 dark:border-white/10 flex-1">
+                <h3 className="font-display text-lg font-semibold tracking-tight text-text-main dark:text-white mb-1">{t('agencies.stations')}</h3>
+                <p className="text-sm text-text-muted dark:text-gray-400 mb-6 leading-relaxed">{t('agencies.stations_subtitle')}</p>
+
+                <div className="space-y-1">
                   {selectedAgency.stations.map((station, idx) => (
-                    <div 
-                      key={station.id} 
-                      className="flex gap-4 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-[#102216] transition-colors cursor-pointer group"
+                    <div
+                      key={station.id}
+                      className="flex gap-4 p-3 rounded-xl hover:bg-ink-50 dark:hover:bg-white/[0.04] transition-colors cursor-pointer group"
                       onClick={() => {
                          if(mapInstanceRef.current) {
                            mapInstanceRef.current.flyTo([station.lat, station.lng], 13);
                          }
                       }}
                     >
-                      <div className="flex flex-col items-center gap-1 pt-1">
-                        <div className={`size-3 rounded-full ${selectedAgency.color}`}></div>
+                      <div className="flex flex-col items-center gap-1 pt-1.5">
+                        <div className={`size-2.5 rounded-full ${selectedAgency.color} ring-4 ring-white dark:ring-surface-dark`} />
                         {idx !== selectedAgency.stations.length - 1 && (
-                          <div className="w-0.5 h-full bg-gray-200 dark:bg-gray-700"></div>
+                          <div className="w-px h-full bg-ink-200 dark:bg-white/10" />
                         )}
                       </div>
-                      <div>
-                        <h4 className="font-bold text-text-main dark:text-white group-hover:text-primary transition-colors">{station.name}</h4>
+                      <div className="pb-3">
+                        <h4 className="font-display font-semibold tracking-tight text-sm text-text-main dark:text-white group-hover:text-teal-accent dark:group-hover:text-primary transition-colors">{station.name}</h4>
                         <div className="flex items-center gap-1 text-xs text-text-muted mt-0.5">
-                           <span className="material-symbols-outlined text-sm">location_on</span>
+                           <span className="material-symbols-outlined text-[14px]">location_on</span>
                            {station.address}
                         </div>
                       </div>
@@ -227,7 +230,7 @@ const AgenciesPage: React.FC = () => {
             </div>
 
             {/* Right Column: Map */}
-            <div className="lg:w-2/3 h-[500px] lg:h-auto min-h-[500px] bg-gray-200 dark:bg-gray-800 rounded-2xl overflow-hidden shadow-lg border border-gray-200 dark:border-gray-700 relative z-0">
+            <div className="flex-1 h-[500px] lg:h-auto min-h-[560px] bg-ink-100 dark:bg-white/5 rounded-3xl overflow-hidden shadow-subtle border border-ink-100 dark:border-white/10 relative z-0">
                <div ref={mapContainerRef} className="absolute inset-0 z-0" />
             </div>
           </div>
@@ -237,18 +240,24 @@ const AgenciesPage: React.FC = () => {
   }
 
   return (
-    <div className="bg-background-light dark:bg-background-dark min-h-screen pt-10 pb-20 px-6">
+    <div className="bg-background-light dark:bg-background-dark min-h-screen pt-12 md:pt-16 pb-20 px-6">
       <div className="max-w-7xl mx-auto">
-        <div className="text-center mb-16 pt-8">
-          <h1 className="text-4xl md:text-5xl font-black text-text-main dark:text-white mb-6">
+        <div className="text-center mb-14 md:mb-16">
+          <div className="inline-flex items-center gap-2 rounded-full border border-ink-200 dark:border-white/15 px-2.5 py-1 mb-5">
+            <span className="size-1.5 rounded-full bg-primary" />
+            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-muted">Compagnies partenaires</span>
+          </div>
+          <h1 className="font-display text-4xl md:text-5xl font-semibold tracking-tightest text-text-main dark:text-white mb-5 leading-[1.05]">
             {t('agencies.title')}
+            <br />
+            <span className="font-serif-italic text-teal-accent dark:text-primary italic font-normal">partout au Cameroun.</span>
           </h1>
-          <p className="text-lg text-text-muted dark:text-gray-400 max-w-2xl mx-auto">
+          <p className="text-base md:text-lg text-text-muted dark:text-gray-400 max-w-2xl mx-auto leading-relaxed">
             {t('agencies.subtitle')}
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {isLoading ? (
             <>
               <AgencyCardSkeleton />
@@ -257,33 +266,40 @@ const AgenciesPage: React.FC = () => {
               <AgencyCardSkeleton />
             </>
           ) : agenciesData.map((agency) => (
-            <div key={agency.id} className="bg-surface-light dark:bg-surface-dark rounded-2xl overflow-hidden shadow-lg border border-gray-100 dark:border-gray-800 hover:shadow-xl transition-shadow group">
-              <div className={`h-24 ${agency.color} relative flex items-center justify-center`}>
-                <div className="absolute -bottom-10 size-20 rounded-2xl bg-white dark:bg-surface-dark p-1 shadow-md">
-                   <div className={`size-full rounded-xl ${agency.color} bg-opacity-20 flex items-center justify-center text-text-main dark:text-white`}>
-                      <span className="material-symbols-outlined text-4xl">{agency.logo}</span>
+            <div key={agency.id} className="bg-white dark:bg-surface-dark rounded-3xl overflow-hidden shadow-subtle border border-ink-100 dark:border-white/10 hover:shadow-card hover:-translate-y-1 transition-all group">
+              <div className={`h-28 ${agency.color} relative flex items-center justify-center overflow-hidden`}>
+                <div
+                  aria-hidden
+                  className="absolute inset-0 bg-grid-subtle opacity-[0.15]"
+                  style={{ ['--grid-color' as string]: 'rgba(255,255,255,0.35)' }}
+                />
+                <div className="absolute -bottom-10 size-20 rounded-2xl bg-white dark:bg-surface-dark p-1.5 shadow-card">
+                   <div className={`size-full rounded-xl ${agency.color} flex items-center justify-center text-white`}>
+                      <span className="material-symbols-outlined text-3xl">{agency.logo}</span>
                    </div>
                 </div>
               </div>
-              <div className="pt-12 pb-6 px-6 text-center">
-                <h3 className="text-2xl font-bold text-text-main dark:text-white mb-2">{agency.name}</h3>
-                
-                <div className="flex items-center justify-center gap-4 text-sm text-text-muted dark:text-gray-400 mb-6">
-                  <div className="flex items-center gap-1">
-                    <span className="material-symbols-outlined text-lg">calendar_month</span>
-                    {t('agencies.since')} {agency.since}
+              <div className="pt-14 pb-7 px-6 text-center">
+                <h3 className="font-display text-xl font-semibold tracking-tight text-text-main dark:text-white mb-2">{agency.name}</h3>
+
+                <div className="flex items-center justify-center gap-4 text-xs text-text-muted dark:text-gray-400 mb-6">
+                  <div className="inline-flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[16px]">calendar_month</span>
+                    <span className="tabular-nums">{t('agencies.since')} {agency.since}</span>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <span className="material-symbols-outlined text-lg text-yellow-500 fill-1">star</span>
-                    <span className="font-bold text-text-main dark:text-white">{agency.rating}</span>
+                  <span className="text-ink-300">·</span>
+                  <div className="inline-flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[16px] text-amber-500">star</span>
+                    <span className="font-semibold text-text-main dark:text-white tabular-nums">{agency.rating}</span>
                   </div>
                 </div>
 
-                <button 
+                <button
                   onClick={() => setSelectedAgency(agency)}
-                  className="w-full py-3 rounded-lg border-2 border-primary text-primary font-bold hover:bg-primary hover:text-text-main transition-all"
+                  className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-full bg-ink-50 dark:bg-white/5 text-text-main dark:text-white font-semibold tracking-tight text-sm border border-ink-200 dark:border-white/10 hover:bg-text-main hover:text-white dark:hover:bg-white dark:hover:text-text-main hover:border-text-main dark:hover:border-white transition-all group/btn"
                 >
                   {t('agencies.view_profile')}
+                  <span className="material-symbols-outlined text-[16px] transition-transform group-hover/btn:translate-x-0.5">arrow_forward</span>
                 </button>
               </div>
             </div>
