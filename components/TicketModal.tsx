@@ -29,9 +29,12 @@ const TicketModal: React.FC<TicketModalProps> = ({ leg, onClose }) => {
 
   useEffect(() => {
     if (!leg) return;
+    let cancelled = false;
+    setQrDataUrl('');
     QRCode.toDataURL(leg.qrCode, { width: 220, margin: 1, color: { dark: '#0a1a10', light: '#ffffff' } })
-      .then(setQrDataUrl)
-      .catch(() => setQrDataUrl(''));
+      .then((url) => { if (!cancelled) setQrDataUrl(url); })
+      .catch(() => { if (!cancelled) setQrDataUrl(''); });
+    return () => { cancelled = true; };
   }, [leg]);
 
   if (!leg) return null;
