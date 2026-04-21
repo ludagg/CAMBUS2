@@ -45,6 +45,10 @@ const BookingsPage: React.FC = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [ticketLeg, setTicketLeg] = useState<BookingLeg | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [cancelSuccess, setCancelSuccess] = useState<string | null>(null);
 
   // Redirect if not logged in
   useEffect(() => {
@@ -208,12 +212,27 @@ const BookingsPage: React.FC = () => {
                       {group.totalPrice.toLocaleString()}
                       <span className="text-xs font-medium text-text-muted ml-1">{group.currency}</span>
                     </div>
-                    {group.status === 'CONFIRMED' && group.bookings[0] && (
-                      <button onClick={() => setTicketLeg(group.bookings[0])} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-text-main dark:bg-white text-white dark:text-text-main text-sm font-semibold tracking-tight shadow-subtle hover:shadow-card hover:-translate-y-0.5 transition-all">
-                        <span className="material-symbols-outlined text-[18px]">qr_code_2</span>
-                        Voir le billet
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {(group.status === 'CONFIRMED' || group.status === 'PENDING') && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCancelTarget(group);
+                            setCancelError(null);
+                          }}
+                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full border border-ink-200 dark:border-white/15 text-sm font-semibold tracking-tight text-text-muted hover:text-red-700 dark:hover:text-red-300 hover:border-red-300 transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">cancel</span>
+                          {t('bookings.cancel.action')}
+                        </button>
+                      )}
+                      {group.status === 'CONFIRMED' && group.bookings[0] && (
+                        <button onClick={() => setTicketLeg(group.bookings[0])} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-text-main dark:bg-white text-white dark:text-text-main text-sm font-semibold tracking-tight shadow-subtle hover:shadow-card hover:-translate-y-0.5 transition-all">
+                          <span className="material-symbols-outlined text-[18px]">qr_code_2</span>
+                          {t('bookings.view')}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -237,6 +256,111 @@ const BookingsPage: React.FC = () => {
       </div>
 
       <TicketModal leg={ticketLeg} onClose={() => setTicketLeg(null)} />
+
+      {cancelSuccess && (
+        <div
+          role="status"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-full border border-primary/30 bg-primary/10 text-teal-accent dark:text-primary px-5 py-2.5 text-sm font-semibold shadow-card"
+        >
+          {cancelSuccess}
+        </div>
+      )}
+
+      {cancelTarget && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cancel-title"
+          className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/50 backdrop-blur-sm"
+          onClick={() => {
+            if (!cancelLoading) setCancelTarget(null);
+          }}
+        >
+          <div
+            className="bg-white dark:bg-surface-dark rounded-3xl border border-ink-100 dark:border-white/10 shadow-card max-w-md w-full p-7"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              id="cancel-title"
+              className="font-display text-2xl font-semibold tracking-tight text-text-main dark:text-white mb-2"
+            >
+              {t('bookings.cancel.confirm.title')}
+            </h3>
+            <p className="text-sm text-text-muted dark:text-gray-400 leading-relaxed mb-5">
+              {t('bookings.cancel.confirm.body')}
+            </p>
+            {cancelError && (
+              <div className="mb-4 rounded-lg border border-red-300 bg-red-50 dark:bg-red-900/20 px-3.5 py-2.5 text-sm text-red-700 dark:text-red-300">
+                {cancelError}
+              </div>
+            )}
+            <div className="flex items-center justify-end gap-3">
+              <button
+                type="button"
+                disabled={cancelLoading}
+                onClick={() => setCancelTarget(null)}
+                className="inline-flex items-center gap-2 h-11 px-5 rounded-full border border-ink-200 dark:border-white/15 text-text-main dark:text-white font-semibold tracking-tight hover:border-ink-300 transition-colors disabled:opacity-60"
+              >
+                {t('bookings.cancel.confirm.no')}
+              </button>
+              <button
+                type="button"
+                disabled={cancelLoading}
+                onClick={async () => {
+                  if (!cancelTarget) return;
+                  setCancelLoading(true);
+                  setCancelError(null);
+                  try {
+                    const res = await fetch(
+                      `/api/bookings/${cancelTarget.id}/cancel`,
+                      {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({}),
+                      },
+                    );
+                    const json = await res.json();
+                    if (!res.ok) throw new Error(json.error || 'Annulation impossible.');
+                    setBookings((prev) =>
+                      prev.map((b) =>
+                        b.id === cancelTarget.id
+                          ? {
+                              ...b,
+                              status: 'CANCELLED',
+                              bookings: b.bookings.map((leg) => ({
+                                ...leg,
+                                status: 'CANCELLED',
+                              })),
+                            }
+                          : b,
+                      ),
+                    );
+                    setCancelTarget(null);
+                    setCancelSuccess(t('bookings.cancel.success'));
+                    setTimeout(() => setCancelSuccess(null), 3500);
+                  } catch (err) {
+                    setCancelError(
+                      err instanceof Error ? err.message : 'Erreur inconnue.',
+                    );
+                  } finally {
+                    setCancelLoading(false);
+                  }
+                }}
+                className="inline-flex items-center gap-2 h-11 px-5 rounded-full bg-red-600 text-white font-semibold tracking-tight shadow-subtle hover:bg-red-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {cancelLoading ? (
+                  <span className="material-symbols-outlined animate-spin text-[18px]">
+                    progress_activity
+                  </span>
+                ) : (
+                  <span className="material-symbols-outlined text-[18px]">cancel</span>
+                )}
+                {t('bookings.cancel.confirm.yes')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

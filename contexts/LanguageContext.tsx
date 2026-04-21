@@ -428,6 +428,42 @@ const fr: Record<string, string> = {
   'admin.station.validate': 'Valider billet',
   'admin.station.manifest': 'Manifeste',
   'admin.station.scan': 'Scanner QR',
+
+  // Account
+  'account.eyebrow': 'Mon compte',
+  'account.title': 'Votre profil Easy Travel.',
+  'account.subtitle':
+    'Mettez à jour vos informations, changez votre mot de passe ou supprimez votre compte.',
+  'account.role': 'Rôle',
+  'account.profile.title': 'Informations personnelles',
+  'account.profile.save': 'Enregistrer',
+  'account.profile.saved': 'Profil mis à jour.',
+  'account.field.name': 'Nom complet',
+  'account.field.email': 'Email',
+  'account.password.title': 'Mot de passe',
+  'account.password.current': 'Mot de passe actuel',
+  'account.password.new': 'Nouveau mot de passe',
+  'account.password.confirm': 'Confirmer le nouveau mot de passe',
+  'account.password.save': 'Changer le mot de passe',
+  'account.password.saved': 'Mot de passe mis à jour.',
+  'account.password.too_short': 'Le nouveau mot de passe doit faire au moins 8 caractères.',
+  'account.password.mismatch': 'Les mots de passe ne correspondent pas.',
+  'account.delete.title': 'Zone sensible',
+  'account.delete.description':
+    'La suppression est définitive. Vos réservations passées sont conservées pour la comptabilité mais anonymisées.',
+  'account.delete.button': 'Supprimer mon compte',
+  'account.delete.type_keyword': 'Tapez DELETE pour confirmer',
+  'account.delete.confirm': 'Confirmer la suppression',
+  'account.delete.confirm_keyword': 'Tapez exactement DELETE pour confirmer.',
+
+  // Bookings — cancel
+  'bookings.cancel.action': 'Annuler',
+  'bookings.cancel.confirm.title': 'Annuler cette réservation ?',
+  'bookings.cancel.confirm.body':
+    "L'annulation libère vos sièges. Les remboursements Mobile Money sont traités sous 48 h par notre équipe.",
+  'bookings.cancel.confirm.yes': 'Oui, annuler',
+  'bookings.cancel.confirm.no': 'Garder la réservation',
+  'bookings.cancel.success': 'Réservation annulée.',
 };
 
 const en: Record<string, string> = {
@@ -843,6 +879,42 @@ const en: Record<string, string> = {
   'admin.station.validate': 'Validate ticket',
   'admin.station.manifest': 'Manifest',
   'admin.station.scan': 'Scan QR',
+
+  // Account
+  'account.eyebrow': 'My account',
+  'account.title': 'Your Easy Travel profile.',
+  'account.subtitle':
+    'Update your details, change your password, or delete your account.',
+  'account.role': 'Role',
+  'account.profile.title': 'Personal details',
+  'account.profile.save': 'Save',
+  'account.profile.saved': 'Profile updated.',
+  'account.field.name': 'Full name',
+  'account.field.email': 'Email',
+  'account.password.title': 'Password',
+  'account.password.current': 'Current password',
+  'account.password.new': 'New password',
+  'account.password.confirm': 'Confirm new password',
+  'account.password.save': 'Change password',
+  'account.password.saved': 'Password updated.',
+  'account.password.too_short': 'New password must be at least 8 characters.',
+  'account.password.mismatch': 'Passwords do not match.',
+  'account.delete.title': 'Danger zone',
+  'account.delete.description':
+    'Deletion is permanent. Past bookings are kept for accounting but anonymised.',
+  'account.delete.button': 'Delete my account',
+  'account.delete.type_keyword': 'Type DELETE to confirm',
+  'account.delete.confirm': 'Confirm deletion',
+  'account.delete.confirm_keyword': 'Type DELETE exactly to confirm.',
+
+  // Bookings — cancel
+  'bookings.cancel.action': 'Cancel',
+  'bookings.cancel.confirm.title': 'Cancel this booking?',
+  'bookings.cancel.confirm.body':
+    'Cancelling releases your seats. Mobile Money refunds are processed within 48 h by our team.',
+  'bookings.cancel.confirm.yes': 'Yes, cancel',
+  'bookings.cancel.confirm.no': 'Keep the booking',
+  'bookings.cancel.success': 'Booking cancelled.',
 };
 
 const translations: Record<Language, Record<string, string>> = { fr, en };
