@@ -1,5 +1,6 @@
 import { PrismaClient, Role, Status } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { defaultLayoutForCapacity } from '../lib/seat-layout'
 
 const prisma = new PrismaClient()
 
@@ -167,6 +168,7 @@ async function main() {
       // 2 vehicles per agency
       for (let i = 0; i < 2; i++) {
         const vm = VEHICLE_MODELS[(i + agencies.indexOf(ag)) % VEHICLE_MODELS.length]
+        const variant: 'VIP' | 'CLASSIC' = i === 0 ? 'VIP' : 'CLASSIC'
         await prisma.vehicle.create({
           data: {
             agencyId: agency.id,
@@ -174,6 +176,7 @@ async function main() {
             model: vm.model,
             capacity: vm.capacity,
             amenities: vm.amenities,
+            seatLayout: defaultLayoutForCapacity(vm.capacity, variant) as unknown as object,
           },
         })
       }
