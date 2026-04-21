@@ -1,69 +1,68 @@
 'use client';
 import React from 'react';
+import SectionEyebrow from './SectionEyebrow';
 
 const steps = [
   {
     num: '01',
     icon: 'search',
-    title: 'Recherchez votre trajet',
-    desc: "Choisissez votre ville de départ, destination et date. Aller simple ou aller-retour, nous comparons toutes les compagnies pour vous.",
-    color: 'from-blue-500 to-cyan-500',
+    title: 'Recherchez',
+    desc: 'Saisissez votre ville de départ, votre destination et la date. Aller simple ou aller-retour.',
   },
   {
     num: '02',
     icon: 'event_seat',
-    title: 'Choisissez votre bus',
-    desc: 'Comparez les prix, horaires et types de confort (VIP, Classique, Climatisé). Réservez autant de places que nécessaire.',
-    color: 'from-primary to-emerald-500',
+    title: 'Comparez',
+    desc: 'Toutes les compagnies et tous les niveaux de confort — VIP, Classique, Climatisé — sur un seul écran.',
   },
   {
     num: '03',
     icon: 'smartphone',
-    title: 'Payez par Mobile Money',
-    desc: 'Orange Money ou MTN MoMo en un clic. Vous recevez une demande de confirmation USSD sur votre téléphone.',
-    color: 'from-orange-500 to-red-500',
+    title: 'Payez',
+    desc: 'Orange Money ou MTN MoMo en un clic. Confirmation USSD directement sur votre téléphone.',
   },
   {
     num: '04',
     icon: 'qr_code_2',
-    title: 'Embarquez avec votre QR',
-    desc: "Votre billet s'affiche dans l'app avec un QR code. Le chef de gare le scanne, vous montez à bord. Voilà.",
-    color: 'from-purple-500 to-pink-500',
+    title: 'Embarquez',
+    desc: 'Votre billet QR est prêt. Montrez-le au chef de gare, montez à bord. Aucune impression.',
   },
 ];
 
 const HowItWorks: React.FC = () => (
-  <section className="py-20 md:py-28 px-6 md:px-10 bg-white dark:bg-background-dark border-t border-gray-100 dark:border-gray-800">
-    <div className="max-w-7xl mx-auto">
-      <div className="text-center mb-14">
-        <div className="inline-flex items-center gap-2 bg-primary/10 text-teal-accent dark:text-primary text-xs font-black uppercase tracking-widest px-4 py-2 rounded-full mb-5">
-          <span className="material-symbols-outlined text-sm">route</span>
-          Comment ça marche
-        </div>
-        <h2 className="text-3xl md:text-4xl font-black text-text-main dark:text-white mb-4">Réservez en 4 étapes simples</h2>
-        <p className="text-text-muted dark:text-gray-400 max-w-2xl mx-auto leading-relaxed">
-          De la recherche à l&apos;embarquement en moins de 2 minutes, directement depuis votre téléphone.
+  <section id="how" className="relative py-24 md:py-32 px-6 md:px-10 bg-background-light dark:bg-background-dark">
+    <div className="max-w-6xl mx-auto">
+      <div className="max-w-2xl mx-auto text-center mb-16 md:mb-20">
+        <SectionEyebrow>Comment ça marche</SectionEyebrow>
+        <h2 className="mt-5 font-display text-3xl md:text-5xl font-semibold text-text-main dark:text-white tracking-tightest leading-[1.05]">
+          Réservez en 2 minutes,
+          <span className="font-serif-italic text-teal-accent dark:text-primary font-normal italic"> de chez vous.</span>
+        </h2>
+        <p className="mt-5 text-text-muted dark:text-gray-400 leading-relaxed">
+          Une expérience conçue pour le mobile — simple, rapide et fiable, même sur réseau 3G.
         </p>
       </div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-4">
-        {steps.map((s, i) => (
-          <div key={s.num} className="relative group">
-            <div className="absolute -top-4 left-6 text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-gray-200 to-gray-100 dark:from-gray-800 dark:to-gray-900 pointer-events-none select-none">
-              {s.num}
-            </div>
-            <div className="relative bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-800 p-7 pt-14 h-full hover:shadow-xl hover:shadow-primary/5 hover:-translate-y-1 transition-all duration-300">
-              <div className={`size-12 rounded-xl bg-gradient-to-br ${s.color} flex items-center justify-center text-white shadow-lg mb-5`}>
-                <span className="material-symbols-outlined text-2xl">{s.icon}</span>
+      <div className="relative grid sm:grid-cols-2 lg:grid-cols-4 gap-px bg-ink-100 dark:bg-white/10 border border-ink-100 dark:border-white/10 rounded-2xl overflow-hidden">
+        {steps.map((s) => (
+          <div
+            key={s.num}
+            className="group relative bg-white dark:bg-surface-dark p-8 md:p-10 transition-colors hover:bg-ink-50/70 dark:hover:bg-white/5"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <div className="inline-flex items-center justify-center size-11 rounded-xl bg-primary/10 text-teal-accent dark:text-primary ring-1 ring-inset ring-primary/20">
+                <span className="material-symbols-outlined text-[22px]">{s.icon}</span>
               </div>
-              <h3 className="font-black text-lg text-text-main dark:text-white mb-2">{s.title}</h3>
-              <p className="text-sm text-text-muted dark:text-gray-400 leading-relaxed">{s.desc}</p>
+              <span className="font-display text-sm font-medium text-text-muted/70 dark:text-gray-500 tabular-nums tracking-wider">
+                {s.num}
+              </span>
             </div>
-            {i < steps.length - 1 && (
-              <div className="hidden lg:flex absolute top-1/2 -right-2 -translate-y-1/2 z-10 size-8 rounded-full bg-white dark:bg-surface-dark border-2 border-primary/30 items-center justify-center">
-                <span className="material-symbols-outlined text-primary text-sm">arrow_forward</span>
-              </div>
-            )}
+            <h3 className="font-display text-lg font-semibold text-text-main dark:text-white tracking-tight mb-2">
+              {s.title}
+            </h3>
+            <p className="text-sm text-text-muted dark:text-gray-400 leading-relaxed">
+              {s.desc}
+            </p>
           </div>
         ))}
       </div>

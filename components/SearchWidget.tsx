@@ -105,8 +105,8 @@ const SearchWidget: React.FC = () => {
   };
 
   return (
-    <div className="relative z-20 -mt-16 px-4 pb-12 w-full flex justify-center">
-      <div className="w-full max-w-6xl bg-white dark:bg-surface-dark rounded-2xl shadow-xl p-6 border border-gray-100 dark:border-gray-800">
+    <div className="relative z-20 -mt-20 md:-mt-24 px-4 pb-16 w-full flex justify-center">
+      <div className="w-full max-w-6xl bg-white dark:bg-surface-dark rounded-3xl shadow-elevated p-6 md:p-7 border border-ink-100 dark:border-white/10 ring-1 ring-black/[0.02]">
         
         {/* Top Header: Tabs and Trip Type */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 border-b border-gray-100 dark:border-gray-700 pb-2">
