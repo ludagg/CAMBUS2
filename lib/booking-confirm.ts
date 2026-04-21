@@ -1,5 +1,6 @@
 import { prisma } from './prisma'
 import { sendBookingNotifications } from './send-booking-notifications'
+import { promoteWaitlistForDeparture } from './waitlist'
 
 /**
  * Confirm a payment: flip payment + group + bookings to CONFIRMED and trigger
@@ -85,4 +86,16 @@ export async function failPayment(paymentId: string, reason: string): Promise<vo
       }),
     ),
   ])
+
+  // Best-effort waitlist promotion — failures don't roll back the cancellation.
+  const seen = new Set<string>()
+  for (const b of payment.group.bookings) {
+    if (seen.has(b.departureId)) continue
+    seen.add(b.departureId)
+    try {
+      await promoteWaitlistForDeparture(b.departureId)
+    } catch (err) {
+      console.error('[fail-payment] waitlist promotion failed', b.departureId, err)
+    }
+  }
 }
