@@ -1,8 +1,11 @@
 'use client';
 import React from 'react';
 import SearchWidget from './SearchWidget';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const Hero: React.FC = () => {
+  const { t } = useLanguage();
+
   return (
     <section className="relative w-full bg-background-light dark:bg-background-dark overflow-hidden">
       <div
@@ -25,22 +28,21 @@ const Hero: React.FC = () => {
             <span className="relative size-2 rounded-full bg-primary" />
           </span>
           <span className="text-[12px] font-medium text-text-main dark:text-gray-200 tracking-tight">
-            Nouveau — paiement Mobile Money instantané
+            {t('hero.eyebrow')} — {t('hero.trust.mobile_money')}
           </span>
           <span className="material-symbols-outlined text-sm text-text-muted">arrow_forward</span>
         </div>
 
         <h1 className="font-display font-semibold text-text-main dark:text-white tracking-tightest leading-[0.98] text-5xl sm:text-6xl md:text-7xl lg:text-[88px] animate-reveal">
-          Voyagez partout au Cameroun,
+          {t('hero.title')}
           <br />
           <span className="font-serif-italic text-teal-accent dark:text-primary font-normal italic">
-            sans faire la file.
+            {t('hero.title.accent')}
           </span>
         </h1>
 
         <p className="mx-auto mt-7 max-w-2xl text-base md:text-lg text-text-muted dark:text-gray-400 leading-relaxed animate-reveal" style={{ animationDelay: '80ms' }}>
-          Comparez toutes les compagnies de bus, réservez en 2 minutes et embarquez avec un
-          billet QR. Orange Money & MTN MoMo acceptés.
+          {t('hero.subtitle')}
         </p>
 
         <div className="mt-9 flex flex-wrap items-center justify-center gap-3 animate-reveal" style={{ animationDelay: '160ms' }}>
@@ -48,7 +50,7 @@ const Hero: React.FC = () => {
             href="#search"
             className="group inline-flex items-center gap-2 rounded-full bg-text-main dark:bg-white text-white dark:text-text-main px-5 py-3 text-sm font-semibold tracking-tight shadow-card hover:shadow-elevated hover:-translate-y-0.5 active:translate-y-0 transition-all"
           >
-            Rechercher un trajet
+            {t('hero.cta.primary')}
             <span className="material-symbols-outlined text-base group-hover:translate-x-0.5 transition-transform">arrow_forward</span>
           </a>
           <a
@@ -56,24 +58,24 @@ const Hero: React.FC = () => {
             className="inline-flex items-center gap-2 rounded-full border border-ink-200 dark:border-white/15 bg-white/60 dark:bg-white/5 backdrop-blur text-text-main dark:text-gray-100 px-5 py-3 text-sm font-medium tracking-tight hover:bg-white dark:hover:bg-white/10 transition-all"
           >
             <span className="material-symbols-outlined text-base">play_circle</span>
-            Comment ça marche
+            {t('how.eyebrow')}
           </a>
         </div>
 
         <div className="mt-14 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-[12px] text-text-muted dark:text-gray-400 animate-reveal" style={{ animationDelay: '240ms' }}>
           <span className="inline-flex items-center gap-1.5">
             <span className="material-symbols-outlined text-[16px] text-teal-accent dark:text-primary">shield_lock</span>
-            Paiement sécurisé
+            {t('hero.trust.mobile_money')}
           </span>
           <span className="h-1 w-1 rounded-full bg-ink-200 dark:bg-white/20 hidden sm:inline-block" />
           <span className="inline-flex items-center gap-1.5">
             <span className="material-symbols-outlined text-[16px] text-teal-accent dark:text-primary">qr_code_2</span>
-            Billet QR instantané
+            {t('hero.trust.qr')}
           </span>
           <span className="h-1 w-1 rounded-full bg-ink-200 dark:bg-white/20 hidden sm:inline-block" />
           <span className="inline-flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-[16px] text-teal-accent dark:text-primary">support_agent</span>
-            Support 7j/7
+            <span className="material-symbols-outlined text-[16px] text-teal-accent dark:text-primary">schedule</span>
+            {t('hero.trust.realtime')}
           </span>
         </div>
       </div>
