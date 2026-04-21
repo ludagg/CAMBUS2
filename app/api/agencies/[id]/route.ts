@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
-import { handleError } from '@/lib/api'
+import { handleError, bad } from '@/lib/api'
 import { assertOwnsAgency } from '@/lib/scoping'
+import { countActiveBookingsForAgency } from '@/lib/booking-invariants'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -56,6 +57,13 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN'])
     const { id } = await params
     await assertOwnsAgency(session!, id)
+    const active = await countActiveBookingsForAgency(id)
+    if (active > 0) {
+      return bad(
+        `Impossible de désactiver cette agence: ${active} réservation(s) active(s) sur des départs à venir. Annulez-les d'abord.`,
+        409,
+      )
+    }
     await prisma.agency.update({ where: { id }, data: { status: 'INACTIVE' } })
     return NextResponse.json({ data: { ok: true } })
   } catch (err) {
