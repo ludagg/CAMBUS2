@@ -9,7 +9,18 @@ const DEFAULT_SECRET = 'dev-secret-change-me-please-change-me-change-me-change-m
 const ALG = 'HS256'
 
 function getSecret() {
-  const secret = process.env.AUTH_SECRET || DEFAULT_SECRET
+  const secret = process.env.AUTH_SECRET
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'AUTH_SECRET environment variable is required in production. Generate one with `openssl rand -hex 64`.',
+      )
+    }
+    return new TextEncoder().encode(DEFAULT_SECRET)
+  }
+  if (secret.length < 32) {
+    throw new Error('AUTH_SECRET must be at least 32 characters long.')
+  }
   return new TextEncoder().encode(secret)
 }
 

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { hashPassword, signSession, setSessionCookie } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
+import { rateLimit, clientKey } from '@/lib/rate-limit'
 
 const schema = z.object({
   name: z.string().min(2),
@@ -13,6 +14,10 @@ const schema = z.object({
 export async function POST(req: NextRequest) {
   try {
     const body = schema.parse(await req.json())
+
+    const ipRl = rateLimit(clientKey(req, 'register-ip'), { limit: 5, windowSec: 300 })
+    if (!ipRl.ok) return bad(`Trop de comptes créés. Réessayez dans ${ipRl.retryAfterSeconds}s.`, 429)
+
     const exists = await prisma.user.findUnique({ where: { email: body.email } })
     if (exists) return bad('Un compte avec cet email existe déjà.', 409)
 

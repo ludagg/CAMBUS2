@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError } from '@/lib/api'
+import { assertOwnsAgency } from '@/lib/scoping'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -40,6 +41,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const session = await getSession()
     requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENCY_ADMIN'])
     const { id } = await params
+    await assertOwnsAgency(session!, id)
     const body = updateSchema.parse(await req.json())
     const agency = await prisma.agency.update({ where: { id }, data: body })
     return NextResponse.json({ data: agency })
@@ -53,6 +55,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     const session = await getSession()
     requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN'])
     const { id } = await params
+    await assertOwnsAgency(session!, id)
     await prisma.agency.update({ where: { id }, data: { status: 'INACTIVE' } })
     return NextResponse.json({ data: { ok: true } })
   } catch (err) {

@@ -211,21 +211,26 @@ model Departure {
 }
 
 model BookingGroup {
-  id             String        @id @default(cuid())
-  userId         String?
-  tripType       TripType      @default(ONE_WAY)
-  contactEmail   String
-  contactPhone   String
-  totalCents     Int
-  currency       String        @default("XAF")
-  status         BookingStatus @default(CONFIRMED)
-  user           User?         @relation(fields: [userId], references: [id])
-  bookings       Booking[]
-  payment        Payment?
-  createdAt      DateTime      @default(now())
+  id              String        @id @default(cuid())
+  userId          String?
+  tripType        TripType      @default(ONE_WAY)
+  contactEmail    String
+  contactPhone    String
+  contactName     String?
+  totalCents      Int
+  currency        String        @default("XAF")
+  status          BookingStatus @default(CONFIRMED)
+  idempotencyKey  String?       @unique
+  expiresAt       DateTime?
+  notifiedAt      DateTime?
+  user            User?         @relation(fields: [userId], references: [id])
+  bookings        Booking[]
+  payment         Payment?
+  createdAt       DateTime      @default(now())
 
   @@index([userId])
   @@index([createdAt])
+  @@index([status, expiresAt])
 }
 
 model Booking {
@@ -240,12 +245,29 @@ model Booking {
   group       BookingGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
   departure   Departure     @relation(fields: [departureId], references: [id])
   passengers  Passenger[]
+  bookingSeats BookingSeat[]
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
   @@index([groupId])
   @@index([departureId])
   @@index([status])
+}
+
+/// Enforces atomic seat reservation — Postgres unique constraint prevents
+/// two concurrent bookings from grabbing the same seat on the same departure.
+/// Rows are deleted when the booking is cancelled / expires; active bookings
+/// (PENDING/CONFIRMED/BOARDED) keep their rows.
+model BookingSeat {
+  id          String    @id @default(cuid())
+  departureId String
+  seatId      String
+  bookingId   String
+  booking     Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@unique([departureId, seatId])
+  @@index([bookingId])
 }
 
 model Passenger {

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
+import { assertOwnsCompany } from '@/lib/scoping'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -35,11 +36,7 @@ export async function POST(req: NextRequest) {
     const body = createSchema.parse(await req.json())
     if (body.originCityId === body.destinationCityId) return bad('Origine et destination identiques.')
 
-    // COMPANY_ADMIN can only create routes for their own company
-    if (session!.role === 'COMPANY_ADMIN') {
-      const user = await prisma.user.findUnique({ where: { id: session!.sub }, select: { companyId: true } })
-      if (!user?.companyId || user.companyId !== body.companyId) return bad('Accès refusé.', 403)
-    }
+    await assertOwnsCompany(session!, body.companyId)
 
     const route = await prisma.route.create({
       data: body,
