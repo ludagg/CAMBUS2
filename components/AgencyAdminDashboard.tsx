@@ -1,181 +1,175 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
-import { db } from '../firebase/config';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+
+interface Departure {
+  id: string;
+  departureAt: string;
+  arrivalAt: string;
+  priceCents: number;
+  seatsAvailable: number;
+  seatsTotal: number;
+  route: {
+    originCity: { name: string };
+    destinationCity: { name: string };
+  };
+  vehicle?: { plate: string; model: string; capacity: number } | null;
+}
+
+interface Vehicle {
+  id: string;
+  plate: string;
+  model: string;
+  capacity: number;
+  amenities: string[];
+}
+
+interface Agency {
+  id: string;
+  name: string;
+  company: { name: string; brandColor: string };
+  city: { name: string };
+  stations: { id: string; name: string }[];
+}
 
 const AgencyAdminDashboard: React.FC = () => {
   const { user, logout } = useNavigation();
-  const [activeTab, setActiveTab] = useState('fleet');
-  const [fleet, setFleet] = useState<any[]>([]);
-  const [routes, setRoutes] = useState<any[]>([]);
+  const [agencies, setAgencies] = useState<Agency[]>([]);
+  const [activeAgencyId, setActiveAgencyId] = useState<string | null>(null);
+  const [departures, setDepartures] = useState<Departure[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'departures' | 'vehicles'>('departures');
 
   useEffect(() => {
-    const fetchAgencyData = async () => {
-      if (!user?.agencyId) return;
-      setIsLoading(true);
+    const init = async () => {
       try {
-        // Fetch Fleet
-        const fleetQuery = query(collection(db, 'fleet'), where('agencyId', '==', user.agencyId));
-        const fleetSnapshot = await getDocs(fleetQuery);
-        const fleetData = fleetSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setFleet(fleetData);
-
-        // Fetch Routes
-        const routesQuery = query(collection(db, 'trips'), where('agencyId', '==', user.agencyId));
-        const routesSnapshot = await getDocs(routesQuery);
-        const routesData = routesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setRoutes(routesData);
-      } catch (error) {
-        console.error("Error fetching agency data:", error);
-      } finally {
-        setIsLoading(false);
+        const url = user?.companyId ? `/api/agencies?companyId=${user.companyId}` : '/api/agencies';
+        const res = await fetch(url);
+        const json = await res.json();
+        const list: Agency[] = json.data ?? [];
+        setAgencies(list);
+        const selected = user?.agencyId ?? list[0]?.id ?? null;
+        setActiveAgencyId(selected);
+      } catch (e) {
+        console.error(e);
       }
     };
+    init();
+  }, [user?.agencyId, user?.companyId]);
 
-    fetchAgencyData();
-  }, [user]);
+  useEffect(() => {
+    if (!activeAgencyId) return;
+    setIsLoading(true);
+    Promise.all([
+      fetch(`/api/agencies/${activeAgencyId}/departures`).then((r) => r.json()),
+      fetch(`/api/agencies/${activeAgencyId}/vehicles`).then((r) => r.json()),
+    ])
+      .then(([dep, veh]) => {
+        setDepartures(dep.data ?? []);
+        setVehicles(veh.data ?? []);
+      })
+      .finally(() => setIsLoading(false));
+  }, [activeAgencyId]);
 
-  // Sidebar item
-  const NavItem = ({ id, icon, label }: any) => (
-    <button 
-      onClick={() => setActiveTab(id)}
-      className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all font-medium text-sm ${activeTab === id ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
-    >
-      <span className="material-symbols-outlined">{icon}</span>
-      <span>{label}</span>
-    </button>
-  );
+  const activeAgency = useMemo(() => agencies.find((a) => a.id === activeAgencyId), [agencies, activeAgencyId]);
 
   return (
-    <div className="flex min-h-screen bg-gray-50 dark:bg-background-dark font-display">
-      
-      {/* Sidebar */}
-      <aside className="w-64 bg-white dark:bg-surface-dark border-r border-gray-200 dark:border-gray-800 flex flex-col">
-         <div className="p-6 border-b border-gray-100 dark:border-gray-800">
-             <div className="flex items-center gap-2 font-black text-lg text-text-main dark:text-white">
-                 <span className="material-symbols-outlined text-blue-600">directions_bus</span>
-                 {user?.name || 'Agency Admin'}
-             </div>
-             <div className="text-xs text-gray-500 mt-1 uppercase font-bold tracking-wider">Administration</div>
-         </div>
-         
-         <div className="p-4 flex-1 space-y-1">
-             <NavItem id="dashboard" icon="analytics" label="Tableau de Bord" />
-             <NavItem id="fleet" icon="directions_bus" label="Gestion Flotte" />
-             <NavItem id="routes" icon="map" label="Trajets & Prix" />
-             <NavItem id="staff" icon="badge" label="Personnel" />
-             <NavItem id="accounting" icon="account_balance_wallet" label="Comptabilité" />
-         </div>
+    <div className="bg-background-light dark:bg-background-dark min-h-screen">
+      <div className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-8">
+        <div className="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <div className="text-[10px] font-black tracking-widest uppercase opacity-80">Agency Admin</div>
+            <h1 className="text-3xl font-black">{activeAgency?.name ?? 'Mon agence'}</h1>
+            <p className="opacity-80 text-sm mt-1">{activeAgency?.company.name} • {activeAgency?.city.name}</p>
+          </div>
+          <button onClick={logout} className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 font-black text-sm">Déconnexion</button>
+        </div>
+      </div>
 
-         <div className="p-4 border-t border-gray-100 dark:border-gray-800">
-             <button onClick={logout} className="flex items-center gap-2 text-red-500 font-bold text-sm hover:underline">
-                 <span className="material-symbols-outlined">logout</span> Déconnexion
-             </button>
-         </div>
-      </aside>
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {agencies.length > 1 && !user?.agencyId && (
+          <div className="mb-6 flex flex-wrap gap-2">
+            {agencies.map((a) => (
+              <button
+                key={a.id}
+                onClick={() => setActiveAgencyId(a.id)}
+                className={`px-4 py-2 rounded-lg text-sm font-black ${
+                  activeAgencyId === a.id ? 'bg-primary text-text-main' : 'bg-white dark:bg-surface-dark border border-gray-100 dark:border-gray-800 text-text-muted hover:bg-gray-100'
+                }`}
+              >
+                {a.name}
+              </button>
+            ))}
+          </div>
+        )}
 
-      {/* Content */}
-      <main className="flex-1 p-8 overflow-y-auto">
-         
-         <div className="flex justify-between items-end mb-8">
-            <div>
-                <h1 className="text-2xl font-black text-text-main dark:text-white mb-1">
-                    {activeTab === 'fleet' ? 'Gestion de la Flotte' : 
-                     activeTab === 'routes' ? 'Planification des Trajets' : 
-                     'Tableau de Bord'}
-                </h1>
-                <p className="text-gray-500 text-sm">Gérez les opérations de votre compagnie en temps réel.</p>
-            </div>
-            {activeTab === 'fleet' && (
-                <button className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-lg hover:bg-blue-700 flex items-center gap-2">
-                    <span className="material-symbols-outlined">add</span> Ajouter un Bus
-                </button>
-            )}
-            {activeTab === 'routes' && (
-                <button className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-lg hover:bg-blue-700 flex items-center gap-2">
-                    <span className="material-symbols-outlined">add_road</span> Créer un Trajet
-                </button>
-            )}
-         </div>
+        <div className="flex gap-2 mb-6 border-b border-gray-200 dark:border-gray-800">
+          {(['departures', 'vehicles'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setActiveTab(t)}
+              className={`px-4 py-2 font-black text-sm capitalize ${
+                activeTab === t ? 'text-primary border-b-2 border-primary' : 'text-text-muted'
+              }`}
+            >
+              {t === 'departures' ? 'Départs' : 'Véhicules'}
+            </button>
+          ))}
+        </div>
 
-         {isLoading ? (
-            <div className="flex justify-center items-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-            </div>
-         ) : (
-             <>
-                 {/* FLEET VIEW */}
-                 {activeTab === 'fleet' && (
-                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fadeIn">
-                         {fleet.length > 0 ? fleet.map((bus, i) => (
-                             <div key={i} className="bg-white dark:bg-surface-dark p-5 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm relative overflow-hidden">
-                                 <div className={`absolute top-0 right-0 px-3 py-1 rounded-bl-xl text-xs font-bold uppercase ${
-                                     bus.status === 'active' ? 'bg-green-100 text-green-700' : 
-                                     bus.status === 'maintenance' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
-                                 }`}>
-                                     {bus.status || 'active'}
-                                 </div>
-                                 <div className="flex items-center gap-4 mb-4">
-                                     <div className="size-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center text-gray-500">
-                                         <span className="material-symbols-outlined text-2xl">directions_bus</span>
-                                     </div>
-                                     <div>
-                                         <div className="font-black text-lg text-text-main dark:text-white">{bus.plate || `Bus ${i+1}`}</div>
-                                         <div className="text-xs text-gray-500">{bus.model || 'Standard'}</div>
-                                     </div>
-                                 </div>
-                                 <div className="flex justify-between items-center text-sm border-t border-gray-100 dark:border-gray-800 pt-3">
-                                     <div className="text-gray-500">Kilométrage: <span className="text-text-main dark:text-white font-bold">{bus.km || 'N/A'}</span></div>
-                                     <button className="text-blue-600 font-bold hover:underline">Détails</button>
-                                 </div>
-                             </div>
-                         )) : (
-                             <div className="col-span-full text-center py-12 text-gray-500">
-                                 Aucun bus enregistré pour le moment.
-                             </div>
-                         )}
-                     </div>
-                 )}
-
-                 {/* ROUTES VIEW */}
-                 {activeTab === 'routes' && (
-                     <div className="space-y-4 animate-fadeIn">
-                         {routes.length > 0 ? routes.map((route, i) => (
-                             <div key={i} className="bg-white dark:bg-surface-dark p-6 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center justify-between shadow-sm">
-                                 <div className="flex items-center gap-6">
-                                     <div className="text-center w-20">
-                                         <div className="text-2xl font-black text-text-main dark:text-white">{route.departureTime}</div>
-                                         <div className="text-xs text-gray-500 uppercase font-bold">Départ</div>
-                                     </div>
-                                     <div className="flex flex-col gap-1">
-                                         <div className="flex items-center gap-2 font-bold text-lg text-text-main dark:text-white">
-                                             {route.departureLocation} <span className="material-symbols-outlined text-gray-400">arrow_forward</span> {route.arrivalLocation}
-                                         </div>
-                                         <div className="flex items-center gap-2 text-xs text-gray-500">
-                                             <span className="material-symbols-outlined text-sm">directions_bus</span>
-                                             Bus: {route.busId || 'Non assigné'}
-                                         </div>
-                                     </div>
-                                 </div>
-                                 <div className="text-right">
-                                     <div className="text-xl font-black text-blue-600">{route.price?.toLocaleString()} FCFA</div>
-                                     <button className="text-xs font-bold text-gray-400 hover:text-text-main mt-1 flex items-center gap-1 justify-end">
-                                         <span className="material-symbols-outlined text-sm">edit</span> Modifier
-                                     </button>
-                                 </div>
-                             </div>
-                         )) : (
-                             <div className="text-center py-12 text-gray-500">
-                                 Aucun trajet configuré pour le moment.
-                             </div>
-                         )}
-                     </div>
-                 )}
-             </>
-         )}
-      </main>
+        {isLoading ? (
+          <div className="text-center py-16"><span className="material-symbols-outlined animate-spin text-5xl text-primary">progress_activity</span></div>
+        ) : activeTab === 'departures' ? (
+          <div className="space-y-3">
+            {departures.map((d) => (
+              <div key={d.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-4 flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-6">
+                  <div>
+                    <div className="text-lg font-black text-text-main dark:text-white">{new Date(d.departureAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</div>
+                    <div className="text-xs text-text-muted">{new Date(d.departureAt).toLocaleDateString('fr-FR')}</div>
+                  </div>
+                  <div>
+                    <div className="font-black text-text-main dark:text-white">{d.route.originCity.name} → {d.route.destinationCity.name}</div>
+                    {d.vehicle && <div className="text-xs text-text-muted">{d.vehicle.plate} • {d.vehicle.model}</div>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-xs font-black">
+                    <span className={d.seatsAvailable < 10 ? 'text-orange-600' : 'text-green-600'}>{d.seatsAvailable}</span>
+                    <span className="text-text-muted">/{d.seatsTotal} places</span>
+                  </div>
+                  <div className="font-black text-primary">{d.priceCents.toLocaleString()} XAF</div>
+                </div>
+              </div>
+            ))}
+            {departures.length === 0 && <p className="text-text-muted text-center py-10">Aucun départ programmé.</p>}
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-2 gap-3">
+            {vehicles.map((v) => (
+              <div key={v.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="size-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center"><span className="material-symbols-outlined">directions_bus</span></div>
+                  <div>
+                    <div className="font-black text-text-main dark:text-white">{v.plate}</div>
+                    <div className="text-xs text-text-muted">{v.model} • {v.capacity} places</div>
+                  </div>
+                </div>
+                {v.amenities.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {v.amenities.map((a) => (
+                      <span key={a} className="text-[10px] font-black px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-text-muted rounded-full uppercase">{a}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+            {vehicles.length === 0 && <p className="text-text-muted text-center py-10 col-span-2">Aucun véhicule enregistré.</p>}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

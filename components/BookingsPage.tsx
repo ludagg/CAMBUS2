@@ -2,23 +2,39 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
-import { db } from '../firebase/config';
-import { collection, query, where, getDocs } from 'firebase/firestore';
 import { BookingCardSkeleton } from './Skeleton';
 
-interface Booking {
+interface BookingLeg {
   id: string;
+  leg: 'OUTBOUND' | 'RETURN';
+  seats: string[];
+  price: number;
+  status: string;
+  qrCode: string;
   agencyName: string;
   agencyLogo: string;
   color: string;
   from: string;
   to: string;
+  fromCity: string;
+  toCity: string;
   departureTime: string;
+  arrivalTime: string;
   date: string;
-  price: number;
+  passengers: { fullName: string; idNumber?: string | null; seat?: string | null }[];
+}
+
+interface Booking {
+  id: string;
+  tripType: 'ONE_WAY' | 'ROUND_TRIP';
+  totalPrice: number;
   currency: string;
-  passengers: number;
-  status: 'confirmed' | 'completed' | 'cancelled';
+  status: string;
+  contactEmail: string;
+  contactPhone: string;
+  createdAt: string;
+  bookings: BookingLeg[];
+  payment: { method: string; status: string } | null;
 }
 
 const BookingsPage: React.FC = () => {
@@ -40,20 +56,11 @@ const BookingsPage: React.FC = () => {
       if (!user) return;
       setIsLoading(true);
       try {
-        const q = query(
-          collection(db, 'bookings'),
-          where("userId", "==", user.uid)
-        );
-        const querySnapshot = await getDocs(q);
-        const bookingsData: Booking[] = [];
-        querySnapshot.forEach((doc) => {
-          bookingsData.push({ id: doc.id, ...doc.data() } as Booking);
-        });
-        // Sort by date descending
-        bookingsData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        setBookings(bookingsData);
+        const res = await fetch('/api/bookings', { cache: 'no-store' });
+        const json = await res.json();
+        setBookings(Array.isArray(json.data) ? json.data : []);
       } catch (error) {
-        console.error("Error fetching bookings:", error);
+        console.error('Error fetching bookings:', error);
       } finally {
         setIsLoading(false);
       }
@@ -65,8 +72,12 @@ const BookingsPage: React.FC = () => {
   if (!user) return null;
 
   const now = new Date();
-  const upcomingBookings = bookings.filter(b => new Date(b.date) > now || b.status === 'confirmed');
-  const pastBookings = bookings.filter(b => new Date(b.date) <= now && b.status !== 'confirmed');
+  const earliestDate = (b: Booking) => {
+    const dates = b.bookings.map((l) => new Date(l.date).getTime());
+    return dates.length ? Math.max(...dates) : Date.now();
+  };
+  const upcomingBookings = bookings.filter((b) => earliestDate(b) > now.getTime() || b.status === 'CONFIRMED');
+  const pastBookings = bookings.filter((b) => earliestDate(b) <= now.getTime() && b.status !== 'CONFIRMED');
 
   const displayedBookings = activeTab === 'upcoming' ? upcomingBookings : pastBookings;
 
@@ -80,10 +91,11 @@ const BookingsPage: React.FC = () => {
   };
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'confirmed': return 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800';
-      case 'completed': return 'bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700';
-      case 'cancelled': return 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800';
+    switch (status.toUpperCase()) {
+      case 'CONFIRMED': return 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800';
+      case 'BOARDED':
+      case 'COMPLETED': return 'bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700';
+      case 'CANCELLED': return 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800';
       default: return 'bg-gray-100 text-gray-600';
     }
   };
@@ -129,62 +141,64 @@ const BookingsPage: React.FC = () => {
               <BookingCardSkeleton />
             </>
           ) : displayedBookings.length > 0 ? (
-            displayedBookings.map(booking => (
-              <div key={booking.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 flex flex-col md:flex-row gap-6 hover:shadow-md transition-shadow">
-                
-                {/* Logo & Agency */}
-                <div className="flex items-center md:flex-col md:items-start gap-4 md:w-48 md:border-r border-gray-100 dark:border-gray-700">
-                   <div className={`size-12 rounded-xl ${booking.color} flex items-center justify-center text-white`}>
-                      <span className="material-symbols-outlined">{booking.agencyLogo}</span>
-                   </div>
-                   <div>
-                      <div className="font-bold text-text-main dark:text-white">{booking.agencyName}</div>
-                      <div className="text-xs text-text-muted mt-1">{t('bookings.ticket_id')}: <span className="font-mono text-text-main dark:text-white">{booking.id}</span></div>
-                   </div>
-                </div>
-
-                {/* Details */}
-                <div className="flex-1">
-                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+            displayedBookings.map((group) => {
+              const primary = group.bookings[0];
+              if (!primary) return null;
+              return (
+                <div key={group.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 flex flex-col gap-4 hover:shadow-md transition-shadow">
+                  <div className="flex items-start justify-between flex-wrap gap-3">
+                    <div className="flex items-center gap-4">
+                      <div className={`size-12 rounded-xl ${primary.color} flex items-center justify-center text-white`}>
+                        <span className="material-symbols-outlined">{primary.agencyLogo}</span>
+                      </div>
                       <div>
-                         <div className="text-sm font-bold text-primary mb-1">{formatDate(booking.date)}</div>
-                         <div className="flex items-center gap-3">
-                            <span className="text-2xl font-black text-text-main dark:text-white">{booking.departureTime}</span>
-                            <div className="h-px w-12 bg-gray-300 dark:bg-gray-600"></div>
-                            <span className="text-sm text-text-muted">{booking.passengers} Pass.</span>
-                         </div>
+                        <div className="font-black text-text-main dark:text-white">{primary.agencyName}</div>
+                        <div className="text-xs text-text-muted mt-1 flex items-center gap-2">
+                          <span>{t('bookings.ticket_id')}: <span className="font-mono text-text-main dark:text-white">{group.id.slice(0, 8).toUpperCase()}</span></span>
+                          {group.tripType === 'ROUND_TRIP' && <span className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-[10px] font-black uppercase">A/R</span>}
+                        </div>
                       </div>
-                      <div className={`self-start md:self-center px-3 py-1 rounded-full text-xs font-bold border ${getStatusColor(booking.status)} uppercase tracking-wide`}>
-                         {t(`bookings.status.${booking.status}`)}
-                      </div>
-                   </div>
+                    </div>
+                    <div className={`px-3 py-1 rounded-full text-xs font-bold border ${getStatusColor(group.status)} uppercase tracking-wide`}>
+                      {group.status}
+                    </div>
+                  </div>
 
-                   <div className="flex items-start gap-3">
-                      <div className="flex flex-col items-center gap-1 pt-1">
-                         <div className="size-2 rounded-full bg-gray-300 dark:bg-gray-600"></div>
-                         <div className="w-0.5 h-6 bg-gray-200 dark:bg-gray-700"></div>
-                         <div className="size-2 rounded-full bg-primary"></div>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {group.bookings.map((leg) => (
+                      <div key={leg.id} className="border border-gray-100 dark:border-gray-800 rounded-lg p-4">
+                        <div className="text-[10px] font-black uppercase text-primary mb-2 tracking-widest">{leg.leg === 'OUTBOUND' ? t('checkout.outbound') || 'Aller' : t('checkout.return') || 'Retour'}</div>
+                        <div className="text-sm font-bold text-primary mb-2">{formatDate(leg.date)}</div>
+                        <div className="flex items-center gap-3 mb-3">
+                          <span className="text-xl font-black text-text-main dark:text-white">{leg.departureTime}</span>
+                          <span className="material-symbols-outlined text-text-muted">arrow_forward</span>
+                          <span className="text-xl font-black text-text-main dark:text-white">{leg.arrivalTime}</span>
+                        </div>
+                        <div className="text-xs text-text-muted">{leg.fromCity} → {leg.toCity}</div>
+                        <div className="text-xs text-text-muted mt-1">{leg.from}</div>
+                        {leg.seats.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {leg.seats.map((s) => (
+                              <span key={s} className="text-[10px] font-black px-1.5 py-0.5 bg-primary/10 text-primary rounded">{s}</span>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <div className="flex-1">
-                         <div className="text-sm text-text-muted mb-4">{booking.from}</div>
-                         <div className="text-sm font-bold text-text-main dark:text-white">{booking.to}</div>
-                      </div>
-                   </div>
-                </div>
+                    ))}
+                  </div>
 
-                {/* Price & Action */}
-                <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-2 border-t md:border-t-0 md:border-l border-gray-100 dark:border-gray-700 pt-4 md:pt-0 pl-0 md:pl-6">
-                    <div className="font-black text-xl text-text-main dark:text-white">{booking.price.toLocaleString()} <span className="text-xs font-normal text-text-muted">{booking.currency}</span></div>
-                    {booking.status === 'confirmed' && (
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-gray-700">
+                    <div className="font-black text-xl text-text-main dark:text-white">{group.totalPrice.toLocaleString()} <span className="text-xs font-normal text-text-muted">{group.currency}</span></div>
+                    {group.status === 'CONFIRMED' && (
                       <button className="px-4 py-2 bg-primary/10 text-primary hover:bg-primary hover:text-text-main rounded-lg text-sm font-bold transition-colors flex items-center gap-2">
-                        <span className="material-symbols-outlined text-lg">download</span>
-                        {t('bookings.download')}
+                        <span className="material-symbols-outlined text-lg">qr_code_2</span>
+                        QR
                       </button>
                     )}
+                  </div>
                 </div>
-
-              </div>
-            ))
+              );
+            })
           ) : (
             <div className="text-center py-16 bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800">
                <div className="size-20 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400">

@@ -2,8 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
-import { db } from '../firebase/config';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 const SEAT_FEE = 1000; // Extra cost per seat selection
 
@@ -78,56 +76,44 @@ const CheckoutPage: React.FC = () => {
     e.preventDefault();
     if (!user || !bookingDetails) return;
     setIsProcessing(true);
-    
+
     try {
-      const bookingData = {
-        userId: user.uid,
-        tripId: bookingDetails.outbound.id,
-        tripDate: bookingDetails.outbound.date,
-        tripRoute: `${bookingDetails.outbound.departureLocation} - ${bookingDetails.outbound.arrivalLocation}`,
-        agencyName: bookingDetails.outbound.agencyName,
-        agencyLogo: bookingDetails.outbound.agencyLogo,
-        color: bookingDetails.outbound.color,
-        from: bookingDetails.outbound.departureLocation,
-        to: bookingDetails.outbound.arrivalLocation,
-        departureTime: bookingDetails.outbound.departureTime,
-        date: bookingDetails.outbound.date,
-        price: calculateTotal(),
-        currency: 'FCFA',
-        passengers: totalSeatsNeeded,
-        seats: outboundSeats,
-        status: 'confirmed',
-        paymentMethod: paymentMethod,
-        contactEmail: email,
-        contactPhone: phone,
-        passengersInfo: passengersInfo,
-        createdAt: serverTimestamp()
-      };
-
-      await addDoc(collection(db, 'bookings'), bookingData);
-
-      if (bookingDetails.returnTrip) {
-        const returnBookingData = {
-          ...bookingData,
-          tripId: bookingDetails.returnTrip.id,
-          tripDate: bookingDetails.returnTrip.date,
-          tripRoute: `${bookingDetails.returnTrip.departureLocation} - ${bookingDetails.returnTrip.arrivalLocation}`,
-          agencyName: bookingDetails.returnTrip.agencyName,
-          agencyLogo: bookingDetails.returnTrip.agencyLogo,
-          color: bookingDetails.returnTrip.color,
-          from: bookingDetails.returnTrip.departureLocation,
-          to: bookingDetails.returnTrip.arrivalLocation,
-          departureTime: bookingDetails.returnTrip.departureTime,
-          date: bookingDetails.returnTrip.date,
-          seats: returnSeats,
-        };
-        await addDoc(collection(db, 'bookings'), returnBookingData);
+      const passengers = passengersInfo
+        .map((p, i) => ({
+          fullName: p.name || `Passager ${i + 1}`,
+          idNumber: p.id || undefined,
+          seat: outboundSeats[i],
+        }))
+        .slice(0, totalSeatsNeeded);
+      // Ensure at least totalSeatsNeeded passengers
+      while (passengers.length < totalSeatsNeeded) {
+        passengers.push({ fullName: `Passager ${passengers.length + 1}`, idNumber: undefined, seat: outboundSeats[passengers.length] });
       }
 
+      const payload = {
+        outboundDepartureId: String(bookingDetails.outbound.id),
+        returnDepartureId: bookingDetails.returnTrip ? String(bookingDetails.returnTrip.id) : undefined,
+        passengers,
+        outboundSeats,
+        returnSeats,
+        contactEmail: email,
+        contactPhone: phone,
+        paymentMethod: paymentMethod === 'momo' ? 'MOMO' : 'CARD',
+      };
+
+      const res = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Impossible de finaliser la réservation.');
+
       setIsSuccess(true);
-    } catch (error) {
-      console.error("Error saving booking:", error);
-      alert("Une erreur est survenue lors de la réservation.");
+    } catch (error: unknown) {
+      console.error('Error saving booking:', error);
+      const msg = error instanceof Error ? error.message : 'Une erreur est survenue lors de la réservation.';
+      alert(msg);
     } finally {
       setIsProcessing(false);
     }
