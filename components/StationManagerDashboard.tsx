@@ -5,6 +5,7 @@ import { useNavigation } from '../contexts/NavigationContext';
 import CounterSalePanel from './CounterSalePanel';
 import DepartureControlPanel from './DepartureControlPanel';
 import AnalyticsPanel from './AnalyticsPanel';
+import QrScanner from './QrScanner';
 
 interface Manifest {
   id: string;
@@ -34,6 +35,7 @@ const StationManagerDashboard: React.FC = () => {
   const [qrInput, setQrInput] = useState('');
   const [lastCheckin, setLastCheckin] = useState<{ ok: boolean; message: string } | null>(null);
   const [tab, setTab] = useState<'manifest' | 'counter' | 'operations' | 'analytics'>('manifest');
+  const [scanMode, setScanMode] = useState<'manual' | 'camera'>('manual');
 
   const fetchManifest = useCallback(async () => {
     setIsLoading(true);
@@ -119,19 +121,51 @@ const StationManagerDashboard: React.FC = () => {
         {tab === 'manifest' && (<>
         {/* Check-in */}
         <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-6 mb-6">
-          <h2 className="font-black text-text-main dark:text-white mb-3 flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary">qr_code_scanner</span> Validation de billet
-          </h2>
-          <div className="flex gap-2 flex-wrap">
-            <input
-              value={qrInput}
-              onChange={(e) => setQrInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') doCheckin(qrInput); }}
-              placeholder="Code QR / référence"
-              className="flex-1 min-w-64 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-2 font-mono text-sm bg-white dark:bg-background-dark text-text-main dark:text-white"
-            />
-            <button onClick={() => doCheckin(qrInput)} className="px-6 py-2 bg-primary text-text-main rounded-lg font-black text-sm">Valider</button>
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+            <h2 className="font-black text-text-main dark:text-white flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary">qr_code_scanner</span> Validation de billet
+            </h2>
+            <div className="flex items-center gap-1 p-1 rounded-full bg-gray-100 dark:bg-gray-800 text-xs font-black">
+              <button
+                type="button"
+                onClick={() => setScanMode('camera')}
+                className={`px-3 py-1.5 rounded-full flex items-center gap-1 transition-colors ${
+                  scanMode === 'camera' ? 'bg-primary text-text-main' : 'text-text-muted hover:text-text-main'
+                }`}
+                aria-pressed={scanMode === 'camera'}
+              >
+                <span className="material-symbols-outlined text-[16px]">videocam</span>
+                Caméra
+              </button>
+              <button
+                type="button"
+                onClick={() => setScanMode('manual')}
+                className={`px-3 py-1.5 rounded-full flex items-center gap-1 transition-colors ${
+                  scanMode === 'manual' ? 'bg-primary text-text-main' : 'text-text-muted hover:text-text-main'
+                }`}
+                aria-pressed={scanMode === 'manual'}
+              >
+                <span className="material-symbols-outlined text-[16px]">keyboard</span>
+                Saisie
+              </button>
+            </div>
           </div>
+
+          {scanMode === 'camera' ? (
+            <QrScanner onDecode={(value) => doCheckin(value)} />
+          ) : (
+            <div className="flex gap-2 flex-wrap">
+              <input
+                value={qrInput}
+                onChange={(e) => setQrInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') doCheckin(qrInput); }}
+                placeholder="Code QR / référence"
+                className="flex-1 min-w-64 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-2 font-mono text-sm bg-white dark:bg-background-dark text-text-main dark:text-white"
+              />
+              <button onClick={() => doCheckin(qrInput)} className="px-6 py-2 bg-primary text-text-main rounded-lg font-black text-sm">Valider</button>
+            </div>
+          )}
+
           {lastCheckin && (
             <div className={`mt-3 text-sm font-black ${lastCheckin.ok ? 'text-green-600' : 'text-red-600'}`}>
               {lastCheckin.ok ? '✔ ' : '✖ '}{lastCheckin.message}
