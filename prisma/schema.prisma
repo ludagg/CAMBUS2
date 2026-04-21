@@ -309,4 +309,9 @@ model Payment {
   group        BookingGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @default(now()) @updatedAt
+
+  /// Prevents duplicate webhook posts for the same provider event from
+  /// creating ambiguous Payment rows. (provider, providerRef) is the natural
+  /// idempotency key of a Mobile Money / card event.
+  @@unique([provider, providerRef])
 }
