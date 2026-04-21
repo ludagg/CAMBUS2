@@ -13,6 +13,12 @@ interface TripExtended extends Trip {
   distanceToUser?: number;
 }
 
+interface NearbyDate {
+  date: string;
+  count: number;
+  minPrice: number | null;
+}
+
 // Coordonnées des gares pour la démo
 const stationLocations: Record<string, { lat: number, lng: number, address: string }> = {
   "Douala - Gare Centrale": { lat: 4.0511, lng: 9.7679, address: "Bd de la Liberté, Douala (Express Voyage)" },
@@ -38,26 +44,34 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 
 const SearchResultsPage: React.FC = () => {
   const { t } = useLanguage();
-  const { searchParams, navigateTo, setBookingDetails } = useNavigation();
+  const { searchParams, navigateTo, setBookingDetails, setSearchParams } = useNavigation();
   const [sortOption, setSortOption] = useState<'price' | 'time' | 'duration' | 'arrival'>('time');
 
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectedTimes, setSelectedTimes] = useState<string[]>([]);
   const [selectedAgencies, setSelectedAgencies] = useState<string[]>([]);
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
+  const [minPrice, setMinPrice] = useState<number | null>(null);
   const [maxPrice, setMaxPrice] = useState<number | null>(null);
   const [maxDurationMin, setMaxDurationMin] = useState<number | null>(null);
+  const [hourRange, setHourRange] = useState<[number, number]>([0, 24]);
 
   const [selectedOutbound, setSelectedOutbound] = useState<TripExtended | null>(null);
   const [selectedReturn, setSelectedReturn] = useState<TripExtended | null>(null);
   const [hoveredTripId, setHoveredTripId] = useState<number | string | null>(null);
-  
+
+  // Comparator (up to 3 trips side-by-side)
+  const [compareTripIds, setCompareTripIds] = useState<Array<string | number>>([]);
+  const [showCompare, setShowCompare] = useState(false);
+
   // New: Geolocation & Mobile View switcher
   const [userCoords, setUserCoords] = useState<{lat: number, lng: number} | null>(null);
   const [mobileView, setMobileView] = useState<'list' | 'map'>('list');
 
   const [fetchedTrips, setFetchedTrips] = useState<TripExtended[]>([]);
   const [isLoadingTrips, setIsLoadingTrips] = useState(false);
+  const [nearbyDates, setNearbyDates] = useState<NearbyDate[]>([]);
+  const [isLoadingNearby, setIsLoadingNearby] = useState(false);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
@@ -89,6 +103,7 @@ const SearchResultsPage: React.FC = () => {
   useEffect(() => {
     const fetchTrips = async () => {
       setIsLoadingTrips(true);
+      setNearbyDates([]);
       try {
         const origin = currentStep === 'outbound' ? searchParams.from : searchParams.to;
         const destination = currentStep === 'outbound' ? searchParams.to : searchParams.from;
@@ -96,7 +111,35 @@ const SearchResultsPage: React.FC = () => {
 
         const res = await fetch(`/api/departures?from=${encodeURIComponent(origin)}&to=${encodeURIComponent(destination)}&date=${encodeURIComponent(date)}`);
         const json = await res.json();
-        setFetchedTrips(Array.isArray(json.data) ? (json.data as TripExtended[]) : []);
+        const trips = Array.isArray(json.data) ? (json.data as TripExtended[]) : [];
+        setFetchedTrips(trips);
+
+        if (trips.length === 0) {
+          setIsLoadingNearby(true);
+          try {
+            const base = new Date(`${date}T00:00:00`);
+            const offsets = [-3, -2, -1, 1, 2, 3];
+            const results = await Promise.all(
+              offsets.map(async (offset) => {
+                const d = new Date(base);
+                d.setDate(d.getDate() + offset);
+                const iso = d.toISOString().slice(0, 10);
+                try {
+                  const r = await fetch(`/api/departures?from=${encodeURIComponent(origin)}&to=${encodeURIComponent(destination)}&date=${encodeURIComponent(iso)}`);
+                  const j = await r.json();
+                  const t = Array.isArray(j.data) ? (j.data as TripExtended[]) : [];
+                  const minPrice = t.length > 0 ? Math.min(...t.map(x => x.price)) : null;
+                  return { date: iso, count: t.length, minPrice } as NearbyDate;
+                } catch {
+                  return { date: iso, count: 0, minPrice: null } as NearbyDate;
+                }
+              })
+            );
+            setNearbyDates(results.filter(r => r.count > 0));
+          } finally {
+            setIsLoadingNearby(false);
+          }
+        }
       } catch (error) {
         console.error("Error fetching trips:", error);
         setFetchedTrips([]);
@@ -142,16 +185,20 @@ const SearchResultsPage: React.FC = () => {
     return initialTrips.filter(trip => {
       if (selectedAgencies.length > 0 && !selectedAgencies.includes(trip.agencyName)) return false;
       if (selectedAmenities.length > 0 && !selectedAmenities.every(a => trip.amenities.includes(a))) return false;
+      const hour = parseInt(trip.departureTime.split(':')[0]);
       if (selectedTimes.length > 0) {
-        const hour = parseInt(trip.departureTime.split(':')[0]);
         const period = hour >= 6 && hour < 12 ? 'morning' : hour >= 12 && hour < 18 ? 'afternoon' : 'evening';
         if (!selectedTimes.includes(period)) return false;
       }
+      if (hourRange[0] > 0 || hourRange[1] < 24) {
+        if (hour < hourRange[0] || hour >= hourRange[1]) return false;
+      }
+      if (minPrice !== null && trip.price < minPrice) return false;
       if (maxPrice !== null && trip.price > maxPrice) return false;
       if (maxDurationMin !== null && (trip.durationMin ?? 0) > maxDurationMin) return false;
       return true;
     });
-  }, [initialTrips, selectedAgencies, selectedAmenities, selectedTimes, maxPrice, maxDurationMin]);
+  }, [initialTrips, selectedAgencies, selectedAmenities, selectedTimes, hourRange, minPrice, maxPrice, maxDurationMin]);
 
   const sortedTrips = useMemo(() => {
     return [...filteredTrips].sort((a, b) => {
@@ -167,15 +214,51 @@ const SearchResultsPage: React.FC = () => {
     selectedTimes.length +
     selectedAgencies.length +
     selectedAmenities.length +
+    (minPrice !== null ? 1 : 0) +
     (maxPrice !== null ? 1 : 0) +
-    (maxDurationMin !== null ? 1 : 0);
+    (maxDurationMin !== null ? 1 : 0) +
+    ((hourRange[0] > 0 || hourRange[1] < 24) ? 1 : 0);
 
   const resetFilters = () => {
     setSelectedTimes([]);
     setSelectedAgencies([]);
     setSelectedAmenities([]);
+    setMinPrice(null);
     setMaxPrice(null);
     setMaxDurationMin(null);
+    setHourRange([0, 24]);
+  };
+
+  const toggleCompare = (tripId: string | number) => {
+    setCompareTripIds(prev => {
+      if (prev.includes(tripId)) return prev.filter(id => id !== tripId);
+      if (prev.length >= 3) return prev;
+      return [...prev, tripId];
+    });
+  };
+
+  const compareTrips = useMemo(
+    () => compareTripIds
+      .map(id => sortedTrips.find(t => t.id === id))
+      .filter((t): t is TripExtended => Boolean(t)),
+    [compareTripIds, sortedTrips]
+  );
+
+  const retrySearchWithDate = (newDate: string) => {
+    if (!searchParams) return;
+    const next = currentStep === 'outbound'
+      ? { ...searchParams, date: newDate }
+      : { ...searchParams, returnDate: newDate };
+    setSearchParams(next);
+  };
+
+  const formatNearbyDate = (iso: string) => {
+    try {
+      const d = new Date(`${iso}T00:00:00`);
+      return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+    } catch {
+      return iso;
+    }
   };
 
   // Handle selection from map
@@ -373,13 +456,37 @@ const SearchResultsPage: React.FC = () => {
           <div className="text-[11px] text-text-muted mt-0.5">{t('results.per_person')}</div>
         </div>
         {!isSummary && (
-          <button
-            onClick={() => handleTripSelect(trip)}
-            className="inline-flex items-center gap-1.5 rounded-full bg-text-main dark:bg-white text-white dark:text-text-main px-5 py-2 text-xs font-semibold tracking-tight shadow-subtle hover:shadow-card active:translate-y-[1px] transition-all"
-          >
-            {t('results.select')}
-            <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
-          </button>
+          <div className="flex flex-col items-end md:items-center gap-2">
+            <button
+              onClick={() => handleTripSelect(trip)}
+              className="inline-flex items-center gap-1.5 rounded-full bg-text-main dark:bg-white text-white dark:text-text-main px-5 py-2 text-xs font-semibold tracking-tight shadow-subtle hover:shadow-card active:translate-y-[1px] transition-all"
+            >
+              {t('results.select')}
+              <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+            </button>
+            <label
+              className={`inline-flex items-center gap-1.5 text-[11px] font-medium tracking-tight cursor-pointer select-none transition-colors ${
+                compareTripIds.includes(trip.id)
+                  ? 'text-teal-accent dark:text-primary'
+                  : 'text-text-muted hover:text-text-main dark:hover:text-white'
+              }`}
+              title={
+                !compareTripIds.includes(trip.id) && compareTripIds.length >= 3
+                  ? 'Maximum 3 trajets à comparer'
+                  : 'Ajouter à la comparaison'
+              }
+            >
+              <input
+                type="checkbox"
+                checked={compareTripIds.includes(trip.id)}
+                disabled={!compareTripIds.includes(trip.id) && compareTripIds.length >= 3}
+                onChange={() => toggleCompare(trip.id)}
+                className="size-3.5 rounded border-ink-300 dark:border-white/25 text-primary focus:ring-primary/40 bg-transparent"
+              />
+              <span className="material-symbols-outlined text-[14px]">compare_arrows</span>
+              Comparer
+            </label>
+          </div>
         )}
       </div>
     </div>
@@ -515,54 +622,113 @@ const SearchResultsPage: React.FC = () => {
 
                    {isFilterOpen && (
                      <div className="bg-white dark:bg-white/[0.03] rounded-2xl p-6 mb-8 border border-ink-100 dark:border-white/10 animate-slideDown overflow-hidden shadow-subtle">
-                        {priceBounds.max > priceBounds.min && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6 pb-6 border-b border-ink-100 dark:border-white/10">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6 pb-6 border-b border-ink-100 dark:border-white/10">
+                          {priceBounds.max > priceBounds.min && (
                             <div>
                               <div className="flex items-center justify-between mb-2">
-                                <h4 className="text-[11px] font-semibold uppercase text-text-muted tracking-[0.16em]">Prix max</h4>
+                                <h4 className="text-[11px] font-semibold uppercase text-text-muted tracking-[0.16em]">Fourchette de prix</h4>
                                 <span className="text-xs font-semibold tabular-nums text-text-main dark:text-white">
-                                  {(maxPrice ?? priceBounds.max).toLocaleString()} FCFA
+                                  {(minPrice ?? priceBounds.min).toLocaleString()} – {(maxPrice ?? priceBounds.max).toLocaleString()} FCFA
                                 </span>
                               </div>
-                              <input
-                                type="range"
-                                min={priceBounds.min}
-                                max={priceBounds.max}
-                                step={500}
-                                value={maxPrice ?? priceBounds.max}
-                                onChange={(e) => setMaxPrice(Number(e.target.value) >= priceBounds.max ? null : Number(e.target.value))}
-                                className="w-full accent-primary"
-                              />
+                              <div className="grid grid-cols-2 gap-2">
+                                <input
+                                  type="range"
+                                  aria-label="Prix minimum"
+                                  min={priceBounds.min}
+                                  max={priceBounds.max}
+                                  step={500}
+                                  value={minPrice ?? priceBounds.min}
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    setMinPrice(v <= priceBounds.min ? null : v);
+                                  }}
+                                  className="w-full accent-primary"
+                                />
+                                <input
+                                  type="range"
+                                  aria-label="Prix maximum"
+                                  min={priceBounds.min}
+                                  max={priceBounds.max}
+                                  step={500}
+                                  value={maxPrice ?? priceBounds.max}
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    setMaxPrice(v >= priceBounds.max ? null : v);
+                                  }}
+                                  className="w-full accent-primary"
+                                />
+                              </div>
                               <div className="flex justify-between text-[11px] text-text-muted font-medium mt-1 tabular-nums">
                                 <span>{priceBounds.min.toLocaleString()}</span>
                                 <span>{priceBounds.max.toLocaleString()}</span>
                               </div>
                             </div>
-                            {durationBounds.max > durationBounds.min && (
-                              <div>
-                                <div className="flex items-center justify-between mb-2">
-                                  <h4 className="text-[11px] font-semibold uppercase text-text-muted tracking-[0.16em]">Durée max</h4>
-                                  <span className="text-xs font-semibold tabular-nums text-text-main dark:text-white">
-                                    {Math.floor((maxDurationMin ?? durationBounds.max) / 60)}h {String((maxDurationMin ?? durationBounds.max) % 60).padStart(2, '0')}
-                                  </span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min={durationBounds.min}
-                                  max={durationBounds.max}
-                                  step={15}
-                                  value={maxDurationMin ?? durationBounds.max}
-                                  onChange={(e) => setMaxDurationMin(Number(e.target.value) >= durationBounds.max ? null : Number(e.target.value))}
-                                  className="w-full accent-primary"
-                                />
-                                <div className="flex justify-between text-[11px] text-text-muted font-medium mt-1 tabular-nums">
-                                  <span>{Math.floor(durationBounds.min / 60)}h{String(durationBounds.min % 60).padStart(2, '0')}</span>
-                                  <span>{Math.floor(durationBounds.max / 60)}h{String(durationBounds.max % 60).padStart(2, '0')}</span>
-                                </div>
+                          )}
+                          {durationBounds.max > durationBounds.min && (
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <h4 className="text-[11px] font-semibold uppercase text-text-muted tracking-[0.16em]">Durée max</h4>
+                                <span className="text-xs font-semibold tabular-nums text-text-main dark:text-white">
+                                  {Math.floor((maxDurationMin ?? durationBounds.max) / 60)}h {String((maxDurationMin ?? durationBounds.max) % 60).padStart(2, '0')}
+                                </span>
                               </div>
-                            )}
+                              <input
+                                type="range"
+                                min={durationBounds.min}
+                                max={durationBounds.max}
+                                step={15}
+                                value={maxDurationMin ?? durationBounds.max}
+                                onChange={(e) => setMaxDurationMin(Number(e.target.value) >= durationBounds.max ? null : Number(e.target.value))}
+                                className="w-full accent-primary"
+                              />
+                              <div className="flex justify-between text-[11px] text-text-muted font-medium mt-1 tabular-nums">
+                                <span>{Math.floor(durationBounds.min / 60)}h{String(durationBounds.min % 60).padStart(2, '0')}</span>
+                                <span>{Math.floor(durationBounds.max / 60)}h{String(durationBounds.max % 60).padStart(2, '0')}</span>
+                              </div>
+                            </div>
+                          )}
+                          <div className="sm:col-span-2">
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className="text-[11px] font-semibold uppercase text-text-muted tracking-[0.16em]">Heure de départ</h4>
+                              <span className="text-xs font-semibold tabular-nums text-text-main dark:text-white">
+                                {String(hourRange[0]).padStart(2, '0')}h – {String(hourRange[1]).padStart(2, '0')}h
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <input
+                                type="range"
+                                aria-label="Heure min"
+                                min={0}
+                                max={23}
+                                step={1}
+                                value={hourRange[0]}
+                                onChange={(e) => {
+                                  const v = Math.min(Number(e.target.value), hourRange[1] - 1);
+                                  setHourRange([v, hourRange[1]]);
+                                }}
+                                className="w-full accent-primary"
+                              />
+                              <input
+                                type="range"
+                                aria-label="Heure max"
+                                min={1}
+                                max={24}
+                                step={1}
+                                value={hourRange[1]}
+                                onChange={(e) => {
+                                  const v = Math.max(Number(e.target.value), hourRange[0] + 1);
+                                  setHourRange([hourRange[0], v]);
+                                }}
+                                className="w-full accent-primary"
+                              />
+                            </div>
+                            <div className="flex justify-between text-[11px] text-text-muted font-medium mt-1 tabular-nums">
+                              <span>00h</span>
+                              <span>24h</span>
+                            </div>
                           </div>
-                        )}
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                           <div>
                             <h4 className="text-[11px] font-semibold uppercase text-text-muted tracking-[0.16em] mb-4">{t('results.filter.departure_time')}</h4>
@@ -645,10 +811,55 @@ const SearchResultsPage: React.FC = () => {
                       ) : sortedTrips.length > 0 ? (
                         sortedTrips.map(trip => renderTripCard(trip))
                       ) : (
-                        <div className="text-center py-20 bg-white dark:bg-white/[0.03] rounded-2xl border border-dashed border-ink-200 dark:border-white/10">
-                           <span className="material-symbols-outlined text-5xl text-ink-300 dark:text-white/20 mb-4">search_off</span>
-                           <h3 className="font-display text-lg font-semibold text-text-main dark:text-white tracking-tight mb-1">Aucun trajet disponible</h3>
-                           <p className="text-sm text-text-muted">Essayez une autre date ou élargissez vos filtres.</p>
+                        <div className="bg-white dark:bg-white/[0.03] rounded-2xl border border-dashed border-ink-200 dark:border-white/10 p-8 md:p-10">
+                          <div className="text-center mb-6">
+                            <div className="inline-flex size-14 rounded-2xl bg-ink-50 dark:bg-white/5 items-center justify-center mb-4">
+                              <span className="material-symbols-outlined text-3xl text-text-muted">search_off</span>
+                            </div>
+                            <h3 className="font-display text-xl font-semibold text-text-main dark:text-white tracking-tightest mb-1">
+                              Aucun trajet ce jour-là
+                            </h3>
+                            <p className="text-sm text-text-muted leading-relaxed max-w-md mx-auto">
+                              {activeFilterCount > 0
+                                ? 'Essayez d\'élargir vos filtres, ou regardez les dates proches ci-dessous.'
+                                : 'Voici les dates proches où des trajets sont disponibles.'}
+                            </p>
+                          </div>
+
+                          {isLoadingNearby ? (
+                            <div className="flex justify-center py-4">
+                              <div className="size-5 rounded-full border-2 border-ink-200 border-t-text-main dark:border-white/15 dark:border-t-white animate-spin" />
+                            </div>
+                          ) : nearbyDates.length > 0 ? (
+                            <div>
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-muted text-center mb-3">
+                                Dates proches disponibles
+                              </div>
+                              <div className="flex flex-wrap justify-center gap-2">
+                                {nearbyDates.map(nd => (
+                                  <button
+                                    key={nd.date}
+                                    onClick={() => retrySearchWithDate(nd.date)}
+                                    className="group inline-flex flex-col items-start gap-0.5 rounded-xl border border-ink-200 dark:border-white/15 bg-white dark:bg-white/5 px-3.5 py-2 hover:border-text-main/40 hover:shadow-subtle transition-all"
+                                  >
+                                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted group-hover:text-text-main dark:group-hover:text-white">
+                                      {formatNearbyDate(nd.date)}
+                                    </span>
+                                    <span className="text-xs font-medium tracking-tight text-text-main dark:text-white tabular-nums">
+                                      {nd.count} trajet{nd.count > 1 ? 's' : ''}
+                                      {nd.minPrice !== null && (
+                                        <> · dès {nd.minPrice.toLocaleString()} FCFA</>
+                                      )}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-center text-text-muted">
+                              Aucun trajet trouvé dans les 3 jours alentours.
+                            </p>
+                          )}
                         </div>
                       )}
                    </div>
@@ -682,6 +893,191 @@ const SearchResultsPage: React.FC = () => {
         </div>
 
       </div>
+
+      {/* Compare bar (floating) */}
+      {compareTrips.length > 0 && currentStep !== 'summary' && (
+        <div className="fixed bottom-0 left-0 right-0 z-[90] px-4 pb-4 pointer-events-none">
+          <div className="pointer-events-auto mx-auto max-w-4xl bg-text-main dark:bg-white text-white dark:text-text-main rounded-full shadow-elevated border border-white/10 dark:border-ink-100 px-4 py-2.5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="material-symbols-outlined text-primary text-[18px]">compare_arrows</span>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/60 dark:text-text-muted hidden sm:inline">Comparer</span>
+              <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+                {compareTrips.map(trip => (
+                  <span
+                    key={trip.id}
+                    className="inline-flex items-center gap-1 rounded-full bg-white/10 dark:bg-ink-100 text-xs font-semibold tracking-tight px-2.5 py-1 whitespace-nowrap"
+                  >
+                    {trip.agencyName} · {trip.departureTime}
+                    <button
+                      type="button"
+                      onClick={() => toggleCompare(trip.id)}
+                      aria-label="Retirer"
+                      className="ml-0.5 size-4 rounded-full hover:bg-white/20 dark:hover:bg-ink-200 flex items-center justify-center"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">close</span>
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setCompareTripIds([])}
+                className="text-[11px] font-semibold tracking-tight text-white/60 dark:text-text-muted hover:text-white dark:hover:text-text-main transition-colors hidden sm:inline"
+              >
+                Vider
+              </button>
+              <button
+                type="button"
+                disabled={compareTrips.length < 2}
+                onClick={() => setShowCompare(true)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-primary text-text-main text-xs font-semibold tracking-tight px-4 py-2 shadow-subtle hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0"
+              >
+                Comparer {compareTrips.length}
+                <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Compare modal */}
+      {showCompare && compareTrips.length >= 2 && (
+        <div
+          className="fixed inset-0 z-[120] bg-ink-950/70 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-6 animate-fadeIn"
+          onClick={() => setShowCompare(false)}
+        >
+          <div
+            className="bg-white dark:bg-surface-dark w-full max-w-5xl max-h-[92vh] md:max-h-[88vh] rounded-t-3xl md:rounded-3xl shadow-elevated border border-ink-100 dark:border-white/10 flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 md:px-8 py-5 border-b border-ink-100 dark:border-white/10">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-accent dark:text-primary mb-1">Comparaison</div>
+                <h3 className="font-display text-xl md:text-2xl font-semibold tracking-tightest text-text-main dark:text-white">
+                  {compareTrips.length} trajets <span className="font-serif-italic italic font-normal text-teal-accent dark:text-primary">côte à côte</span>
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCompare(false)}
+                aria-label="Fermer"
+                className="size-9 rounded-full bg-ink-50 dark:bg-white/5 hover:bg-ink-100 dark:hover:bg-white/10 flex items-center justify-center transition-colors"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4 md:p-6">
+              <div className={`grid gap-4 ${compareTrips.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
+                {compareTrips.map(trip => {
+                  const cheapest = Math.min(...compareTrips.map(t => t.price));
+                  const fastest = Math.min(...compareTrips.map(t => t.durationMin ?? Infinity));
+                  const earliest = compareTrips.reduce((a, b) => (a.departureTime < b.departureTime ? a : b)).id;
+                  return (
+                    <div
+                      key={trip.id}
+                      className="relative rounded-2xl border border-ink-100 dark:border-white/10 bg-white dark:bg-white/[0.03] shadow-subtle p-5 flex flex-col gap-4"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleCompare(trip.id)}
+                        aria-label="Retirer de la comparaison"
+                        className="absolute top-3 right-3 size-7 rounded-full bg-ink-50 dark:bg-white/5 hover:bg-ink-100 dark:hover:bg-white/10 flex items-center justify-center text-text-muted"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">close</span>
+                      </button>
+
+                      <div className="flex items-center gap-3">
+                        <div className={`size-10 rounded-xl ${trip.color} flex items-center justify-center text-white shadow-subtle`}>
+                          <span className="material-symbols-outlined text-lg">{trip.agencyLogo}</span>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-display font-semibold tracking-tight text-text-main dark:text-white truncate">{trip.agencyName}</div>
+                          <div className="text-[11px] text-text-muted tracking-tight">{trip.date}</div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-1.5">Prix total</div>
+                        <div className="font-display text-2xl font-semibold tracking-tightest tabular-nums text-text-main dark:text-white inline-flex items-baseline gap-1.5">
+                          {trip.price.toLocaleString()}
+                          <span className="text-xs font-medium text-text-muted">FCFA</span>
+                          {trip.price === cheapest && (
+                            <span className="ml-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-teal-accent dark:text-primary">· Le + bas</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-1">Départ</div>
+                          <div className="font-display text-lg font-semibold tabular-nums text-text-main dark:text-white">{trip.departureTime}</div>
+                          <div className="text-[11px] text-text-muted truncate mt-0.5">{trip.departureLocation}</div>
+                          {trip.id === earliest && (
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-teal-accent dark:text-primary mt-0.5">Plus tôt</div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-1">Arrivée</div>
+                          <div className="font-display text-lg font-semibold tabular-nums text-text-main dark:text-white">{trip.arrivalTime}</div>
+                          <div className="text-[11px] text-text-muted truncate mt-0.5">{trip.arrivalLocation}</div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-1">Durée</div>
+                        <div className="font-display text-base font-semibold tabular-nums text-text-main dark:text-white inline-flex items-baseline gap-2">
+                          {trip.duration}
+                          {(trip.durationMin ?? Infinity) === fastest && (
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-teal-accent dark:text-primary">· Le + rapide</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-2">Services</div>
+                        {trip.amenities.length === 0 ? (
+                          <div className="text-xs text-text-muted">Aucun service renseigné</div>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {trip.amenities.map(a => (
+                              <span
+                                key={a}
+                                className="inline-flex items-center gap-1 rounded-full bg-ink-50 dark:bg-white/5 border border-ink-100 dark:border-white/10 px-2 py-0.5 text-[11px] font-medium text-text-main dark:text-white tracking-tight"
+                              >
+                                <span className="material-symbols-outlined text-[12px]">{getAmenityIcon(a)}</span>
+                                {t(`amenity.${a}`)}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-1">Places</div>
+                        <div className="text-sm font-medium text-text-main dark:text-white tabular-nums">
+                          {trip.seatsAvailable} / {trip.seatsTotal} disponibles
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => { handleTripSelect(trip); setShowCompare(false); }}
+                        className="mt-auto inline-flex items-center justify-center gap-1.5 w-full rounded-full bg-text-main dark:bg-white text-white dark:text-text-main px-5 py-2.5 text-xs font-semibold tracking-tight shadow-subtle hover:shadow-card hover:-translate-y-0.5 transition-all"
+                      >
+                        Choisir ce trajet
+                        <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
