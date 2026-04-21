@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
+import CounterSalePanel from './CounterSalePanel';
+import DepartureControlPanel from './DepartureControlPanel';
+import AnalyticsPanel from './AnalyticsPanel';
 
 interface Manifest {
   id: string;
@@ -30,6 +33,7 @@ const StationManagerDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [qrInput, setQrInput] = useState('');
   const [lastCheckin, setLastCheckin] = useState<{ ok: boolean; message: string } | null>(null);
+  const [tab, setTab] = useState<'manifest' | 'counter' | 'operations' | 'analytics'>('manifest');
 
   const fetchManifest = useCallback(async () => {
     setIsLoading(true);
@@ -86,6 +90,33 @@ const StationManagerDashboard: React.FC = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800 mb-6">
+          {(['manifest', 'counter', 'operations', 'analytics'] as const).map((t) => {
+            const labels: Record<typeof t, string> = {
+              manifest: 'Manifeste & check-in',
+              counter: 'Vente au guichet',
+              operations: 'Opérations',
+              analytics: 'Analytics',
+            };
+            return (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`px-4 py-2 font-black text-sm ${
+                  tab === t ? 'text-primary border-b-2 border-primary' : 'text-text-muted'
+                }`}
+              >
+                {labels[t]}
+              </button>
+            );
+          })}
+        </div>
+
+        {tab === 'counter' && <CounterSalePanel />}
+        {tab === 'operations' && <DepartureControlPanel />}
+        {tab === 'analytics' && <AnalyticsPanel />}
+
+        {tab === 'manifest' && (<>
         {/* Check-in */}
         <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-6 mb-6">
           <h2 className="font-black text-text-main dark:text-white mb-3 flex items-center gap-2">
@@ -123,7 +154,19 @@ const StationManagerDashboard: React.FC = () => {
                       <div className="text-xs text-text-muted">{d.company}</div>
                     </div>
                   </div>
-                  <div className="text-xs font-black text-text-muted">{d.seatsTotal - d.seatsAvailable}/{d.seatsTotal} billets</div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-xs font-black text-text-muted">{d.seatsTotal - d.seatsAvailable}/{d.seatsTotal} billets</div>
+                    <a
+                      href={`/admin/manifest/${d.id}/print`}
+                      target="_blank"
+                      rel="noopener"
+                      className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-[10px] font-black flex items-center gap-1 hover:bg-gray-200"
+                      aria-label="Manifeste imprimable"
+                    >
+                      <span className="material-symbols-outlined text-sm">print</span>
+                      Manifeste
+                    </a>
+                  </div>
                 </div>
                 <div className="p-4 space-y-1">
                   {d.bookings.length === 0 && <div className="text-xs text-text-muted">Aucune réservation.</div>}
@@ -145,6 +188,7 @@ const StationManagerDashboard: React.FC = () => {
             {manifest.length === 0 && <p className="text-text-muted text-center py-10">Aucun départ ce jour.</p>}
           </div>
         )}
+        </>)}
       </div>
     </div>
   );

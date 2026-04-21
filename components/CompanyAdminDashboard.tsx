@@ -5,6 +5,8 @@ import { useNavigation } from '../contexts/NavigationContext';
 import AdminModal from './AdminModal';
 import { Field, inputCls } from './SuperAdminDashboard';
 import SeatLayoutEditor from './SeatLayoutEditor';
+import AnalyticsPanel from './AnalyticsPanel';
+import DepartureControlPanel from './DepartureControlPanel';
 import type { SeatLayout } from '../lib/seat-layout';
 
 interface Company {
@@ -55,7 +57,7 @@ const CompanyAdminDashboard: React.FC = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [tab, setTab] = useState<'overview' | 'routes' | 'vehicles'>('overview');
+  const [tab, setTab] = useState<'overview' | 'routes' | 'vehicles' | 'operations' | 'analytics'>('overview');
   const [routes, setRoutes] = useState<RouteRow[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [routeModalOpen, setRouteModalOpen] = useState(false);
@@ -152,11 +154,20 @@ const CompanyAdminDashboard: React.FC = () => {
         ) : active ? (
           <>
             <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800">
-              {(['overview', 'routes', 'vehicles'] as const).map((t) => (
-                <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 font-black text-sm capitalize ${tab === t ? 'text-primary border-b-2 border-primary' : 'text-text-muted'}`}>
-                  {t === 'overview' ? 'Vue d\'ensemble' : t === 'routes' ? 'Routes' : 'Véhicules'}
-                </button>
-              ))}
+              {(['overview', 'routes', 'vehicles', 'operations', 'analytics'] as const).map((t) => {
+                const labels: Record<typeof t, string> = {
+                  overview: "Vue d'ensemble",
+                  routes: 'Routes',
+                  vehicles: 'Véhicules',
+                  operations: 'Opérations',
+                  analytics: 'Analytics',
+                };
+                return (
+                  <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 font-black text-sm ${tab === t ? 'text-primary border-b-2 border-primary' : 'text-text-muted'}`}>
+                    {labels[t]}
+                  </button>
+                );
+              })}
             </div>
 
             {tab === 'overview' && (
@@ -258,6 +269,9 @@ const CompanyAdminDashboard: React.FC = () => {
                 </div>
               </section>
             )}
+
+            {tab === 'operations' && <DepartureControlPanel />}
+            {tab === 'analytics' && <AnalyticsPanel />}
           </>
         ) : (
           <p className="text-center text-text-muted py-16">Aucune compagnie assignée.</p>

@@ -23,6 +23,13 @@ enum Status {
   INACTIVE
 }
 
+enum DepartureStatus {
+  SCHEDULED
+  DELAYED
+  CANCELLED
+  COMPLETED
+}
+
 enum TripType {
   ONE_WAY
   ROUND_TRIP
@@ -68,6 +75,7 @@ model User {
   agency       Agency?  @relation(fields: [agencyId], references: [id])
   station      Station? @relation(fields: [stationId], references: [id])
   bookingGroups BookingGroup[]
+  soldBookingGroups BookingGroup[] @relation("SoldBookings")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -196,6 +204,10 @@ model Departure {
   seatsTotal         Int
   seatsAvailable     Int
   status             Status     @default(ACTIVE)
+  tripStatus         DepartureStatus @default(SCHEDULED)
+  delayMinutes       Int?
+  cancellationReason String?
+  passengersNotifiedAt DateTime?
   route              Route      @relation(fields: [routeId], references: [id], onDelete: Cascade)
   agency             Agency     @relation(fields: [agencyId], references: [id])
   vehicle            Vehicle?   @relation(fields: [vehicleId], references: [id])
@@ -223,7 +235,10 @@ model BookingGroup {
   idempotencyKey  String?       @unique
   expiresAt       DateTime?
   notifiedAt      DateTime?
+  soldByUserId    String?
+  channel         String?
   user            User?         @relation(fields: [userId], references: [id])
+  soldBy          User?         @relation("SoldBookings", fields: [soldByUserId], references: [id])
   bookings        Booking[]
   payment         Payment?
   createdAt       DateTime      @default(now())
@@ -231,6 +246,7 @@ model BookingGroup {
   @@index([userId])
   @@index([createdAt])
   @@index([status, expiresAt])
+  @@index([soldByUserId])
 }
 
 model Booking {

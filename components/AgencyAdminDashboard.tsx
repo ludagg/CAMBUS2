@@ -5,6 +5,9 @@ import { useNavigation } from '../contexts/NavigationContext';
 import AdminModal from './AdminModal';
 import { Field, inputCls } from './SuperAdminDashboard';
 import SeatLayoutEditor from './SeatLayoutEditor';
+import AnalyticsPanel from './AnalyticsPanel';
+import DepartureControlPanel from './DepartureControlPanel';
+import CounterSalePanel from './CounterSalePanel';
 import type { SeatLayout } from '../lib/seat-layout';
 
 interface Departure {
@@ -61,7 +64,7 @@ const AgencyAdminDashboard: React.FC = () => {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'departures' | 'vehicles'>('departures');
+  const [activeTab, setActiveTab] = useState<'departures' | 'vehicles' | 'operations' | 'counter' | 'analytics'>('departures');
   const [depModalOpen, setDepModalOpen] = useState(false);
   const [activeAgencyDetail, setActiveAgencyDetail] = useState<Agency | null>(null);
   const [layoutVehicle, setLayoutVehicle] = useState<Vehicle | null>(null);
@@ -145,17 +148,26 @@ const AgencyAdminDashboard: React.FC = () => {
 
         <div className="flex justify-between items-center mb-4 border-b border-gray-200 dark:border-gray-800">
           <div className="flex gap-2">
-            {(['departures', 'vehicles'] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setActiveTab(t)}
-                className={`px-4 py-2 font-black text-sm capitalize ${
-                  activeTab === t ? 'text-primary border-b-2 border-primary' : 'text-text-muted'
-                }`}
-              >
-                {t === 'departures' ? 'Départs' : 'Véhicules'}
-              </button>
-            ))}
+            {(['departures', 'vehicles', 'operations', 'counter', 'analytics'] as const).map((t) => {
+              const labels: Record<typeof t, string> = {
+                departures: 'Départs',
+                vehicles: 'Véhicules',
+                operations: 'Opérations',
+                counter: 'Guichet',
+                analytics: 'Analytics',
+              };
+              return (
+                <button
+                  key={t}
+                  onClick={() => setActiveTab(t)}
+                  className={`px-4 py-2 font-black text-sm ${
+                    activeTab === t ? 'text-primary border-b-2 border-primary' : 'text-text-muted'
+                  }`}
+                >
+                  {labels[t]}
+                </button>
+              );
+            })}
           </div>
           {activeTab === 'departures' && activeAgencyDetail && (
             <button onClick={() => setDepModalOpen(true)} className="mb-2 px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm flex items-center gap-2 hover:bg-[#0fd651]">
@@ -195,6 +207,12 @@ const AgencyAdminDashboard: React.FC = () => {
             ))}
             {departures.length === 0 && <p className="text-text-muted text-center py-10">Aucun départ programmé.</p>}
           </div>
+        ) : activeTab === 'operations' ? (
+          <DepartureControlPanel />
+        ) : activeTab === 'counter' ? (
+          <CounterSalePanel />
+        ) : activeTab === 'analytics' ? (
+          <AnalyticsPanel />
         ) : (
           <div className="grid md:grid-cols-2 gap-3">
             {vehicles.map((v) => (

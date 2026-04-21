@@ -84,3 +84,22 @@ export async function assertOwnsRoute(session: SessionPayload, routeId: string):
   if (!route) throw new AuthError('Route introuvable.', 404)
   await assertOwnsCompany(session, route.companyId)
 }
+
+export async function getSessionScope(session: SessionPayload): Promise<{
+  role: SessionPayload['role']
+  companyId: string | null
+  agencyId: string | null
+}> {
+  if (session.role === 'SUPER_ADMIN') {
+    return { role: session.role, companyId: null, agencyId: null }
+  }
+  const user = await prisma.user.findUnique({
+    where: { id: session.sub },
+    select: { companyId: true, agencyId: true },
+  })
+  return {
+    role: session.role,
+    companyId: user?.companyId ?? null,
+    agencyId: user?.agencyId ?? null,
+  }
+}
