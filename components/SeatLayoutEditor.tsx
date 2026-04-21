@@ -2,7 +2,28 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import type { SeatLayout } from '../lib/seat-layout';
-import { defaultLayoutForCapacity } from '../lib/seat-layout';
+import { defaultLayoutForCapacity, DEFAULT_VIP_MULTIPLIER } from '../lib/seat-layout';
+
+const PRESETS: { key: string; label: string; build: () => SeatLayout }[] = [
+  { key: 'coaster', label: 'Coaster 30', build: () => defaultLayoutForCapacity(30, 'CLASSIC') },
+  { key: 'class50', label: 'Autocar 50', build: () => defaultLayoutForCapacity(50, 'CLASSIC') },
+  { key: 'vip50', label: 'VIP 50', build: () => defaultLayoutForCapacity(50, 'VIP') },
+  { key: 'class70', label: 'Autocar 70', build: () => defaultLayoutForCapacity(70, 'CLASSIC') },
+  { key: 'vip70', label: 'VIP 70', build: () => defaultLayoutForCapacity(70, 'VIP') },
+  {
+    key: 'mix',
+    label: 'Mix VIP avant',
+    build: () => ({
+      rows: 13,
+      cols: 4,
+      aisleAfterCol: 2,
+      vipRows: [1, 2, 3, 4],
+      disabledCells: ['1A'],
+      label: 'Mix VIP + Classique',
+      vipMultiplier: DEFAULT_VIP_MULTIPLIER,
+    }),
+  },
+];
 
 type Props = {
   vehicleId: string;
@@ -89,6 +110,21 @@ const SeatLayoutEditor: React.FC<Props> = ({ vehicleId, initialLayout, capacity,
         <div className="flex-1 overflow-y-auto px-6 py-5 grid md:grid-cols-5 gap-6">
           {/* Form */}
           <div className="md:col-span-2 space-y-4">
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-widest text-text-muted mb-1">Presets</label>
+              <div className="flex flex-wrap gap-1.5">
+                {PRESETS.map((p) => (
+                  <button
+                    key={p.key}
+                    type="button"
+                    onClick={() => setLayout(p.build())}
+                    className="text-[10px] font-black uppercase px-2.5 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 border border-primary/30"
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div>
               <label className="block text-[10px] font-black uppercase tracking-widest text-text-muted mb-1">Label</label>
               <input
