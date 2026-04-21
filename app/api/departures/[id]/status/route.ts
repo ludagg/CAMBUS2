@@ -5,6 +5,7 @@ import { getSession, requireRole } from '@/lib/auth'
 import { assertOwnsDeparture } from '@/lib/scoping'
 import { handleError, bad } from '@/lib/api'
 import { notifyDepartureChange } from '@/lib/departure-notifications'
+import { logAudit } from '@/lib/audit'
 
 const schema = z.object({
   action: z.enum(['DELAY', 'CANCEL', 'RESCHEDULE', 'RESET']),
@@ -39,6 +40,15 @@ export async function PATCH(
         },
       })
       await notifyDepartureChange(id, 'DELAYED', { delayMinutes: delay, reason: body.reason })
+      await logAudit(
+        {
+          action: 'departure.delay',
+          entityType: 'Departure',
+          entityId: id,
+          metadata: { delayMinutes: delay, reason: body.reason },
+        },
+        { session, req },
+      )
       return NextResponse.json({ data: { ok: true, notified: true } })
     }
 
@@ -57,6 +67,15 @@ export async function PATCH(
         })
       })
       await notifyDepartureChange(id, 'CANCELLED', { reason: body.reason })
+      await logAudit(
+        {
+          action: 'departure.cancel',
+          entityType: 'Departure',
+          entityId: id,
+          metadata: { reason: body.reason },
+        },
+        { session, req },
+      )
       return NextResponse.json({ data: { ok: true, notified: true } })
     }
 
@@ -70,6 +89,10 @@ export async function PATCH(
           passengersNotifiedAt: null,
         },
       })
+      await logAudit(
+        { action: 'departure.reset', entityType: 'Departure', entityId: id },
+        { session, req },
+      )
       return NextResponse.json({ data: { ok: true } })
     }
 

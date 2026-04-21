@@ -5,6 +5,7 @@ import { getSession, requireRole } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
 import { assertOwnsVehicle } from '@/lib/scoping'
 import { countActiveBookingsForVehicle } from '@/lib/booking-invariants'
+import { logAudit } from '@/lib/audit'
 
 const seatLayoutSchema = z
   .object({
@@ -46,7 +47,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getSession()
     requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENCY_ADMIN'])
@@ -60,6 +61,10 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
       )
     }
     await prisma.vehicle.update({ where: { id }, data: { status: 'INACTIVE' } })
+    await logAudit(
+      { action: 'vehicle.disable', entityType: 'Vehicle', entityId: id },
+      { session, req },
+    )
     return NextResponse.json({ data: { ok: true } })
   } catch (err) {
     return handleError(err)

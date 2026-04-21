@@ -75,6 +75,26 @@ export async function assertOwnsDeparture(session: SessionPayload, departureId: 
   await assertOwnsAgency(session, dep.agencyId)
 }
 
+export async function assertOwnsDriver(session: SessionPayload, driverId: string): Promise<void> {
+  if (session.role === 'SUPER_ADMIN') return
+  const driver = await prisma.driver.findUnique({
+    where: { id: driverId },
+    select: { agencyId: true },
+  })
+  if (!driver) throw new AuthError('Chauffeur introuvable.', 404)
+  await assertOwnsAgency(session, driver.agencyId)
+}
+
+export async function assertOwnsIncident(session: SessionPayload, incidentId: string): Promise<void> {
+  if (session.role === 'SUPER_ADMIN') return
+  const incident = await prisma.incident.findUnique({
+    where: { id: incidentId },
+    select: { agencyId: true },
+  })
+  if (!incident) throw new AuthError('Incident introuvable.', 404)
+  await assertOwnsAgency(session, incident.agencyId)
+}
+
 export async function assertOwnsRoute(session: SessionPayload, routeId: string): Promise<void> {
   if (session.role === 'SUPER_ADMIN') return
   const route = await prisma.route.findUnique({
