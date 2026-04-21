@@ -186,19 +186,29 @@ const CheckoutPage: React.FC = () => {
   // FAILED PAYMENT VIEW
   if (paymentStatus?.status === 'FAILED') {
     return (
-      <div className="min-h-screen bg-background-light dark:bg-background-dark flex items-center justify-center p-4">
-        <div className="bg-white dark:bg-surface-dark w-full max-w-md rounded-2xl p-8 shadow-xl text-center border border-red-200 dark:border-red-900 animate-fadeIn">
-          <div className="size-20 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-6">
-            <span className="material-symbols-outlined text-5xl text-red-600">error</span>
+      <div className="min-h-[80vh] bg-background-light dark:bg-background-dark flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-surface-dark w-full max-w-md rounded-3xl p-10 shadow-subtle text-center border border-ink-100 dark:border-white/10 animate-fadeIn">
+          <div className="size-16 bg-red-50 dark:bg-red-900/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <span className="material-symbols-outlined text-3xl text-red-600">error</span>
           </div>
-          <h2 className="text-2xl font-black text-text-main dark:text-white mb-2">Paiement échoué</h2>
-          <p className="text-text-muted dark:text-gray-400 mb-6">{paymentStatus.failureReason || 'La transaction Mobile Money a été refusée par l\'opérateur.'}</p>
-          <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-4 mb-6 text-left text-xs">
-            <div className="flex justify-between"><span className="text-text-muted">Fournisseur:</span><span className="font-bold text-text-main dark:text-white">{paymentStatus.provider}</span></div>
-            <div className="flex justify-between"><span className="text-text-muted">Numéro:</span><span className="font-mono font-bold text-text-main dark:text-white">{paymentStatus.phoneNumber}</span></div>
-            {paymentStatus.providerRef && <div className="flex justify-between"><span className="text-text-muted">Réf:</span><span className="font-mono text-text-main dark:text-white">{paymentStatus.providerRef}</span></div>}
+          <h2 className="font-display text-2xl font-semibold tracking-tightest text-text-main dark:text-white mb-2">
+            Paiement <span className="font-serif-italic text-red-500 italic font-normal">échoué.</span>
+          </h2>
+          <p className="text-text-muted dark:text-gray-400 mb-6 text-sm leading-relaxed">
+            {paymentStatus.failureReason || "La transaction Mobile Money a été refusée par l'opérateur."}
+          </p>
+          <div className="bg-ink-50 dark:bg-white/[0.03] border border-ink-100 dark:border-white/10 rounded-xl p-4 mb-6 text-left text-xs space-y-1.5">
+            <div className="flex justify-between"><span className="text-text-muted">Fournisseur</span><span className="font-semibold text-text-main dark:text-white">{paymentStatus.provider}</span></div>
+            <div className="flex justify-between"><span className="text-text-muted">Numéro</span><span className="font-mono font-semibold text-text-main dark:text-white">{paymentStatus.phoneNumber}</span></div>
+            {paymentStatus.providerRef && <div className="flex justify-between"><span className="text-text-muted">Référence</span><span className="font-mono text-text-main dark:text-white">{paymentStatus.providerRef}</span></div>}
           </div>
-          <button onClick={retryPayment} className="w-full py-3 bg-primary text-text-main font-black rounded-xl shadow hover:bg-[#0fd651] transition-all">Réessayer le paiement</button>
+          <button
+            onClick={retryPayment}
+            className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-full bg-text-main dark:bg-white text-white dark:text-text-main font-semibold tracking-tight shadow-subtle hover:shadow-card transition-all"
+          >
+            <span className="material-symbols-outlined text-[18px]">refresh</span>
+            Réessayer le paiement
+          </button>
         </div>
       </div>
     );
@@ -207,22 +217,27 @@ const CheckoutPage: React.FC = () => {
   // PENDING PAYMENT VIEW (Mobile Money confirmation)
   if (paymentStatus?.status === 'PENDING' && paymentId) {
     return (
-      <div className="min-h-screen bg-background-light dark:bg-background-dark flex items-center justify-center p-4">
-        <div className="bg-white dark:bg-surface-dark w-full max-w-md rounded-2xl p-8 shadow-xl text-center border border-gray-100 dark:border-gray-800 animate-fadeIn">
-          <div className="size-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6 relative">
-            <span className="material-symbols-outlined text-5xl text-primary animate-pulse">smartphone</span>
-            <span className="absolute -top-1 -right-1 size-5 rounded-full border-2 border-primary border-t-transparent animate-spin"></span>
+      <div className="min-h-[80vh] bg-background-light dark:bg-background-dark flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-surface-dark w-full max-w-md rounded-3xl p-10 shadow-subtle text-center border border-ink-100 dark:border-white/10 animate-fadeIn">
+          <div className="size-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-6 relative">
+            <span className="material-symbols-outlined text-3xl text-teal-accent dark:text-primary">smartphone</span>
+            <span className="absolute -top-1 -right-1 size-5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
           </div>
-          <h2 className="text-2xl font-black text-text-main dark:text-white mb-2">Confirmez sur votre téléphone</h2>
-          <p className="text-text-muted dark:text-gray-400 mb-6 text-sm">
-            Une demande de paiement de <strong className="text-text-main dark:text-white">{calculateTotal().toLocaleString()} XAF</strong> a été envoyée à votre numéro. Tapez votre code PIN pour valider.
+          <h2 className="font-display text-2xl font-semibold tracking-tightest text-text-main dark:text-white mb-2">
+            Confirmez sur votre
+            <span className="font-serif-italic text-teal-accent dark:text-primary italic font-normal"> téléphone.</span>
+          </h2>
+          <p className="text-text-muted dark:text-gray-400 mb-6 text-sm leading-relaxed">
+            Une demande de paiement de{' '}
+            <strong className="text-text-main dark:text-white tabular-nums">{calculateTotal().toLocaleString()} XAF</strong>{' '}
+            a été envoyée à votre numéro. Tapez votre code PIN pour valider.
           </p>
-          <div className="bg-gray-50 dark:bg-[#102216] rounded-xl p-4 mb-6 text-left text-xs space-y-2">
-            <div className="flex justify-between"><span className="text-text-muted">Fournisseur:</span><span className="font-bold text-text-main dark:text-white">{paymentStatus.provider}</span></div>
-            <div className="flex justify-between"><span className="text-text-muted">Numéro:</span><span className="font-mono font-bold text-text-main dark:text-white">{paymentStatus.phoneNumber}</span></div>
-            <div className="flex justify-between"><span className="text-text-muted">Réservation:</span><span className="font-mono text-text-main dark:text-white text-[10px]">{paymentGroupId?.slice(0, 12)}…</span></div>
+          <div className="bg-ink-50 dark:bg-white/[0.03] border border-ink-100 dark:border-white/10 rounded-xl p-4 mb-6 text-left text-xs space-y-2">
+            <div className="flex justify-between"><span className="text-text-muted">Fournisseur</span><span className="font-semibold text-text-main dark:text-white">{paymentStatus.provider}</span></div>
+            <div className="flex justify-between"><span className="text-text-muted">Numéro</span><span className="font-mono font-semibold text-text-main dark:text-white">{paymentStatus.phoneNumber}</span></div>
+            <div className="flex justify-between"><span className="text-text-muted">Réservation</span><span className="font-mono text-text-main dark:text-white">{paymentGroupId?.slice(0, 12)}…</span></div>
           </div>
-          <p className="text-[11px] text-text-muted">Astuce test: un numéro finissant par <code>000</code> simule un échec.</p>
+          <p className="text-[11px] text-text-muted">Astuce test: un numéro finissant par <code className="font-mono">000</code> simule un échec.</p>
         </div>
       </div>
     );
@@ -231,33 +246,35 @@ const CheckoutPage: React.FC = () => {
   // SUCCESS VIEW
   if (isSuccess) {
     return (
-      <div className="min-h-screen bg-background-light dark:bg-background-dark flex items-center justify-center p-4">
-        <div className="bg-white dark:bg-surface-dark w-full max-w-md rounded-2xl p-8 shadow-xl text-center border border-gray-100 dark:border-gray-800 animate-fadeIn">
-          <div className="size-20 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-6">
-            <span className="material-symbols-outlined text-5xl text-primary">check_circle</span>
+      <div className="min-h-[80vh] bg-background-light dark:bg-background-dark flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-surface-dark w-full max-w-md rounded-3xl p-10 shadow-subtle text-center border border-ink-100 dark:border-white/10 animate-fadeIn">
+          <div className="size-16 bg-primary/15 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <span className="material-symbols-outlined text-3xl text-teal-accent dark:text-primary">check_circle</span>
           </div>
-          <h2 className="text-2xl font-black text-text-main dark:text-white mb-2">{t('checkout.success.title')}</h2>
-          <p className="text-text-muted dark:text-gray-400 mb-8">{t('checkout.success.msg')}</p>
-          
-          <div className="bg-gray-50 dark:bg-[#102216] rounded-xl p-4 mb-8 text-left border border-gray-100 dark:border-gray-800">
-             <div className="flex justify-between mb-2">
-                <span className="text-sm text-text-muted">Ref:</span>
-                <span className="font-mono font-bold text-text-main dark:text-white">CB-{Math.floor(Math.random() * 100000)}</span>
+          <h2 className="font-display text-3xl font-semibold tracking-tightest text-text-main dark:text-white mb-2">
+            {t('checkout.success.title')}
+          </h2>
+          <p className="text-text-muted dark:text-gray-400 mb-8 text-sm leading-relaxed">{t('checkout.success.msg')}</p>
+
+          <div className="bg-ink-50 dark:bg-white/[0.03] rounded-xl p-4 mb-8 text-left border border-ink-100 dark:border-white/10 space-y-2">
+             <div className="flex justify-between items-center">
+                <span className="text-[11px] text-text-muted uppercase tracking-[0.14em] font-medium">Référence</span>
+                <span className="font-mono text-sm font-semibold text-text-main dark:text-white">CB-{Math.floor(Math.random() * 100000)}</span>
              </div>
-             <div className="flex justify-between">
-                <span className="text-sm text-text-muted">Amount:</span>
-                <span className="font-bold text-text-main dark:text-white">{calculateTotal().toLocaleString()} FCFA</span>
+             <div className="flex justify-between items-center">
+                <span className="text-[11px] text-text-muted uppercase tracking-[0.14em] font-medium">Montant</span>
+                <span className="font-display font-semibold text-text-main dark:text-white tabular-nums">{calculateTotal().toLocaleString()} FCFA</span>
              </div>
           </div>
 
           <div className="space-y-3">
-            <button className="w-full py-3 bg-primary text-text-main font-bold rounded-xl shadow hover:bg-[#0fd651] transition-all flex items-center justify-center gap-2">
-               <span className="material-symbols-outlined">download</span>
+            <button className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-full bg-primary hover:bg-primary-600 text-text-main font-semibold tracking-tight shadow-subtle hover:shadow-card transition-all">
+               <span className="material-symbols-outlined text-[18px]">download</span>
                {t('checkout.success.download')}
             </button>
-            <button 
+            <button
               onClick={() => navigateTo('home')}
-              className="w-full py-3 bg-transparent text-text-muted hover:text-text-main font-bold transition-all"
+              className="w-full py-2.5 text-text-muted hover:text-text-main dark:hover:text-white font-medium tracking-tight text-sm transition-all"
             >
               {t('checkout.success.home')}
             </button>
@@ -269,9 +286,18 @@ const CheckoutPage: React.FC = () => {
 
   // PAYMENT FORM VIEW
   return (
-    <div className="bg-background-light dark:bg-background-dark min-h-screen py-10 px-4">
+    <div className="bg-background-light dark:bg-background-dark min-h-screen py-10 md:py-14 px-4">
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-black text-text-main dark:text-white mb-8">{t('checkout.title')}</h1>
+        <div className="mb-8 md:mb-10">
+          <div className="inline-flex items-center gap-2 rounded-full border border-ink-200 dark:border-white/15 px-2.5 py-1 mb-4">
+            <span className="size-1.5 rounded-full bg-primary" />
+            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-muted">Paiement sécurisé</span>
+          </div>
+          <h1 className="font-display text-3xl md:text-4xl font-semibold text-text-main dark:text-white tracking-tightest leading-tight">
+            {t('checkout.title')}
+            <span className="font-serif-italic text-teal-accent dark:text-primary italic font-normal"> en quelques secondes.</span>
+          </h1>
+        </div>
 
         <div className="flex flex-col lg:flex-row gap-8">
           
@@ -279,62 +305,66 @@ const CheckoutPage: React.FC = () => {
           <div className="flex-1 space-y-6">
             
             {/* Contact Info */}
-            <div className="bg-white dark:bg-surface-dark rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
-               <div className="flex items-center gap-2 mb-4 text-text-main dark:text-white font-bold text-lg">
-                  <span className="material-symbols-outlined text-primary">contact_mail</span>
-                  {t('checkout.contact')}
+            <div className="bg-white dark:bg-surface-dark rounded-2xl p-6 md:p-7 shadow-subtle border border-ink-100 dark:border-white/10">
+               <div className="flex items-center gap-2.5 mb-5">
+                  <span className="size-8 rounded-lg bg-ink-50 dark:bg-white/5 text-teal-accent dark:text-primary flex items-center justify-center">
+                    <span className="material-symbols-outlined text-[20px]">contact_mail</span>
+                  </span>
+                  <h2 className="font-display text-lg font-semibold tracking-tight text-text-main dark:text-white">{t('checkout.contact')}</h2>
                </div>
                <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-text-muted mb-1">{t('checkout.label.email')}</label>
-                    <input 
-                      type="email" 
+                    <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-1.5">{t('checkout.label.email')}</label>
+                    <input
+                      type="email"
                       value={email} onChange={e => setEmail(e.target.value)}
-                      className="w-full h-10 px-3 bg-gray-50 dark:bg-[#102216] border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-text-main dark:text-white transition-all"
+                      className="w-full h-11 px-3.5 bg-white dark:bg-white/5 border border-ink-200 dark:border-white/10 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary/60 outline-none text-text-main dark:text-white transition-all text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-text-muted mb-1">{t('checkout.label.phone')}</label>
-                    <input 
-                      type="tel" 
+                    <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-1.5">{t('checkout.label.phone')}</label>
+                    <input
+                      type="tel"
                       value={phone} onChange={e => setPhone(e.target.value)}
-                      className="w-full h-10 px-3 bg-gray-50 dark:bg-[#102216] border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-text-main dark:text-white transition-all"
+                      className="w-full h-11 px-3.5 bg-white dark:bg-white/5 border border-ink-200 dark:border-white/10 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary/60 outline-none text-text-main dark:text-white transition-all text-sm"
                     />
                   </div>
                </div>
             </div>
 
             {/* Passenger Info (Dynamic) */}
-            <div className="bg-white dark:bg-surface-dark rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
-               <div className="flex items-center gap-2 mb-4 text-text-main dark:text-white font-bold text-lg">
-                  <span className="material-symbols-outlined text-primary">groups</span>
-                  {t('checkout.passenger')}
+            <div className="bg-white dark:bg-surface-dark rounded-2xl p-6 md:p-7 shadow-subtle border border-ink-100 dark:border-white/10">
+               <div className="flex items-center gap-2.5 mb-5">
+                  <span className="size-8 rounded-lg bg-ink-50 dark:bg-white/5 text-teal-accent dark:text-primary flex items-center justify-center">
+                    <span className="material-symbols-outlined text-[20px]">groups</span>
+                  </span>
+                  <h2 className="font-display text-lg font-semibold tracking-tight text-text-main dark:text-white">{t('checkout.passenger')}</h2>
                </div>
-               
+
                <div className="space-y-6">
                   {passengersInfo.map((passenger, idx) => (
-                    <div key={idx} className="pb-4 border-b border-gray-100 dark:border-gray-800 last:border-0 last:pb-0">
-                        <div className="text-sm font-bold text-text-main dark:text-white mb-3 flex items-center gap-2">
-                             <span className="size-6 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-xs">{idx + 1}</span>
+                    <div key={idx} className="pb-5 border-b border-ink-100 dark:border-white/10 last:border-0 last:pb-0">
+                        <div className="text-sm font-semibold tracking-tight text-text-main dark:text-white mb-3 flex items-center gap-2">
+                             <span className="size-6 rounded-full bg-ink-50 dark:bg-white/10 flex items-center justify-center text-[11px] font-semibold text-text-main dark:text-white">{idx + 1}</span>
                              {t('checkout.passenger_n')}
                         </div>
                         <div className="grid md:grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-xs font-semibold text-text-muted mb-1">{t('checkout.label.fullname')}</label>
-                                <input 
-                                type="text" 
-                                value={passenger.name} 
+                                <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-1.5">{t('checkout.label.fullname')}</label>
+                                <input
+                                type="text"
+                                value={passenger.name}
                                 onChange={e => handlePassengerChange(idx, 'name', e.target.value)}
-                                className="w-full h-10 px-3 bg-gray-50 dark:bg-[#102216] border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-text-main dark:text-white transition-all"
+                                className="w-full h-11 px-3.5 bg-white dark:bg-white/5 border border-ink-200 dark:border-white/10 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary/60 outline-none text-text-main dark:text-white transition-all text-sm"
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-semibold text-text-muted mb-1">{t('checkout.label.id')}</label>
-                                <input 
-                                type="text" 
-                                value={passenger.id} 
+                                <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-1.5">{t('checkout.label.id')}</label>
+                                <input
+                                type="text"
+                                value={passenger.id}
                                 onChange={e => handlePassengerChange(idx, 'id', e.target.value)}
-                                className="w-full h-10 px-3 bg-gray-50 dark:bg-[#102216] border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-text-main dark:text-white transition-all"
+                                className="w-full h-11 px-3.5 bg-white dark:bg-white/5 border border-ink-200 dark:border-white/10 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary/60 outline-none text-text-main dark:text-white transition-all text-sm"
                                 />
                             </div>
                         </div>
@@ -364,34 +394,36 @@ const CheckoutPage: React.FC = () => {
             </div>
 
             {/* Payment Method */}
-            <form onSubmit={handlePayment} className="bg-white dark:bg-surface-dark rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
-               <div className="flex items-center justify-between mb-6">
-                   <div className="flex items-center gap-2 text-text-main dark:text-white font-bold text-lg">
-                      <span className="material-symbols-outlined text-primary">payments</span>
-                      {t('checkout.payment')}
+            <form onSubmit={handlePayment} className="bg-white dark:bg-surface-dark rounded-2xl p-6 md:p-7 shadow-subtle border border-ink-100 dark:border-white/10">
+               <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+                   <div className="flex items-center gap-2.5">
+                      <span className="size-8 rounded-lg bg-ink-50 dark:bg-white/5 text-teal-accent dark:text-primary flex items-center justify-center">
+                        <span className="material-symbols-outlined text-[20px]">payments</span>
+                      </span>
+                      <h2 className="font-display text-lg font-semibold tracking-tight text-text-main dark:text-white">{t('checkout.payment')}</h2>
                    </div>
-                   <div className="flex items-center gap-1 text-xs text-green-600 font-medium bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded">
-                      <span className="material-symbols-outlined text-sm">lock</span>
+                   <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-teal-accent dark:text-primary bg-primary/10 px-2.5 py-1 rounded-full">
+                      <span className="material-symbols-outlined text-[14px]">lock</span>
                       {t('checkout.secure_badge')}
                    </div>
                </div>
 
                {/* Tabs */}
-               <div className="flex gap-4 mb-6">
+               <div className="grid grid-cols-2 gap-3 mb-6">
                  <button
                     type="button"
                     onClick={() => setPaymentMethod('momo')}
-                    className={`flex-1 py-3 rounded-lg border-2 font-bold flex flex-col items-center gap-1 transition-all ${paymentMethod === 'momo' ? 'border-primary bg-primary/5 text-primary' : 'border-gray-200 dark:border-gray-700 text-text-muted hover:border-gray-300'}`}
+                    className={`py-3.5 rounded-xl border font-semibold tracking-tight text-sm flex flex-col items-center gap-1.5 transition-all ${paymentMethod === 'momo' ? 'border-text-main dark:border-white bg-ink-50 dark:bg-white/5 text-text-main dark:text-white' : 'border-ink-200 dark:border-white/15 text-text-muted hover:border-ink-300'}`}
                  >
-                    <span className="material-symbols-outlined">smartphone</span>
+                    <span className="material-symbols-outlined text-xl">smartphone</span>
                     {t('checkout.method.momo')}
                  </button>
                  <button
                     type="button"
                     onClick={() => setPaymentMethod('card')}
-                    className={`flex-1 py-3 rounded-lg border-2 font-bold flex flex-col items-center gap-1 transition-all ${paymentMethod === 'card' ? 'border-primary bg-primary/5 text-primary' : 'border-gray-200 dark:border-gray-700 text-text-muted hover:border-gray-300'}`}
+                    className={`py-3.5 rounded-xl border font-semibold tracking-tight text-sm flex flex-col items-center gap-1.5 transition-all ${paymentMethod === 'card' ? 'border-text-main dark:border-white bg-ink-50 dark:bg-white/5 text-text-main dark:text-white' : 'border-ink-200 dark:border-white/15 text-text-muted hover:border-ink-300'}`}
                  >
-                    <span className="material-symbols-outlined">credit_card</span>
+                    <span className="material-symbols-outlined text-xl">credit_card</span>
                     {t('checkout.method.card')}
                  </button>
                </div>
@@ -400,25 +432,25 @@ const CheckoutPage: React.FC = () => {
               {paymentMethod === 'momo' && (
                 <div className="space-y-4 animate-fadeIn">
                    <div>
-                     <label className="block text-xs font-semibold text-text-muted mb-1">{t('checkout.momo.provider')}</label>
-                     <div className="flex gap-3">
-                        <label className="flex items-center gap-2 cursor-pointer border border-gray-200 dark:border-gray-700 p-3 rounded-lg flex-1 has-[:checked]:border-primary has-[:checked]:bg-primary/5 transition-all">
-                           <input type="radio" name="momo_provider" className="text-primary focus:ring-primary" checked={momoProvider === 'MOMO'} onChange={() => setMomoProvider('MOMO')} />
-                           <span className="font-bold text-text-main dark:text-white">MTN Mobile Money</span>
+                     <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-2">{t('checkout.momo.provider')}</label>
+                     <div className="grid grid-cols-2 gap-3">
+                        <label className="flex items-center gap-2.5 cursor-pointer border border-ink-200 dark:border-white/15 p-3.5 rounded-xl has-[:checked]:border-text-main has-[:checked]:bg-ink-50 dark:has-[:checked]:bg-white/5 transition-all">
+                           <input type="radio" name="momo_provider" className="text-primary focus:ring-primary accent-primary" checked={momoProvider === 'MOMO'} onChange={() => setMomoProvider('MOMO')} />
+                           <span className="font-semibold tracking-tight text-sm text-text-main dark:text-white">MTN Mobile Money</span>
                         </label>
-                        <label className="flex items-center gap-2 cursor-pointer border border-gray-200 dark:border-gray-700 p-3 rounded-lg flex-1 has-[:checked]:border-primary has-[:checked]:bg-primary/5 transition-all">
-                           <input type="radio" name="momo_provider" className="text-primary focus:ring-primary" checked={momoProvider === 'OM'} onChange={() => setMomoProvider('OM')} />
-                           <span className="font-bold text-text-main dark:text-white">Orange Money</span>
+                        <label className="flex items-center gap-2.5 cursor-pointer border border-ink-200 dark:border-white/15 p-3.5 rounded-xl has-[:checked]:border-text-main has-[:checked]:bg-ink-50 dark:has-[:checked]:bg-white/5 transition-all">
+                           <input type="radio" name="momo_provider" className="text-primary focus:ring-primary accent-primary" checked={momoProvider === 'OM'} onChange={() => setMomoProvider('OM')} />
+                           <span className="font-semibold tracking-tight text-sm text-text-main dark:text-white">Orange Money</span>
                         </label>
                      </div>
                    </div>
                    <div>
-                     <label className="block text-xs font-semibold text-text-muted mb-1">{t('checkout.momo.number')}</label>
-                     <input type="tel" placeholder="6XX XXX XXX" value={momoPhone} onChange={(e) => setMomoPhone(e.target.value)} className="w-full h-12 px-3 bg-gray-50 dark:bg-[#102216] border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-text-main dark:text-white transition-all font-mono" />
-                     <p className="mt-2 text-[11px] text-text-muted">Vous recevrez une demande de confirmation USSD sur ce numéro.</p>
+                     <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-1.5">{t('checkout.momo.number')}</label>
+                     <input type="tel" placeholder="6XX XXX XXX" value={momoPhone} onChange={(e) => setMomoPhone(e.target.value)} className="w-full h-12 px-3.5 bg-white dark:bg-white/5 border border-ink-200 dark:border-white/10 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary/60 outline-none text-text-main dark:text-white transition-all font-mono tabular-nums" />
+                     <p className="mt-2 text-[11px] text-text-muted leading-relaxed">Vous recevrez une demande de confirmation USSD sur ce numéro.</p>
                    </div>
                    {paymentError && (
-                     <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-400 text-xs font-bold px-3 py-2 rounded-lg">
+                     <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 text-red-700 dark:text-red-300 text-sm font-medium px-3.5 py-2.5 rounded-xl">
                        {paymentError}
                      </div>
                    )}
@@ -429,89 +461,98 @@ const CheckoutPage: React.FC = () => {
                {paymentMethod === 'card' && (
                  <div className="space-y-4 animate-fadeIn">
                     <div>
-                      <label className="block text-xs font-semibold text-text-muted mb-1">{t('checkout.card.number')}</label>
+                      <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-1.5">{t('checkout.card.number')}</label>
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-gray-400">credit_card</span>
-                        <input type="text" placeholder="0000 0000 0000 0000" className="w-full h-12 pl-10 pr-3 bg-gray-50 dark:bg-[#102216] border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-text-main dark:text-white transition-all font-mono" />
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 material-symbols-outlined text-text-muted/70">credit_card</span>
+                        <input type="text" placeholder="0000 0000 0000 0000" className="w-full h-12 pl-11 pr-3 bg-white dark:bg-white/5 border border-ink-200 dark:border-white/10 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary/60 outline-none text-text-main dark:text-white transition-all font-mono tabular-nums" />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-semibold text-text-muted mb-1">{t('checkout.card.expiry')}</label>
-                        <input type="text" placeholder="MM/YY" className="w-full h-12 px-3 bg-gray-50 dark:bg-[#102216] border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-text-main dark:text-white transition-all font-mono" />
+                        <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-1.5">{t('checkout.card.expiry')}</label>
+                        <input type="text" placeholder="MM/YY" className="w-full h-12 px-3.5 bg-white dark:bg-white/5 border border-ink-200 dark:border-white/10 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary/60 outline-none text-text-main dark:text-white transition-all font-mono tabular-nums" />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-text-muted mb-1">{t('checkout.card.cvv')}</label>
-                        <input type="text" placeholder="123" className="w-full h-12 px-3 bg-gray-50 dark:bg-[#102216] border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-text-main dark:text-white transition-all font-mono" />
+                        <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted mb-1.5">{t('checkout.card.cvv')}</label>
+                        <input type="text" placeholder="123" className="w-full h-12 px-3.5 bg-white dark:bg-white/5 border border-ink-200 dark:border-white/10 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary/60 outline-none text-text-main dark:text-white transition-all font-mono tabular-nums" />
                       </div>
                     </div>
                  </div>
                )}
-               
-               <button 
-                 type="submit" 
+
+               <button
+                 type="submit"
                  disabled={isProcessing}
-                 className="w-full mt-8 py-4 bg-primary text-text-main font-bold text-lg rounded-xl hover:bg-[#0fd651] shadow-lg hover:shadow-xl transition-all disabled:opacity-70 flex items-center justify-center gap-2"
+                 className="w-full mt-8 h-14 bg-text-main dark:bg-white text-white dark:text-text-main font-semibold tracking-tight rounded-full shadow-card hover:shadow-elevated hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 group"
                >
-                 {isProcessing && <span className="material-symbols-outlined animate-spin">progress_activity</span>}
-                 {t('checkout.pay_btn')} • {calculateTotal().toLocaleString()} FCFA
+                 {isProcessing && <span className="material-symbols-outlined animate-spin text-xl">progress_activity</span>}
+                 {t('checkout.pay_btn')} <span className="opacity-60">•</span> <span className="tabular-nums">{calculateTotal().toLocaleString()} FCFA</span>
+                 {!isProcessing && <span className="material-symbols-outlined text-base transition-transform group-hover:translate-x-0.5">arrow_forward</span>}
                </button>
             </form>
 
           </div>
 
           {/* RIGHT: Order Summary */}
-          <div className="lg:w-1/3">
-             <div className="bg-white dark:bg-surface-dark rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-800 sticky top-24">
-                <h3 className="text-xl font-bold text-text-main dark:text-white mb-4 border-b border-gray-100 dark:border-gray-700 pb-2">Booking Summary</h3>
-                
+          <div className="lg:w-[380px]">
+             <div className="bg-white dark:bg-surface-dark rounded-2xl p-6 md:p-7 shadow-subtle border border-ink-100 dark:border-white/10 sticky top-24">
+                <div className="flex items-center justify-between mb-5">
+                  <h3 className="font-display text-lg font-semibold tracking-tight text-text-main dark:text-white">Récapitulatif</h3>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">{bookingDetails.returnTrip ? 'Aller-retour' : 'Aller simple'}</span>
+                </div>
+
                 {/* Outbound Item */}
                 <div className="mb-4">
-                   <div className="flex items-center gap-2 text-xs font-bold text-text-muted uppercase mb-1">
-                      <span className="material-symbols-outlined text-sm">flight_takeoff</span>
-                      Outbound
+                   <div className="flex items-center gap-2 text-[11px] font-semibold text-teal-accent dark:text-primary uppercase tracking-[0.14em] mb-2">
+                      <span className="material-symbols-outlined text-[16px]">flight_takeoff</span>
+                      Aller
                    </div>
-                   <div className="flex justify-between items-start">
-                      <div>
-                         <div className="font-bold text-text-main dark:text-white text-sm">{bookingDetails.outbound.agencyName}</div>
-                         <div className="text-xs text-text-muted">{formatDate(bookingDetails.outbound.date)} • {bookingDetails.outbound.departureTime}</div>
-                         <div className="text-xs text-text-main dark:text-gray-300 mt-1">{bookingDetails.outbound.departureLocation} <br/>➜ {bookingDetails.outbound.arrivalLocation}</div>
+                   <div>
+                      <div className="font-display font-semibold tracking-tight text-text-main dark:text-white text-sm">{bookingDetails.outbound.agencyName}</div>
+                      <div className="text-xs text-text-muted mt-0.5 tabular-nums">{formatDate(bookingDetails.outbound.date)} · {bookingDetails.outbound.departureTime}</div>
+                      <div className="text-xs text-text-main dark:text-gray-300 mt-2 leading-relaxed">
+                        {bookingDetails.outbound.departureLocation}<br />
+                        <span className="text-text-muted">→</span> {bookingDetails.outbound.arrivalLocation}
                       </div>
                    </div>
                 </div>
 
                 {/* Return Item */}
                 {bookingDetails.returnTrip && (
-                  <div className="mb-4 pt-4 border-t border-dashed border-gray-200 dark:border-gray-700">
-                     <div className="flex items-center gap-2 text-xs font-bold text-text-muted uppercase mb-1">
-                        <span className="material-symbols-outlined text-sm">flight_land</span>
-                        Return
+                  <div className="mb-4 pt-4 border-t border-dashed border-ink-200 dark:border-white/10">
+                     <div className="flex items-center gap-2 text-[11px] font-semibold text-teal-accent dark:text-primary uppercase tracking-[0.14em] mb-2">
+                        <span className="material-symbols-outlined text-[16px]">flight_land</span>
+                        Retour
                      </div>
-                     <div className="flex justify-between items-start">
-                        <div>
-                           <div className="font-bold text-text-main dark:text-white text-sm">{bookingDetails.returnTrip.agencyName}</div>
-                           <div className="text-xs text-text-muted">{formatDate(bookingDetails.returnTrip.date)} • {bookingDetails.returnTrip.departureTime}</div>
-                           <div className="text-xs text-text-main dark:text-gray-300 mt-1">{bookingDetails.returnTrip.departureLocation} <br/>➜ {bookingDetails.returnTrip.arrivalLocation}</div>
+                     <div>
+                        <div className="font-display font-semibold tracking-tight text-text-main dark:text-white text-sm">{bookingDetails.returnTrip.agencyName}</div>
+                        <div className="text-xs text-text-muted mt-0.5 tabular-nums">{formatDate(bookingDetails.returnTrip.date)} · {bookingDetails.returnTrip.departureTime}</div>
+                        <div className="text-xs text-text-main dark:text-gray-300 mt-2 leading-relaxed">
+                          {bookingDetails.returnTrip.departureLocation}<br />
+                          <span className="text-text-muted">→</span> {bookingDetails.returnTrip.arrivalLocation}
                         </div>
                      </div>
                   </div>
                 )}
 
-                <div className="pt-4 border-t border-gray-200 dark:border-gray-700 mt-2 space-y-2">
+                <div className="pt-4 border-t border-ink-200 dark:border-white/10 mt-2 space-y-2">
                    <div className="flex justify-between items-center text-sm">
                       <span className="text-text-muted">{t('checkout.summary.base')}</span>
-                      <span className="font-medium text-text-main dark:text-white">{bookingDetails.totalPrice.toLocaleString()} FCFA</span>
+                      <span className="font-medium text-text-main dark:text-white tabular-nums">{bookingDetails.totalPrice.toLocaleString()} FCFA</span>
                    </div>
                    {(outboundSeats.length > 0 || returnSeats.length > 0) && (
-                      <div className="flex justify-between items-center text-sm text-primary">
-                          <span>Sièges</span>
-                          <span className="font-medium">{[...outboundSeats, ...returnSeats].join(" · ")}</span>
+                      <div className="flex justify-between items-center text-sm">
+                          <span className="text-text-muted">Sièges</span>
+                          <span className="font-mono text-xs text-text-main dark:text-white">{[...outboundSeats, ...returnSeats].join(' · ')}</span>
                       </div>
                    )}
-                   
-                   <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                      <span className="text-lg font-bold text-text-main dark:text-white">Total</span>
-                      <span className="text-2xl font-black text-primary">{calculateTotal().toLocaleString()} <span className="text-sm font-normal text-text-muted">FCFA</span></span>
+
+                   <div className="flex justify-between items-baseline mt-4 pt-4 border-t border-ink-200 dark:border-white/10">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">Total</span>
+                      <span className="font-display text-3xl font-semibold tracking-tightest text-text-main dark:text-white tabular-nums">
+                        {calculateTotal().toLocaleString()}
+                        <span className="text-xs font-medium text-text-muted ml-1">FCFA</span>
+                      </span>
                    </div>
                 </div>
 
