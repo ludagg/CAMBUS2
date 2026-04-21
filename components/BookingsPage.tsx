@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { BookingCardSkeleton } from './Skeleton';
+import TicketModal from './TicketModal';
 
 interface BookingLeg {
   id: string;
@@ -43,6 +44,7 @@ const BookingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [ticketLeg, setTicketLeg] = useState<BookingLeg | null>(null);
 
   // Redirect if not logged in
   useEffect(() => {
@@ -166,8 +168,15 @@ const BookingsPage: React.FC = () => {
 
                   <div className="grid md:grid-cols-2 gap-4">
                     {group.bookings.map((leg) => (
-                      <div key={leg.id} className="border border-gray-100 dark:border-gray-800 rounded-lg p-4">
-                        <div className="text-[10px] font-black uppercase text-primary mb-2 tracking-widest">{leg.leg === 'OUTBOUND' ? t('checkout.outbound') || 'Aller' : t('checkout.return') || 'Retour'}</div>
+                      <button
+                        key={leg.id}
+                        onClick={() => setTicketLeg(leg)}
+                        className="text-left border border-gray-100 dark:border-gray-800 rounded-lg p-4 hover:border-primary/50 hover:shadow-md transition-all"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-[10px] font-black uppercase text-primary tracking-widest">{leg.leg === 'OUTBOUND' ? t('checkout.outbound') || 'Aller' : t('checkout.return') || 'Retour'}</div>
+                          <span className="material-symbols-outlined text-lg text-text-muted">qr_code_2</span>
+                        </div>
                         <div className="text-sm font-bold text-primary mb-2">{formatDate(leg.date)}</div>
                         <div className="flex items-center gap-3 mb-3">
                           <span className="text-xl font-black text-text-main dark:text-white">{leg.departureTime}</span>
@@ -175,7 +184,7 @@ const BookingsPage: React.FC = () => {
                           <span className="text-xl font-black text-text-main dark:text-white">{leg.arrivalTime}</span>
                         </div>
                         <div className="text-xs text-text-muted">{leg.fromCity} → {leg.toCity}</div>
-                        <div className="text-xs text-text-muted mt-1">{leg.from}</div>
+                        <div className="text-xs text-text-muted mt-1 truncate">{leg.from}</div>
                         {leg.seats.length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1">
                             {leg.seats.map((s) => (
@@ -183,16 +192,16 @@ const BookingsPage: React.FC = () => {
                             ))}
                           </div>
                         )}
-                      </div>
+                      </button>
                     ))}
                   </div>
 
                   <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-gray-700">
                     <div className="font-black text-xl text-text-main dark:text-white">{group.totalPrice.toLocaleString()} <span className="text-xs font-normal text-text-muted">{group.currency}</span></div>
-                    {group.status === 'CONFIRMED' && (
-                      <button className="px-4 py-2 bg-primary/10 text-primary hover:bg-primary hover:text-text-main rounded-lg text-sm font-bold transition-colors flex items-center gap-2">
+                    {group.status === 'CONFIRMED' && group.bookings[0] && (
+                      <button onClick={() => setTicketLeg(group.bookings[0])} className="px-4 py-2 bg-primary text-text-main rounded-lg text-sm font-black transition-colors flex items-center gap-2 hover:bg-[#0fd651]">
                         <span className="material-symbols-outlined text-lg">qr_code_2</span>
-                        QR
+                        Voir le billet
                       </button>
                     )}
                   </div>
@@ -212,6 +221,8 @@ const BookingsPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      <TicketModal leg={ticketLeg} onClose={() => setTicketLeg(null)} />
     </div>
   );
 };
