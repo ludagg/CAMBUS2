@@ -61,6 +61,30 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum LicenseCategory {
+  B
+  C
+  D
+  D1
+  DE
+}
+
+enum IncidentKind {
+  BREAKDOWN
+  ACCIDENT
+  ROUTE_BLOCKED
+  WEATHER
+  SECURITY
+  OTHER
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -76,6 +100,9 @@ model User {
   station      Station? @relation(fields: [stationId], references: [id])
   bookingGroups BookingGroup[]
   soldBookingGroups BookingGroup[] @relation("SoldBookings")
+  reportedIncidents Incident[] @relation("IncidentReportedBy")
+  resolvedIncidents Incident[] @relation("IncidentResolvedBy")
+  auditLogs    AuditLog[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -111,6 +138,7 @@ model Company {
   agencies    Agency[]
   routes      Route[]
   users       User[]
+  drivers     Driver[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
@@ -129,6 +157,8 @@ model Agency {
   stations    Station[]
   vehicles    Vehicle[]
   departures  Departure[]
+  drivers     Driver[]
+  incidents   Incident[]
   users       User[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -167,9 +197,35 @@ model Vehicle {
   status     Status      @default(ACTIVE)
   agency     Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   departures Departure[]
+  incidents  Incident[]
   createdAt  DateTime    @default(now())
 
   @@unique([agencyId, plate])
+}
+
+/// Chauffeurs rattachés à une agence. La compagnie est dérivée via l'agence
+/// mais dupliquée ici pour faciliter les stats compagnie (nombre de
+/// chauffeurs, alertes permis expirés, temps de conduite).
+model Driver {
+  id                 String          @id @default(cuid())
+  agencyId           String
+  companyId          String
+  fullName           String
+  phone              String?
+  licenseNumber      String
+  licenseCategory    LicenseCategory @default(D)
+  licenseExpiresAt   DateTime
+  status             Status          @default(ACTIVE)
+  agency             Agency          @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  company            Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  departures         Departure[]
+  incidents          Incident[]
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  @@unique([agencyId, licenseNumber])
+  @@index([companyId])
+  @@index([licenseExpiresAt])
 }
 
 model Route {
@@ -194,6 +250,7 @@ model Departure {
   routeId            String
   agencyId           String
   vehicleId          String?
+  driverId           String?
   originStationId    String
   destStationId      String
   departureAt        DateTime
@@ -211,15 +268,70 @@ model Departure {
   route              Route      @relation(fields: [routeId], references: [id], onDelete: Cascade)
   agency             Agency     @relation(fields: [agencyId], references: [id])
   vehicle            Vehicle?   @relation(fields: [vehicleId], references: [id])
+  driver             Driver?    @relation(fields: [driverId], references: [id])
   originStation      Station    @relation("OriginStation", fields: [originStationId], references: [id])
   destStation        Station    @relation("DestStation", fields: [destStationId], references: [id])
   bookings           Booking[]
+  incidents          Incident[]
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
   @@index([routeId])
   @@index([departureAt])
   @@index([agencyId])
+  @@index([driverId])
+}
+
+/// Incidents opérationnels (panne, accident, route coupée). Un incident peut
+/// être rattaché à un départ, à un véhicule et/ou à un chauffeur. Indispensable
+/// pour les alertes passagers et les stats de fiabilité par compagnie.
+model Incident {
+  id               String           @id @default(cuid())
+  agencyId         String
+  departureId      String?
+  vehicleId        String?
+  driverId         String?
+  kind             IncidentKind
+  severity         IncidentSeverity @default(MEDIUM)
+  description      String
+  reportedByUserId String?
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+  resolutionNote   String?
+  agency           Agency           @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  departure        Departure?       @relation(fields: [departureId], references: [id])
+  vehicle          Vehicle?         @relation(fields: [vehicleId], references: [id])
+  driver           Driver?          @relation(fields: [driverId], references: [id])
+  reportedBy       User?            @relation("IncidentReportedBy", fields: [reportedByUserId], references: [id])
+  resolvedBy       User?            @relation("IncidentResolvedBy", fields: [resolvedByUserId], references: [id])
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([agencyId, createdAt])
+  @@index([departureId])
+  @@index([resolvedAt])
+}
+
+/// Journal d'audit générique des mutations admin (modifications de prix,
+/// annulations, désactivations, création / suppression de drivers, etc.).
+/// Les payloads `before` / `after` sont stockés en JSON libre — volontairement
+/// pas typés au niveau Prisma pour éviter une explosion de modèles.
+model AuditLog {
+  id            String   @id @default(cuid())
+  actorUserId   String?
+  actorRole     Role?
+  action        String
+  entityType    String
+  entityId      String
+  metadata      Json?
+  ip            String?
+  userAgent     String?
+  actor         User?    @relation(fields: [actorUserId], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+  @@index([createdAt])
 }
 
 model BookingGroup {

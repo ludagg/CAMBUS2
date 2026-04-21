@@ -5,6 +5,7 @@ import { getSession, requireRole } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
 import { assertOwnsCompany } from '@/lib/scoping'
 import { countActiveBookingsForCompany } from '@/lib/booking-invariants'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -37,13 +38,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     await assertOwnsCompany(session!, id)
     const body = updateSchema.parse(await req.json())
     const company = await prisma.company.update({ where: { id }, data: body })
+    await logAudit(
+      {
+        action: 'company.update',
+        entityType: 'Company',
+        entityId: id,
+        metadata: { fields: Object.keys(body) },
+      },
+      { session, req },
+    )
     return NextResponse.json({ data: company })
   } catch (err) {
     return handleError(err)
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getSession()
     requireRole(session, ['SUPER_ADMIN'])
@@ -56,6 +66,10 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
       )
     }
     await prisma.company.update({ where: { id }, data: { status: 'INACTIVE' } })
+    await logAudit(
+      { action: 'company.disable', entityType: 'Company', entityId: id },
+      { session, req },
+    )
     return NextResponse.json({ data: { ok: true } })
   } catch (err) {
     return handleError(err)

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
 import { cancelBookingGroup, CancellationError } from '@/lib/booking-cancel'
+import { logAudit } from '@/lib/audit'
 
 const schema = z.object({
   reason: z.string().max(500).optional(),
@@ -48,6 +49,16 @@ export async function POST(
       actorUserId: session!.sub,
       reason,
     })
+
+    await logAudit(
+      {
+        action: 'booking.cancel',
+        entityType: 'BookingGroup',
+        entityId: groupId,
+        metadata: { reason: reason ?? null, selfService: session!.role === 'USER' },
+      },
+      { session, req },
+    )
 
     return NextResponse.json({ data: { ok: true, status: 'CANCELLED' } })
   } catch (err) {

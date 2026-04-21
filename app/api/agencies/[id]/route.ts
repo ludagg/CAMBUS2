@@ -5,6 +5,7 @@ import { getSession, requireRole } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
 import { assertOwnsAgency } from '@/lib/scoping'
 import { countActiveBookingsForAgency } from '@/lib/booking-invariants'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -51,7 +52,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getSession()
     requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN'])
@@ -65,6 +66,10 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
       )
     }
     await prisma.agency.update({ where: { id }, data: { status: 'INACTIVE' } })
+    await logAudit(
+      { action: 'agency.disable', entityType: 'Agency', entityId: id },
+      { session, req },
+    )
     return NextResponse.json({ data: { ok: true } })
   } catch (err) {
     return handleError(err)
