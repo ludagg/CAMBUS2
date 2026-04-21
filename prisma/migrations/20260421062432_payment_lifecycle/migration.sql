@@ -1,0 +1,6 @@
+-- AlterTable
+ALTER TABLE "Payment" ADD COLUMN     "failureReason" TEXT,
+ADD COLUMN     "phoneNumber" TEXT,
+ADD COLUMN     "provider" TEXT,
+ADD COLUMN     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ALTER COLUMN "status" SET DEFAULT 'PENDING';
