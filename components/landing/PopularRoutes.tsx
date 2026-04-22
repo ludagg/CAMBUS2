@@ -41,19 +41,20 @@ const PopularRoutes: React.FC = () => {
   useEffect(() => {
     const load = async () => {
       try {
+        const todayISO = new Date().toISOString().split('T')[0];
         const results = await Promise.all(
           CURATED.map(async (c) => {
             try {
-              const url = `/api/departures?from=${encodeURIComponent(c.from)}&to=${encodeURIComponent(c.to)}`;
+              const url = `/api/departures?from=${encodeURIComponent(c.from)}&to=${encodeURIComponent(c.to)}&date=${todayISO}`;
               const res = await fetch(url);
               const json = await res.json();
-              const list = (json.data ?? []) as Array<{ priceCents: number; route: { defaultDurationMin: number } }>;
+              const list = (json.data ?? []) as Array<{ price: number; durationMin: number }>;
               if (list.length === 0) return null;
-              const min = list.reduce((acc, d) => Math.min(acc, d.priceCents), Infinity);
+              const min = list.reduce((acc, d) => Math.min(acc, d.price), Infinity);
               return {
                 ...c,
                 priceFromXAF: min,
-                durationMin: list[0].route.defaultDurationMin,
+                durationMin: list[0].durationMin,
                 dailyCount: Math.min(list.length, 24),
               } as RouteItem;
             } catch {
