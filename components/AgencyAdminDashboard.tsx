@@ -8,6 +8,10 @@ import SeatLayoutEditor from './SeatLayoutEditor';
 import AnalyticsPanel from './AnalyticsPanel';
 import DepartureControlPanel from './DepartureControlPanel';
 import CounterSalePanel from './CounterSalePanel';
+import DriverPanel from './DriverPanel';
+import StationPanel from './StationPanel';
+import IncidentPanel from './IncidentPanel';
+import WaitlistPanel from './WaitlistPanel';
 import type { SeatLayout } from '../lib/seat-layout';
 
 interface Departure {
@@ -18,11 +22,14 @@ interface Departure {
   seatsAvailable: number;
   seatsTotal: number;
   status?: string;
+  vehicleId?: string | null;
+  driverId?: string | null;
   route: {
     originCity: { id?: string; name: string };
     destinationCity: { id?: string; name: string };
   };
   vehicle?: { plate: string; model: string; capacity: number } | null;
+  driver?: { id: string; fullName: string } | null;
 }
 
 interface Vehicle {
@@ -64,10 +71,13 @@ const AgencyAdminDashboard: React.FC = () => {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'departures' | 'vehicles' | 'operations' | 'counter' | 'analytics'>('departures');
+  const [activeTab, setActiveTab] = useState<'departures' | 'vehicles' | 'operations' | 'counter' | 'analytics' | 'drivers' | 'stations' | 'incidents' | 'waitlist'>('departures');
   const [depModalOpen, setDepModalOpen] = useState(false);
   const [activeAgencyDetail, setActiveAgencyDetail] = useState<Agency | null>(null);
   const [layoutVehicle, setLayoutVehicle] = useState<Vehicle | null>(null);
+  const [editingDeparture, setEditingDeparture] = useState<Departure | null>(null);
+  const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
+  const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -148,10 +158,14 @@ const AgencyAdminDashboard: React.FC = () => {
 
          <div className="flex justify-between items-center flex-wrap gap-3 mb-4 border-b border-gray-200 dark:border-gray-800 pb-2">
            <div className="flex gap-2 overflow-x-auto">
-            {(['departures', 'vehicles', 'operations', 'counter', 'analytics'] as const).map((t) => {
+            {(['departures', 'vehicles', 'drivers', 'stations', 'incidents', 'waitlist', 'operations', 'counter', 'analytics'] as const).map((t) => {
               const labels: Record<typeof t, string> = {
                 departures: 'Départs',
                 vehicles: 'Véhicules',
+                drivers: 'Chauffeurs',
+                stations: 'Stations',
+                incidents: 'Incidents',
+                waitlist: 'Liste d\'attente',
                 operations: 'Opérations',
                 counter: 'Guichet',
                 analytics: 'Analytics',
@@ -173,6 +187,12 @@ const AgencyAdminDashboard: React.FC = () => {
             <button onClick={() => setDepModalOpen(true)} className="mb-2 px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm flex items-center gap-2 hover:bg-[#0fd651]">
               <span className="material-symbols-outlined text-[18px]">add</span>
               Nouveau départ
+            </button>
+          )}
+          {activeTab === 'vehicles' && activeAgencyId && (
+            <button onClick={() => setVehicleModalOpen(true)} className="mb-2 px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm flex items-center gap-2 hover:bg-[#0fd651]">
+              <span className="material-symbols-outlined text-[18px]">add</span>
+              Nouveau véhicule
             </button>
           )}
         </div>
@@ -199,6 +219,9 @@ const AgencyAdminDashboard: React.FC = () => {
                     <span className="text-text-muted">/{d.seatsTotal} places</span>
                   </div>
                   <div className="font-black text-primary">{d.priceCents.toLocaleString()} XAF</div>
+                  <button onClick={() => setEditingDeparture(d)} className="text-text-muted hover:bg-gray-100 dark:hover:bg-gray-800 p-1 rounded" aria-label="Éditer">
+                    <span className="material-symbols-outlined text-[20px]">edit</span>
+                  </button>
                   <button onClick={() => deleteDeparture(d.id)} className="text-red-600 hover:text-red-800 p-1" aria-label="Désactiver">
                     <span className="material-symbols-outlined text-[20px]">delete</span>
                   </button>
@@ -213,6 +236,14 @@ const AgencyAdminDashboard: React.FC = () => {
           <CounterSalePanel />
         ) : activeTab === 'analytics' ? (
           <AnalyticsPanel />
+        ) : activeTab === 'drivers' && activeAgencyId ? (
+          <DriverPanel agencyId={activeAgencyId} />
+        ) : activeTab === 'stations' && activeAgencyId ? (
+          <StationPanel agencyId={activeAgencyId} cities={cities} />
+        ) : activeTab === 'incidents' && activeAgencyId ? (
+          <IncidentPanel agencyId={activeAgencyId} />
+        ) : activeTab === 'waitlist' && activeAgencyId ? (
+          <WaitlistPanel agencyId={activeAgencyId} />
         ) : (
           <div className="grid md:grid-cols-2 gap-3">
             {vehicles.map((v) => (
@@ -223,14 +254,19 @@ const AgencyAdminDashboard: React.FC = () => {
                     <div className="font-black text-text-main dark:text-white">{v.plate}</div>
                     <div className="text-xs text-text-muted">{v.model} • {v.capacity} places</div>
                   </div>
-                  <button
-                    onClick={() => setLayoutVehicle(v)}
-                    className="text-primary hover:bg-primary/10 p-2 rounded-lg"
-                    aria-label="Configurer le plan"
-                    title="Configurer le plan de sièges"
-                  >
-                    <span className="material-symbols-outlined text-[20px]">event_seat</span>
-                  </button>
+                  <div className="flex flex-col gap-1">
+                    <button
+                      onClick={() => setLayoutVehicle(v)}
+                      className="text-primary hover:bg-primary/10 p-2 rounded-lg"
+                      aria-label="Configurer le plan"
+                      title="Configurer le plan de sièges"
+                    >
+                      <span className="material-symbols-outlined text-[20px]">event_seat</span>
+                    </button>
+                    <button onClick={() => setEditingVehicle(v)} className="text-text-muted hover:bg-gray-100 dark:hover:bg-gray-800 p-2 rounded-lg" aria-label="Éditer">
+                      <span className="material-symbols-outlined text-[20px]">edit</span>
+                    </button>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-1 mt-2">
                   <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${v.seatLayout ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 dark:bg-gray-800 text-text-muted'}`}>
@@ -263,6 +299,29 @@ const AgencyAdminDashboard: React.FC = () => {
           capacity={layoutVehicle.capacity}
           onClose={() => setLayoutVehicle(null)}
           onSaved={async () => { await reload(); }}
+        />
+      )}
+      {editingDeparture && activeAgencyId && (
+        <DepartureEditForm
+          departure={editingDeparture}
+          agencyId={activeAgencyId}
+          vehicles={vehicles}
+          onClose={() => setEditingDeparture(null)}
+          onSaved={async () => { setEditingDeparture(null); await reload(); }}
+        />
+      )}
+      {vehicleModalOpen && activeAgencyId && (
+        <AgencyVehicleForm
+          agencyId={activeAgencyId}
+          onClose={() => setVehicleModalOpen(false)}
+          onSaved={async () => { setVehicleModalOpen(false); await reload(); }}
+        />
+      )}
+      {editingVehicle && (
+        <AgencyVehicleEditForm
+          vehicle={editingVehicle}
+          onClose={() => setEditingVehicle(null)}
+          onSaved={async () => { setEditingVehicle(null); await reload(); }}
         />
       )}
     </div>
@@ -382,6 +441,198 @@ const DepartureForm: React.FC<{ agency: Agency; cities: City[]; vehicles: Vehicl
         <div className="flex gap-2 justify-end pt-2">
           <button type="button" onClick={onClose} className="px-4 py-2 text-text-muted font-black text-sm">Annuler</button>
           <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm disabled:opacity-50">{saving ? 'Enregistrement…' : 'Créer'}</button>
+        </div>
+      </form>
+    </AdminModal>
+  );
+};
+
+interface DriverOption { id: string; fullName: string; status: string }
+
+const DepartureEditForm: React.FC<{ departure: Departure; agencyId: string; vehicles: Vehicle[]; onClose: () => void; onSaved: () => void }> = ({ departure, agencyId, vehicles, onClose, onSaved }) => {
+  const [priceCents, setPriceCents] = useState(departure.priceCents);
+  const [seatsTotal, setSeatsTotal] = useState(departure.seatsTotal);
+  const [vehicleId, setVehicleId] = useState<string>(departure.vehicleId ?? '');
+  const [driverId, setDriverId] = useState<string>(departure.driverId ?? '');
+  const [drivers, setDrivers] = useState<DriverOption[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/drivers?agencyId=${agencyId}`).then((r) => r.json()).then((j) => setDrivers(j.data ?? []));
+  }, [agencyId]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true); setError(null);
+    try {
+      const res = await fetch(`/api/departures/${departure.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          priceCents,
+          seatsTotal,
+          vehicleId: vehicleId || null,
+          driverId: driverId || null,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erreur');
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <AdminModal title={`Éditer le départ ${departure.route.originCity.name} → ${departure.route.destinationCity.name}`} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <div className="grid md:grid-cols-2 gap-3">
+          <Field label="Prix (XAF)">
+            <input required type="number" min={100} value={priceCents} onChange={(e) => setPriceCents(Number(e.target.value))} className={inputCls} />
+          </Field>
+          <Field label="Nombre de places">
+            <input required type="number" min={1} value={seatsTotal} onChange={(e) => setSeatsTotal(Number(e.target.value))} className={inputCls} />
+          </Field>
+        </div>
+        <Field label="Véhicule">
+          <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className={inputCls}>
+            <option value="">— Aucun —</option>
+            {vehicles.map((v) => <option key={v.id} value={v.id}>{v.plate} • {v.model}</option>)}
+          </select>
+        </Field>
+        <Field label="Chauffeur">
+          <select value={driverId} onChange={(e) => setDriverId(e.target.value)} className={inputCls}>
+            <option value="">— Aucun —</option>
+            {drivers.filter((d) => d.status === 'ACTIVE').map((d) => <option key={d.id} value={d.id}>{d.fullName}</option>)}
+          </select>
+        </Field>
+        {error && <div className="text-red-600 text-xs font-bold bg-red-50 p-2 rounded">{error}</div>}
+        <div className="flex gap-2 justify-end pt-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-text-muted font-black text-sm">Annuler</button>
+          <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm disabled:opacity-50">
+            {saving ? 'Enregistrement…' : 'Enregistrer'}
+          </button>
+        </div>
+      </form>
+    </AdminModal>
+  );
+};
+
+const AMENITY_OPTIONS = ['AC', 'WIFI', 'USB', 'VIP', 'TV'];
+
+const AgencyVehicleForm: React.FC<{ agencyId: string; onClose: () => void; onSaved: () => void }> = ({ agencyId, onClose, onSaved }) => {
+  const [plate, setPlate] = useState('');
+  const [model, setModel] = useState('');
+  const [capacity, setCapacity] = useState(30);
+  const [amenities, setAmenities] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const toggle = (a: string) => setAmenities((arr) => arr.includes(a) ? arr.filter((x) => x !== a) : [...arr, a]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true); setError(null);
+    try {
+      const res = await fetch(`/api/agencies/${agencyId}/vehicles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plate, model, capacity, amenities }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erreur');
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <AdminModal title="Nouveau véhicule" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Plaque">
+          <input required value={plate} onChange={(e) => setPlate(e.target.value.toUpperCase())} className={inputCls + ' font-mono uppercase'} placeholder="LT 123 AB" />
+        </Field>
+        <div className="grid md:grid-cols-2 gap-3">
+          <Field label="Modèle">
+            <input required value={model} onChange={(e) => setModel(e.target.value)} className={inputCls} placeholder="Toyota Coaster" />
+          </Field>
+          <Field label="Capacité">
+            <input required type="number" min={1} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} className={inputCls} />
+          </Field>
+        </div>
+        <Field label="Équipements">
+          <div className="flex flex-wrap gap-2">
+            {AMENITY_OPTIONS.map((a) => (
+              <button type="button" key={a} onClick={() => toggle(a)} className={`px-3 py-1 rounded-full text-xs font-black border-2 transition-all ${amenities.includes(a) ? 'border-primary bg-primary/10 text-primary' : 'border-gray-200 dark:border-gray-700 text-text-muted'}`}>{a}</button>
+            ))}
+          </div>
+        </Field>
+        {error && <div className="text-red-600 text-xs font-bold bg-red-50 p-2 rounded">{error}</div>}
+        <div className="flex gap-2 justify-end pt-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-text-muted font-black text-sm">Annuler</button>
+          <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm disabled:opacity-50">
+            {saving ? 'Enregistrement…' : 'Créer'}
+          </button>
+        </div>
+      </form>
+    </AdminModal>
+  );
+};
+
+const AgencyVehicleEditForm: React.FC<{ vehicle: Vehicle; onClose: () => void; onSaved: () => void }> = ({ vehicle, onClose, onSaved }) => {
+  const [plate, setPlate] = useState(vehicle.plate);
+  const [model, setModel] = useState(vehicle.model);
+  const [capacity, setCapacity] = useState(vehicle.capacity);
+  const [amenities, setAmenities] = useState<string[]>(vehicle.amenities);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const toggle = (a: string) => setAmenities((arr) => arr.includes(a) ? arr.filter((x) => x !== a) : [...arr, a]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true); setError(null);
+    try {
+      const res = await fetch(`/api/vehicles/${vehicle.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plate, model, capacity, amenities }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erreur');
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <AdminModal title={`Éditer ${vehicle.plate}`} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Plaque">
+          <input required value={plate} onChange={(e) => setPlate(e.target.value.toUpperCase())} className={inputCls + ' font-mono uppercase'} />
+        </Field>
+        <div className="grid md:grid-cols-2 gap-3">
+          <Field label="Modèle">
+            <input required value={model} onChange={(e) => setModel(e.target.value)} className={inputCls} />
+          </Field>
+          <Field label="Capacité">
+            <input required type="number" min={1} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} className={inputCls} />
+          </Field>
+        </div>
+        <Field label="Équipements">
+          <div className="flex flex-wrap gap-2">
+            {AMENITY_OPTIONS.map((a) => (
+              <button type="button" key={a} onClick={() => toggle(a)} className={`px-3 py-1 rounded-full text-xs font-black border-2 transition-all ${amenities.includes(a) ? 'border-primary bg-primary/10 text-primary' : 'border-gray-200 dark:border-gray-700 text-text-muted'}`}>{a}</button>
+            ))}
+          </div>
+        </Field>
+        {error && <div className="text-red-600 text-xs font-bold bg-red-50 p-2 rounded">{error}</div>}
+        <div className="flex gap-2 justify-end pt-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-text-muted font-black text-sm">Annuler</button>
+          <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm disabled:opacity-50">
+            {saving ? 'Enregistrement…' : 'Enregistrer'}
+          </button>
         </div>
       </form>
     </AdminModal>

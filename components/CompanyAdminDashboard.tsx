@@ -7,6 +7,10 @@ import { Field, inputCls } from './SuperAdminDashboard';
 import SeatLayoutEditor from './SeatLayoutEditor';
 import AnalyticsPanel from './AnalyticsPanel';
 import DepartureControlPanel from './DepartureControlPanel';
+import DriverPanel from './DriverPanel';
+import StationPanel from './StationPanel';
+import IncidentPanel from './IncidentPanel';
+import CancellationPolicyPanel from './CancellationPolicyPanel';
 import type { SeatLayout } from '../lib/seat-layout';
 
 interface Company {
@@ -23,6 +27,11 @@ interface Company {
 interface Agency {
   id: string;
   name: string;
+  status?: string;
+  cityId?: string;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
   city: { id?: string; name: string; region?: string };
   _count?: { departures: number; vehicles: number };
 }
@@ -57,7 +66,7 @@ const CompanyAdminDashboard: React.FC = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [tab, setTab] = useState<'overview' | 'routes' | 'vehicles' | 'operations' | 'analytics'>('overview');
+  const [tab, setTab] = useState<'overview' | 'routes' | 'vehicles' | 'operations' | 'analytics' | 'agencies' | 'drivers' | 'incidents' | 'cancellation' | 'stations'>('overview');
   const [routes, setRoutes] = useState<RouteRow[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [routeModalOpen, setRouteModalOpen] = useState(false);
@@ -65,6 +74,10 @@ const CompanyAdminDashboard: React.FC = () => {
   const [selectedAgencyId, setSelectedAgencyId] = useState<string>('');
   const [agencyVehicles, setAgencyVehicles] = useState<Vehicle[]>([]);
   const [layoutVehicle, setLayoutVehicle] = useState<Vehicle | null>(null);
+  const [editingRoute, setEditingRoute] = useState<RouteRow | null>(null);
+  const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
+  const [agencyModalOpen, setAgencyModalOpen] = useState(false);
+  const [editingAgency, setEditingAgency] = useState<Agency | null>(null);
 
   const loadCompanies = useCallback(async () => {
     setIsLoading(true);
@@ -154,11 +167,16 @@ const CompanyAdminDashboard: React.FC = () => {
         ) : active ? (
           <>
             <div className="flex gap-2 overflow-x-auto pb-2 border-b border-gray-200 dark:border-gray-800">
-              {(['overview', 'routes', 'vehicles', 'operations', 'analytics'] as const).map((t) => {
+              {(['overview', 'agencies', 'routes', 'vehicles', 'drivers', 'stations', 'incidents', 'cancellation', 'operations', 'analytics'] as const).map((t) => {
                 const labels: Record<typeof t, string> = {
                   overview: "Vue d'ensemble",
+                  agencies: 'Agences',
                   routes: 'Routes',
                   vehicles: 'Véhicules',
+                  drivers: 'Chauffeurs',
+                  stations: 'Stations',
+                  incidents: 'Incidents',
+                  cancellation: 'Annulation',
                   operations: 'Opérations',
                   analytics: 'Analytics',
                 };
@@ -213,9 +231,12 @@ const CompanyAdminDashboard: React.FC = () => {
                         <div className="font-black text-text-main dark:text-white">{r.originCity.name} → {r.destinationCity.name}</div>
                         <div className="text-xs text-text-muted">{Math.round(r.defaultDurationMin / 60)}h{r.defaultDurationMin % 60 ? (r.defaultDurationMin % 60) + 'min' : ''} • {r.distanceKm ?? '–'} km • {r._count?.departures ?? 0} départ(s)</div>
                       </div>
-                      <button onClick={() => deleteRoute(r.id)} className="text-red-600 hover:text-red-800 p-2" aria-label="Supprimer">
-                        <span className="material-symbols-outlined text-[20px]">delete</span>
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => setEditingRoute(r)} className="px-3 py-1 rounded-lg text-xs font-black bg-gray-100 dark:bg-gray-800 text-text-main dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700">Éditer</button>
+                        <button onClick={() => deleteRoute(r.id)} className="text-red-600 hover:text-red-800 p-2" aria-label="Supprimer">
+                          <span className="material-symbols-outlined text-[20px]">delete</span>
+                        </button>
+                      </div>
                     </div>
                   ))}
                   {routes.length === 0 && <p className="text-text-muted col-span-2 text-center py-10">Aucune route.</p>}
@@ -259,6 +280,9 @@ const CompanyAdminDashboard: React.FC = () => {
                         >
                           <span className="material-symbols-outlined text-[20px]">event_seat</span>
                         </button>
+                        <button onClick={() => setEditingVehicle(v)} className="text-text-muted hover:bg-gray-100 dark:hover:bg-gray-800 p-2 rounded-lg" aria-label="Éditer">
+                          <span className="material-symbols-outlined text-[20px]">edit</span>
+                        </button>
                         <button onClick={() => deleteVehicle(v.id)} className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg" aria-label="Supprimer">
                           <span className="material-symbols-outlined text-[20px]">delete</span>
                         </button>
@@ -270,6 +294,56 @@ const CompanyAdminDashboard: React.FC = () => {
               </section>
             )}
 
+            {tab === 'agencies' && (
+              <section>
+                <div className="flex justify-between items-center flex-wrap gap-3 mb-3">
+                  <h2 className="font-black text-lg text-text-main dark:text-white">Agences ({active.agencies?.length ?? 0})</h2>
+                  <button onClick={() => setAgencyModalOpen(true)} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm flex items-center gap-2 hover:bg-[#0fd651]">
+                    <span className="material-symbols-outlined text-[18px]">add</span>
+                    Nouvelle agence
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {(active.agencies ?? []).map((a) => (
+                    <div key={a.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 shadow-subtle p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-black text-text-main dark:text-white">{a.name}</div>
+                          <div className="text-xs text-text-muted mt-1">{a.city.name}</div>
+                          {a.address && <div className="text-xs text-text-muted mt-1">{a.address}</div>}
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <button onClick={() => setEditingAgency(a)} className="px-3 py-1 rounded-lg text-xs font-black bg-gray-100 dark:bg-gray-800 text-text-main dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700">Éditer</button>
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`Désactiver l'agence ${a.name} ?`)) return;
+                              const res = await fetch(`/api/agencies/${a.id}`, { method: 'DELETE' });
+                              if (!res.ok) {
+                                const j = await res.json().catch(() => ({}));
+                                alert(j.error || 'Erreur');
+                                return;
+                              }
+                              await reloadActiveCompany();
+                            }}
+                            className="px-3 py-1 rounded-lg text-xs font-black bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20"
+                          >Désactiver</button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-text-muted mt-2">
+                        <span><strong className="text-text-main dark:text-white">{a._count?.departures ?? 0}</strong> départs</span>
+                        <span><strong className="text-text-main dark:text-white">{a._count?.vehicles ?? 0}</strong> véhicules</span>
+                      </div>
+                    </div>
+                  ))}
+                  {(active.agencies ?? []).length === 0 && <p className="text-text-muted col-span-2 text-center py-10">Aucune agence.</p>}
+                </div>
+              </section>
+            )}
+
+            {tab === 'drivers' && activeId && <DriverPanel companyId={activeId} />}
+            {tab === 'stations' && activeId && <StationPanel companyId={activeId} cities={cities} />}
+            {tab === 'incidents' && <IncidentPanel />}
+            {tab === 'cancellation' && activeId && <CancellationPolicyPanel companyId={activeId} />}
             {tab === 'operations' && <DepartureControlPanel />}
             {tab === 'analytics' && <AnalyticsPanel />}
           </>
@@ -307,6 +381,40 @@ const CompanyAdminDashboard: React.FC = () => {
             const r = await fetch(`/api/agencies/${selectedAgencyId}/vehicles`).then((x) => x.json());
             setAgencyVehicles(r.data ?? []);
           }}
+        />
+      )}
+      {editingRoute && (
+        <RouteEditForm
+          route={editingRoute}
+          onClose={() => setEditingRoute(null)}
+          onSaved={async () => { setEditingRoute(null); await reloadRoutes(); }}
+        />
+      )}
+      {editingVehicle && (
+        <VehicleEditForm
+          vehicle={editingVehicle}
+          onClose={() => setEditingVehicle(null)}
+          onSaved={async () => {
+            setEditingVehicle(null);
+            const r = await fetch(`/api/agencies/${selectedAgencyId}/vehicles`).then((x) => x.json());
+            setAgencyVehicles(r.data ?? []);
+          }}
+        />
+      )}
+      {agencyModalOpen && activeId && (
+        <CompanyAgencyForm
+          companyId={activeId}
+          cities={cities}
+          onClose={() => setAgencyModalOpen(false)}
+          onSaved={async () => { setAgencyModalOpen(false); await reloadActiveCompany(); }}
+        />
+      )}
+      {editingAgency && (
+        <CompanyAgencyEditForm
+          agency={editingAgency}
+          cities={cities}
+          onClose={() => setEditingAgency(null)}
+          onSaved={async () => { setEditingAgency(null); await reloadActiveCompany(); }}
         />
       )}
     </div>
@@ -447,5 +555,251 @@ const Stat: React.FC<{ label: string; value: number | string; icon: string }> = 
     <div className="text-2xl font-black text-text-main dark:text-white">{value}</div>
   </div>
 );
+
+const RouteEditForm: React.FC<{ route: RouteRow; onClose: () => void; onSaved: () => void }> = ({ route, onClose, onSaved }) => {
+  const [durationH, setDurationH] = useState(Math.floor(route.defaultDurationMin / 60));
+  const [durationM, setDurationM] = useState(route.defaultDurationMin % 60);
+  const [distanceKm, setDistanceKm] = useState<number | ''>(route.distanceKm ?? '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true); setError(null);
+    try {
+      const body: { defaultDurationMin: number; distanceKm?: number } = {
+        defaultDurationMin: durationH * 60 + durationM,
+      };
+      if (distanceKm !== '') body.distanceKm = Number(distanceKm);
+      const res = await fetch(`/api/routes/${route.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erreur');
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <AdminModal title={`Éditer ${route.originCity.name} → ${route.destinationCity.name}`} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Durée par défaut">
+          <div className="flex gap-2 items-center">
+            <input type="number" min={0} value={durationH} onChange={(e) => setDurationH(Number(e.target.value))} className={inputCls} />
+            <span className="text-xs font-black text-text-muted">h</span>
+            <input type="number" min={0} max={59} value={durationM} onChange={(e) => setDurationM(Number(e.target.value))} className={inputCls} />
+            <span className="text-xs font-black text-text-muted">min</span>
+          </div>
+        </Field>
+        <Field label="Distance (km)">
+          <input type="number" min={0} value={distanceKm} onChange={(e) => setDistanceKm(e.target.value === '' ? '' : Number(e.target.value))} className={inputCls} />
+        </Field>
+        {error && <div className="text-red-600 text-xs font-bold bg-red-50 p-2 rounded">{error}</div>}
+        <div className="flex gap-2 justify-end pt-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-text-muted font-black text-sm">Annuler</button>
+          <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm disabled:opacity-50">
+            {saving ? 'Enregistrement…' : 'Enregistrer'}
+          </button>
+        </div>
+      </form>
+    </AdminModal>
+  );
+};
+
+const VehicleEditForm: React.FC<{ vehicle: Vehicle; onClose: () => void; onSaved: () => void }> = ({ vehicle, onClose, onSaved }) => {
+  const [plate, setPlate] = useState(vehicle.plate);
+  const [model, setModel] = useState(vehicle.model);
+  const [capacity, setCapacity] = useState(vehicle.capacity);
+  const [amenities, setAmenities] = useState<string[]>(vehicle.amenities);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const options = ['AC', 'WIFI', 'USB', 'VIP', 'TV'];
+
+  const toggle = (a: string) => setAmenities((arr) => arr.includes(a) ? arr.filter((x) => x !== a) : [...arr, a]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true); setError(null);
+    try {
+      const res = await fetch(`/api/vehicles/${vehicle.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plate, model, capacity, amenities }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erreur');
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <AdminModal title={`Éditer ${vehicle.plate}`} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Plaque">
+          <input required value={plate} onChange={(e) => setPlate(e.target.value.toUpperCase())} className={inputCls + ' font-mono uppercase'} />
+        </Field>
+        <div className="grid md:grid-cols-2 gap-3">
+          <Field label="Modèle">
+            <input required value={model} onChange={(e) => setModel(e.target.value)} className={inputCls} />
+          </Field>
+          <Field label="Capacité">
+            <input required type="number" min={1} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} className={inputCls} />
+          </Field>
+        </div>
+        <Field label="Équipements">
+          <div className="flex flex-wrap gap-2">
+            {options.map((a) => (
+              <button type="button" key={a} onClick={() => toggle(a)} className={`px-3 py-1 rounded-full text-xs font-black border-2 transition-all ${amenities.includes(a) ? 'border-primary bg-primary/10 text-primary' : 'border-gray-200 dark:border-gray-700 text-text-muted'}`}>{a}</button>
+            ))}
+          </div>
+        </Field>
+        {error && <div className="text-red-600 text-xs font-bold bg-red-50 p-2 rounded">{error}</div>}
+        <div className="flex gap-2 justify-end pt-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-text-muted font-black text-sm">Annuler</button>
+          <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm disabled:opacity-50">
+            {saving ? 'Enregistrement…' : 'Enregistrer'}
+          </button>
+        </div>
+      </form>
+    </AdminModal>
+  );
+};
+
+const CompanyAgencyForm: React.FC<{ companyId: string; cities: City[]; onClose: () => void; onSaved: () => void }> = ({ companyId, cities, onClose, onSaved }) => {
+  const [cityId, setCityId] = useState(cities[0]?.id ?? '');
+  const [name, setName] = useState('');
+  const [address, setAddress] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true); setError(null);
+    try {
+      const res = await fetch('/api/agencies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyId, cityId, name,
+          address: address || undefined,
+          phone: phone || undefined,
+          email: email || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erreur');
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <AdminModal title="Nouvelle agence" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Ville">
+          <select required value={cityId} onChange={(e) => setCityId(e.target.value)} className={inputCls}>
+            {cities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Nom de l'agence">
+          <input required value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
+        </Field>
+        <Field label="Adresse">
+          <input value={address} onChange={(e) => setAddress(e.target.value)} className={inputCls} />
+        </Field>
+        <div className="grid md:grid-cols-2 gap-3">
+          <Field label="Téléphone">
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} className={inputCls} />
+          </Field>
+          <Field label="Email">
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
+          </Field>
+        </div>
+        {error && <div className="text-red-600 text-xs font-bold bg-red-50 p-2 rounded">{error}</div>}
+        <div className="flex gap-2 justify-end pt-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-text-muted font-black text-sm">Annuler</button>
+          <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm disabled:opacity-50">
+            {saving ? 'Enregistrement…' : 'Créer'}
+          </button>
+        </div>
+      </form>
+    </AdminModal>
+  );
+};
+
+const CompanyAgencyEditForm: React.FC<{ agency: Agency; cities: City[]; onClose: () => void; onSaved: () => void }> = ({ agency, cities, onClose, onSaved }) => {
+  const [name, setName] = useState(agency.name);
+  const [address, setAddress] = useState(agency.address ?? '');
+  const [phone, setPhone] = useState(agency.phone ?? '');
+  const [email, setEmail] = useState(agency.email ?? '');
+  const [cityId, setCityId] = useState(agency.cityId ?? agency.city.id ?? cities[0]?.id ?? '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true); setError(null);
+    try {
+      const res = await fetch(`/api/agencies/${agency.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          address: address || null,
+          phone: phone || null,
+          email: email || null,
+          cityId,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erreur');
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <AdminModal title={`Éditer ${agency.name}`} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Nom">
+          <input required value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
+        </Field>
+        <Field label="Ville">
+          <select required value={cityId} onChange={(e) => setCityId(e.target.value)} className={inputCls}>
+            {cities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Adresse">
+          <input value={address} onChange={(e) => setAddress(e.target.value)} className={inputCls} />
+        </Field>
+        <div className="grid md:grid-cols-2 gap-3">
+          <Field label="Téléphone">
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} className={inputCls} />
+          </Field>
+          <Field label="Email">
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
+          </Field>
+        </div>
+        {error && <div className="text-red-600 text-xs font-bold bg-red-50 p-2 rounded">{error}</div>}
+        <div className="flex gap-2 justify-end pt-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-text-muted font-black text-sm">Annuler</button>
+          <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm disabled:opacity-50">
+            {saving ? 'Enregistrement…' : 'Enregistrer'}
+          </button>
+        </div>
+      </form>
+    </AdminModal>
+  );
+};
 
 export default CompanyAdminDashboard;
