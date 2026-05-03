@@ -6,6 +6,8 @@ import CounterSalePanel from './CounterSalePanel';
 import DepartureControlPanel from './DepartureControlPanel';
 import AnalyticsPanel from './AnalyticsPanel';
 import QrScanner from './QrScanner';
+import IncidentPanel from './IncidentPanel';
+import WaitlistPanel from './WaitlistPanel';
 
 interface Manifest {
   id: string;
@@ -34,7 +36,7 @@ const StationManagerDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [qrInput, setQrInput] = useState('');
   const [lastCheckin, setLastCheckin] = useState<{ ok: boolean; message: string } | null>(null);
-  const [tab, setTab] = useState<'manifest' | 'counter' | 'operations' | 'analytics'>('manifest');
+  const [tab, setTab] = useState<'manifest' | 'counter' | 'operations' | 'analytics' | 'incidents' | 'waitlist'>('manifest');
   const [scanMode, setScanMode] = useState<'manual' | 'camera'>('manual');
 
   const fetchManifest = useCallback(async () => {
@@ -93,11 +95,13 @@ const StationManagerDashboard: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
         <div className="flex gap-2 overflow-x-auto pb-2 border-b border-gray-200 dark:border-gray-800 mb-6">
-          {(['manifest', 'counter', 'operations', 'analytics'] as const).map((t) => {
+          {(['manifest', 'counter', 'operations', 'incidents', 'waitlist', 'analytics'] as const).map((t) => {
             const labels: Record<typeof t, string> = {
               manifest: 'Manifeste & check-in',
               counter: 'Vente au guichet',
               operations: 'Opérations',
+              incidents: 'Incidents',
+              waitlist: 'Liste d\'attente',
               analytics: 'Analytics',
             };
             return (
@@ -117,8 +121,24 @@ const StationManagerDashboard: React.FC = () => {
         {tab === 'counter' && <CounterSalePanel />}
         {tab === 'operations' && <DepartureControlPanel />}
         {tab === 'analytics' && <AnalyticsPanel />}
+        {tab === 'incidents' && <IncidentPanel agencyId={user?.agencyId ?? undefined} />}
+        {tab === 'waitlist' && <WaitlistPanel agencyId={user?.agencyId ?? undefined} />}
 
         {tab === 'manifest' && (<>
+        {/* Day Summary */}
+        {!isLoading && manifest.length > 0 && (() => {
+          const totalDepartures = manifest.length;
+          const totalBoarded = manifest.reduce((sum, d) => sum + d.bookings.filter((b) => b.status === 'BOARDED').length, 0);
+          const occupancyValues = manifest.map((d) => d.seatsTotal > 0 ? (d.seatsTotal - d.seatsAvailable) / d.seatsTotal : 0);
+          const avgOccupancy = occupancyValues.length ? Math.round((occupancyValues.reduce((s, v) => s + v, 0) / occupancyValues.length) * 100) : 0;
+          return (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+              <SummaryCard label="Départs du jour" value={totalDepartures} icon="directions_bus" />
+              <SummaryCard label="Passagers embarqués" value={totalBoarded} icon="how_to_reg" />
+              <SummaryCard label="Taux de remplissage moyen" value={`${avgOccupancy}%`} icon="event_seat" />
+            </div>
+          );
+        })()}
         {/* Check-in */}
         <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 shadow-subtle p-4 md:p-6 mb-6">
           <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
@@ -227,5 +247,15 @@ const StationManagerDashboard: React.FC = () => {
     </div>
   );
 };
+
+const SummaryCard: React.FC<{ label: string; value: number | string; icon: string }> = ({ label, value, icon }) => (
+  <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 shadow-subtle p-5">
+    <div className="flex items-center justify-between mb-3">
+      <span className="text-xs font-black uppercase tracking-wider text-text-muted">{label}</span>
+      <span className="material-symbols-outlined text-primary">{icon}</span>
+    </div>
+    <div className="text-2xl font-black text-text-main dark:text-white">{value}</div>
+  </div>
+);
 
 export default StationManagerDashboard;

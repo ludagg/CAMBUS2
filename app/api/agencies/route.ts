@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     orderBy: { name: 'asc' },
     include: {
       company: { select: { name: true, logo: true, brandColor: true, slug: true } },
-      city: { select: { name: true, region: true } },
+      city: { select: { id: true, name: true, region: true } },
       _count: { select: { departures: true, vehicles: true } },
     },
   })
