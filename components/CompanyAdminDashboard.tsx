@@ -137,23 +137,23 @@ const CompanyAdminDashboard: React.FC = () => {
 
   return (
     <div className="bg-background-light dark:bg-background-dark min-h-screen">
-      <div className="bg-gradient-to-r from-orange-600 to-red-600 text-white p-8">
+      <div className="bg-gradient-to-r from-orange-600 to-red-600 text-white px-4 py-6 md:p-8">
         <div className="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-4">
           <div>
             <div className="text-[10px] font-black tracking-widest uppercase opacity-80">Company Admin</div>
-            <h1 className="text-3xl font-black">{active?.name ?? 'Ma compagnie'}</h1>
+            <h1 className="text-2xl md:text-3xl font-black">{active?.name ?? 'Ma compagnie'}</h1>
             <p className="opacity-80 text-sm mt-1">{user?.name}</p>
           </div>
           <button onClick={logout} className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 font-black text-sm">Déconnexion</button>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8 space-y-6">
         {isLoading ? (
           <div className="text-center py-16"><span className="material-symbols-outlined animate-spin text-5xl text-primary">progress_activity</span></div>
         ) : active ? (
           <>
-            <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800">
+            <div className="flex gap-2 overflow-x-auto pb-2 border-b border-gray-200 dark:border-gray-800">
               {(['overview', 'routes', 'vehicles', 'operations', 'analytics'] as const).map((t) => {
                 const labels: Record<typeof t, string> = {
                   overview: "Vue d'ensemble",
@@ -172,7 +172,7 @@ const CompanyAdminDashboard: React.FC = () => {
 
             {tab === 'overview' && (
               <>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <Stat label="Agences" value={active._count?.agencies ?? active.agencies?.length ?? 0} icon="store" />
                   <Stat label="Routes" value={active._count?.routes ?? active.routes?.length ?? 0} icon="route" />
                   <Stat label="Villes desservies" value={new Set(active.agencies?.map((a) => a.city.name) ?? []).size} icon="location_city" />
@@ -181,9 +181,9 @@ const CompanyAdminDashboard: React.FC = () => {
 
                 <section>
                   <h2 className="font-black text-lg mb-3 text-text-main dark:text-white">Agences</h2>
-                  <div className="grid md:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {(active.agencies ?? []).map((a) => (
-                      <div key={a.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-4">
+                      <div key={a.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 shadow-subtle p-4">
                         <div className="font-black text-text-main dark:text-white">{a.name}</div>
                         <div className="text-xs text-text-muted mt-1">{a.city.name}</div>
                         <div className="flex items-center gap-4 text-xs text-text-muted mt-2">
@@ -199,16 +199,16 @@ const CompanyAdminDashboard: React.FC = () => {
 
             {tab === 'routes' && (
               <section>
-                <div className="flex justify-between items-center mb-3">
+                <div className="flex justify-between items-center flex-wrap gap-3 mb-3">
                   <h2 className="font-black text-lg text-text-main dark:text-white">Routes ({routes.length})</h2>
                   <button onClick={() => setRouteModalOpen(true)} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm flex items-center gap-2 hover:bg-[#0fd651]">
                     <span className="material-symbols-outlined text-[18px]">add</span>
                     Nouvelle route
                   </button>
                 </div>
-                <div className="grid md:grid-cols-2 gap-3">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {routes.map((r) => (
-                    <div key={r.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-4 flex items-center justify-between gap-3">
+                     <div key={r.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 shadow-subtle p-4 flex items-center justify-between gap-3 flex-wrap">
                       <div>
                         <div className="font-black text-text-main dark:text-white">{r.originCity.name} → {r.destinationCity.name}</div>
                         <div className="text-xs text-text-muted">{Math.round(r.defaultDurationMin / 60)}h{r.defaultDurationMin % 60 ? (r.defaultDurationMin % 60) + 'min' : ''} • {r.distanceKm ?? '–'} km • {r._count?.departures ?? 0} départ(s)</div>
@@ -237,9 +237,9 @@ const CompanyAdminDashboard: React.FC = () => {
                     Nouveau véhicule
                   </button>
                 </div>
-                <div className="grid md:grid-cols-2 gap-3">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {agencyVehicles.map((v) => (
-                    <div key={v.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-4 flex justify-between gap-3">
+                     <div key={v.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 shadow-subtle p-4 flex justify-between gap-3 flex-wrap">
                       <div className="min-w-0">
                         <div className="font-black text-text-main dark:text-white">{v.plate}</div>
                         <div className="text-xs text-text-muted">{v.model} • {v.capacity} places</div>
@@ -346,7 +346,7 @@ const RouteForm: React.FC<{ companyId: string; cities: City[]; onClose: () => vo
   return (
     <AdminModal title="Nouvelle route" onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid md:grid-cols-2 gap-3">
           <Field label="Origine">
             <select required value={originCityId} onChange={(e) => setOriginCityId(e.target.value)} className={inputCls}>
               {cities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -413,7 +413,7 @@ const VehicleForm: React.FC<{ agencyId: string; onClose: () => void; onSaved: ()
         <Field label="Plaque d'immatriculation">
           <input required value={plate} onChange={(e) => setPlate(e.target.value.toUpperCase())} className={inputCls + ' font-mono uppercase'} placeholder="LT-1234-AB" />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid md:grid-cols-2 gap-3">
           <Field label="Modèle">
             <input required value={model} onChange={(e) => setModel(e.target.value)} className={inputCls} placeholder="Toyota Coaster" />
           </Field>
@@ -439,7 +439,7 @@ const VehicleForm: React.FC<{ agencyId: string; onClose: () => void; onSaved: ()
 };
 
 const Stat: React.FC<{ label: string; value: number | string; icon: string }> = ({ label, value, icon }) => (
-  <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-5">
+  <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 shadow-subtle p-5">
     <div className="flex items-center justify-between mb-3">
       <span className="text-xs font-black uppercase tracking-wider text-text-muted">{label}</span>
       <span className="material-symbols-outlined text-primary">{icon}</span>

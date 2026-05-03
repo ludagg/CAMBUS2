@@ -118,18 +118,18 @@ const AgencyAdminDashboard: React.FC = () => {
 
   return (
     <div className="bg-background-light dark:bg-background-dark min-h-screen">
-      <div className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-8">
+      <div className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-4 py-6 md:p-8">
         <div className="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-4">
           <div>
             <div className="text-[10px] font-black tracking-widest uppercase opacity-80">Agency Admin</div>
-            <h1 className="text-3xl font-black">{activeAgency?.name ?? 'Mon agence'}</h1>
+            <h1 className="text-2xl md:text-3xl font-black">{activeAgency?.name ?? 'Mon agence'}</h1>
             <p className="opacity-80 text-sm mt-1">{activeAgency?.company.name} • {activeAgency?.city.name}</p>
           </div>
           <button onClick={logout} className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 font-black text-sm">Déconnexion</button>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
         {agencies.length > 1 && !user?.agencyId && (
           <div className="mb-6 flex flex-wrap gap-2">
             {agencies.map((a) => (
@@ -146,8 +146,8 @@ const AgencyAdminDashboard: React.FC = () => {
           </div>
         )}
 
-        <div className="flex justify-between items-center mb-4 border-b border-gray-200 dark:border-gray-800">
-          <div className="flex gap-2">
+         <div className="flex justify-between items-center flex-wrap gap-3 mb-4 border-b border-gray-200 dark:border-gray-800 pb-2">
+           <div className="flex gap-2 overflow-x-auto">
             {(['departures', 'vehicles', 'operations', 'counter', 'analytics'] as const).map((t) => {
               const labels: Record<typeof t, string> = {
                 departures: 'Départs',
@@ -182,8 +182,8 @@ const AgencyAdminDashboard: React.FC = () => {
         ) : activeTab === 'departures' ? (
           <div className="space-y-3">
             {departures.map((d) => (
-              <div key={d.id} className={`bg-white dark:bg-surface-dark rounded-xl border p-4 flex items-center justify-between flex-wrap gap-3 ${d.status === 'INACTIVE' ? 'border-gray-300 opacity-60' : 'border-gray-100 dark:border-gray-800'}`}>
-                <div className="flex items-center gap-6">
+               <div key={d.id} className={`bg-white dark:bg-surface-dark rounded-xl border shadow-subtle p-4 flex items-center justify-between flex-wrap gap-3 ${d.status === 'INACTIVE' ? 'border-gray-300 opacity-60' : 'border-gray-100 dark:border-gray-800'}`}>
+                 <div className="flex items-center gap-4 md:gap-6 flex-wrap">
                   <div>
                     <div className="text-lg font-black text-text-main dark:text-white">{new Date(d.departureAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</div>
                     <div className="text-xs text-text-muted">{new Date(d.departureAt).toLocaleDateString('fr-FR')}</div>
@@ -216,7 +216,7 @@ const AgencyAdminDashboard: React.FC = () => {
         ) : (
           <div className="grid md:grid-cols-2 gap-3">
             {vehicles.map((v) => (
-              <div key={v.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-4">
+               <div key={v.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 shadow-subtle p-4">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="size-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center"><span className="material-symbols-outlined">directions_bus</span></div>
                   <div className="flex-1 min-w-0">
@@ -330,7 +330,7 @@ const DepartureForm: React.FC<{ agency: Agency; cities: City[]; vehicles: Vehicl
   return (
     <AdminModal title="Nouveau départ" onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid md:grid-cols-2 gap-3">
           <Field label="Origine (ville)">
             <input disabled value={agency.city.name} className={inputCls + ' opacity-70 cursor-not-allowed'} />
           </Field>
@@ -340,7 +340,7 @@ const DepartureForm: React.FC<{ agency: Agency; cities: City[]; vehicles: Vehicl
             </select>
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid md:grid-cols-2 gap-3">
           <Field label="Station de départ">
             <select required value={originStationId} onChange={(e) => setOriginStationId(e.target.value)} className={inputCls}>
               {agency.stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -357,14 +357,14 @@ const DepartureForm: React.FC<{ agency: Agency; cities: City[]; vehicles: Vehicl
           <input required type="datetime-local" value={dateTime} onChange={(e) => setDateTime(e.target.value)} className={inputCls} />
         </Field>
         <Field label="Durée estimée">
-          <div className="flex items-center gap-2">
+          <div className="grid grid-cols-[1fr_auto_1fr_auto] gap-2 items-center">
             <input type="number" min={0} value={durationH} onChange={(e) => setDurationH(Number(e.target.value))} className={inputCls} />
             <span className="text-xs font-black text-text-muted">h</span>
             <input type="number" min={0} max={59} value={durationM} onChange={(e) => setDurationM(Number(e.target.value))} className={inputCls} />
             <span className="text-xs font-black text-text-muted">min</span>
           </div>
         </Field>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid md:grid-cols-2 gap-3">
           <Field label="Prix (XAF)">
             <input required type="number" min={100} value={priceXAF} onChange={(e) => setPriceXAF(Number(e.target.value))} className={inputCls} />
           </Field>
