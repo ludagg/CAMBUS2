@@ -7,19 +7,24 @@ const Hero: React.FC = () => {
   const { t } = useLanguage();
 
   return (
-    <section className="relative w-full bg-background-light dark:bg-background-dark overflow-hidden">
+    <section className="relative w-full bg-background-light dark:bg-background-dark">
       <div
         aria-hidden
-        className="absolute inset-0 bg-grid-subtle mask-fade-b opacity-80 pointer-events-none"
-      />
-      <div
-        aria-hidden
-        className="absolute -top-32 left-1/2 -translate-x-1/2 w-[1100px] h-[1100px] rounded-full bg-primary/15 blur-[120px] pointer-events-none"
-      />
-      <div
-        aria-hidden
-        className="absolute inset-0 pointer-events-none bg-[radial-gradient(60%_60%_at_50%_0%,rgba(19,236,91,0.10)_0%,transparent_70%)]"
-      />
+        className="absolute inset-0 overflow-hidden pointer-events-none"
+      >
+        <div
+          aria-hidden
+          className="absolute inset-0 bg-grid-subtle mask-fade-b opacity-80"
+        />
+        <div
+          aria-hidden
+          className="absolute -top-32 left-1/2 -translate-x-1/2 w-[1100px] h-[1100px] rounded-full bg-primary/15 blur-[120px]"
+        />
+        <div
+          aria-hidden
+          className="absolute inset-0 bg-[radial-gradient(60%_60%_at_50%_0%,rgba(19,236,91,0.10)_0%,transparent_70%)]"
+        />
+      </div>
 
       <div className="relative max-w-6xl mx-auto px-6 md:px-10 pt-20 md:pt-28 pb-28 md:pb-36 text-center">
         <div className="inline-flex items-center gap-2.5 rounded-full border border-ink-200/70 dark:border-white/10 bg-white/70 dark:bg-white/5 backdrop-blur px-3.5 py-1.5 mb-8 animate-reveal">
