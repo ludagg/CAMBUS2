@@ -114,7 +114,7 @@ const DepartureControlPanel: React.FC = () => {
       </div>
 
       {msg && (
-        <div
+        <div role="status" aria-live="polite"
           className={`mb-3 px-3 py-2 rounded-lg text-xs font-black ${
             msg.startsWith('✔')
               ? 'bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300'

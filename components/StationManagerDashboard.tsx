@@ -174,7 +174,7 @@ const StationManagerDashboard: React.FC = () => {
           )}
 
           {lastCheckin && (
-            <div className={`mt-3 text-sm font-black ${lastCheckin.ok ? 'text-green-600' : 'text-red-600'}`}>
+            <div role="status" aria-live="polite" className={`mt-3 text-sm font-black ${lastCheckin.ok ? 'text-green-600' : 'text-red-600'}`}>
               {lastCheckin.ok ? '✔ ' : '✖ '}{lastCheckin.message}
             </div>
           )}

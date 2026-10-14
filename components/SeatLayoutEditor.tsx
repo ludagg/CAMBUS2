@@ -43,6 +43,14 @@ const SeatLayoutEditor: React.FC<Props> = ({ vehicleId, initialLayout, capacity,
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  useEffect(() => {
     if (initialLayout) setLayout(initialLayout);
   }, [initialLayout]);
 
@@ -94,7 +102,7 @@ const SeatLayoutEditor: React.FC<Props> = ({ vehicleId, initialLayout, capacity,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-white dark:bg-surface-dark w-full max-w-3xl rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-800 flex flex-col max-h-[92vh]">
+      <div role="dialog" aria-modal="true" aria-label="Configurer le plan du bus" className="bg-white dark:bg-surface-dark w-full max-w-3xl rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-800 flex flex-col max-h-[92vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800">
           <div>
             <h3 className="font-black text-text-main dark:text-white text-lg">Configurer le plan du bus</h3>

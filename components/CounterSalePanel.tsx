@@ -220,11 +220,13 @@ const CounterSalePanel: React.FC<Props> = ({ onSold }) => {
               <div className="text-xs font-black text-text-muted uppercase">Passagers</div>
               <div className="flex gap-2">
                 <button
-                  onClick={() =>
-                    setPassengers((p) =>
-                      p.length > 1 ? p.slice(0, -1) : p,
-                    )
-                  }
+                  aria-label="Retirer un passager"
+                  onClick={() => {
+                    if (passengers.length <= 1) return;
+                    setPassengers((p) => p.slice(0, -1));
+                    // Keep selected seats in sync with the passenger count.
+                    setSeats((s) => s.slice(0, passengers.length - 1));
+                  }}
                   className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-xs font-black"
                 >
                   −
