@@ -7,7 +7,11 @@ import { assertOwnsIncident } from '@/lib/scoping'
 import { logAudit } from '@/lib/audit'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+  const session = await getSession()
+  requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENCY_ADMIN', 'STATION_MANAGER'])
   const { id } = await params
+  await assertOwnsIncident(session!, id)
   const incident = await prisma.incident.findUnique({
     where: { id },
     include: {
@@ -20,6 +24,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   })
   if (!incident) return bad('Incident introuvable.', 404)
   return NextResponse.json({ data: incident })
+  } catch (err) {
+    return handleError(err)
+  }
 }
 
 const updateSchema = z.object({

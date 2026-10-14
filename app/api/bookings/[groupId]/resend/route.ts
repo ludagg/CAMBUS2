@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { bad, handleError } from '@/lib/api'
+import { assertOwnsBookingGroup } from '@/lib/scoping'
 import { clientKey, rateLimit } from '@/lib/rate-limit'
 import { sendBookingNotifications } from '@/lib/send-booking-notifications'
 
@@ -51,6 +52,7 @@ export async function POST(
         403,
       )
     }
+    if (session!.role !== 'USER') await assertOwnsBookingGroup(session!, groupId)
     if (group.status !== 'CONFIRMED') {
       return bad(
         'Seules les réservations confirmées peuvent être renvoyées.',

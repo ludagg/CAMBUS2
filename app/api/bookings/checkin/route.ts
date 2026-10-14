@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
+import { assertOwnsAgency } from '@/lib/scoping'
 import { boardBookingAndSyncGroup } from '@/lib/booking-invariants'
 
 const schema = z.object({
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
     })
 
     if (!booking) return bad('Billet introuvable.', 404)
+    await assertOwnsAgency(session!, booking.departure.agencyId)
     if (booking.status === 'BOARDED') return bad('Billet déjà validé.')
     if (booking.status !== 'CONFIRMED') return bad(`Statut invalide: ${booking.status}`)
 

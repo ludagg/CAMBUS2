@@ -7,12 +7,19 @@ import { assertOwnsAgency } from '@/lib/scoping'
 import { logAudit } from '@/lib/audit'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
-  const drivers = await prisma.driver.findMany({
-    where: { agencyId: id },
-    orderBy: [{ status: 'asc' }, { fullName: 'asc' }],
-  })
-  return NextResponse.json({ data: drivers })
+  try {
+    const session = await getSession()
+    requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENCY_ADMIN', 'STATION_MANAGER'])
+    const { id } = await params
+    await assertOwnsAgency(session!, id)
+    const drivers = await prisma.driver.findMany({
+      where: { agencyId: id },
+      orderBy: [{ status: 'asc' }, { fullName: 'asc' }],
+    })
+    return NextResponse.json({ data: drivers })
+  } catch (err) {
+    return handleError(err)
+  }
 }
 
 const createSchema = z.object({

@@ -9,10 +9,17 @@ import {
   computeSeatPriceCents,
   defaultLayoutForCapacity,
   DEFAULT_VIP_MULTIPLIER,
+  allSeatIds,
   type SeatLayout,
 } from '@/lib/seat-layout'
 
 const PENDING_EXPIRY_MIN = 10
+
+class SoldOutError extends Error {
+  constructor(public leg: string) {
+    super('sold out')
+  }
+}
 
 export async function GET() {
   try {
@@ -101,6 +108,14 @@ const bookingSchema = z.object({
   paymentPhone: z.string().optional(),
 })
 
+function isBookable(dep: { status: string; tripStatus: string; departureAt: Date }): boolean {
+  return (
+    dep.status === 'ACTIVE' &&
+    (dep.tripStatus === 'SCHEDULED' || dep.tripStatus === 'DELAYED') &&
+    dep.departureAt.getTime() > Date.now()
+  )
+}
+
 function resolveLayout(seatLayout: Prisma.JsonValue | null, capacity: number): SeatLayout {
   if (seatLayout && typeof seatLayout === 'object' && !Array.isArray(seatLayout)) {
     const obj = seatLayout as Record<string, unknown>
@@ -142,6 +157,17 @@ export async function POST(req: NextRequest) {
       return bad('Le paiement en espèces est uniquement disponible au guichet.', 403)
     }
 
+    // No real card provider is wired in: a "CARD" payment is simulated and
+    // would confirm the booking for free. Only allow it outside production
+    // (or when explicitly opted in).
+    if (
+      body.paymentMethod === 'CARD' &&
+      process.env.NODE_ENV === 'production' &&
+      process.env.ALLOW_SIMULATED_CARD !== 'true'
+    ) {
+      return bad("Le paiement par carte n'est pas encore disponible.", 400)
+    }
+
     const idempotencyKey = req.headers.get('idempotency-key')?.trim() || null
     if (idempotencyKey) {
       const existing = await prisma.bookingGroup.findUnique({
@@ -149,6 +175,9 @@ export async function POST(req: NextRequest) {
         include: { payment: true },
       })
       if (existing) {
+        if (existing.userId !== session!.sub && existing.soldByUserId !== session!.sub) {
+          return bad("Clé d'idempotence déjà utilisée.", 409)
+        }
         return NextResponse.json(
           {
             data: {
@@ -179,6 +208,7 @@ export async function POST(req: NextRequest) {
       include: { vehicle: { select: { seatLayout: true, capacity: true } } },
     })
     if (!outDep) return bad('Départ aller introuvable.', 404)
+    if (!isBookable(outDep)) return bad("Ce départ aller n'est plus disponible à la réservation.", 409)
     if (outDep.seatsAvailable < body.passengers.length) return bad('Places insuffisantes pour l\'aller.')
 
     let retDep: Awaited<ReturnType<typeof prisma.departure.findUnique>> | null = null
@@ -188,6 +218,7 @@ export async function POST(req: NextRequest) {
         include: { vehicle: { select: { seatLayout: true, capacity: true } } },
       })
       if (!retDep) return bad('Départ retour introuvable.', 404)
+      if (!isBookable(retDep)) return bad("Ce départ retour n'est plus disponible à la réservation.", 409)
       if (retDep.seatsAvailable < body.passengers.length) return bad('Places insuffisantes pour le retour.')
     }
 
@@ -211,6 +242,18 @@ export async function POST(req: NextRequest) {
         )
       : null
 
+    if (outSeats.length > body.passengers.length || retSeats.length > body.passengers.length) {
+      return bad('Plus de sièges sélectionnés que de passagers.')
+    }
+    const outValid = new Set(allSeatIds(outLayout))
+    if (outSeats.some((x) => !outValid.has(x))) return bad('Siège aller invalide.')
+    if (retLayout) {
+      const retValid = new Set(allSeatIds(retLayout))
+      if (retSeats.some((x) => !retValid.has(x))) return bad('Siège retour invalide.')
+    } else if (retSeats.length > 0) {
+      return bad('Sièges retour sans départ retour.')
+    }
+
     const outPrice = sumSeats(outDep.priceCents, outLayout, outSeats, body.passengers.length)
     const retPrice = retDep && retLayout
       ? sumSeats(retDep.priceCents, retLayout, retSeats, body.passengers.length)
@@ -225,15 +268,18 @@ export async function POST(req: NextRequest) {
     let result: { groupId: string; paymentId: string; paymentStatus: string }
     try {
       result = await prisma.$transaction(async (tx) => {
-        await tx.departure.update({
-          where: { id: outDep.id },
-          data: { seatsAvailable: { decrement: body.passengers.length } },
+        const n = body.passengers.length
+        const outUpd = await tx.departure.updateMany({
+          where: { id: outDep.id, seatsAvailable: { gte: n } },
+          data: { seatsAvailable: { decrement: n } },
         })
+        if (outUpd.count === 0) throw new SoldOutError('aller')
         if (retDep) {
-          await tx.departure.update({
-            where: { id: retDep.id },
-            data: { seatsAvailable: { decrement: body.passengers.length } },
+          const retUpd = await tx.departure.updateMany({
+            where: { id: retDep.id, seatsAvailable: { gte: n } },
+            data: { seatsAvailable: { decrement: n } },
           })
+          if (retUpd.count === 0) throw new SoldOutError('retour')
         }
 
         const isStaff = session!.role !== 'USER'
@@ -327,6 +373,7 @@ export async function POST(req: NextRequest) {
         return { groupId: group.id, paymentId: payment.id, paymentStatus: payment.status }
       })
     } catch (err) {
+      if (err instanceof SoldOutError) return bad(`Places insuffisantes pour le ${err.leg}.`, 409)
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         const target = (err.meta?.target as string[] | undefined) ?? []
         if (target.includes('idempotencyKey')) {
@@ -334,7 +381,7 @@ export async function POST(req: NextRequest) {
             where: { idempotencyKey: idempotencyKey! },
             include: { payment: true },
           })
-          if (existing) {
+          if (existing && (existing.userId === session!.sub || existing.soldByUserId === session!.sub)) {
             return NextResponse.json(
               {
                 data: {
