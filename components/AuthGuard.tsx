@@ -1,9 +1,19 @@
 'use client';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigation, UserRole } from '../contexts/NavigationContext';
 
 const AuthGuard: React.FC<{ children: React.ReactNode; requiredRole?: UserRole | UserRole[] }> = ({ children, requiredRole }) => {
   const { user, authLoading, navigateTo } = useNavigation();
+
+  const allowed =
+    !!user &&
+    (!requiredRole || (Array.isArray(requiredRole) ? requiredRole.includes(user.role) : user.role === requiredRole));
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) navigateTo('login');
+    else if (!allowed) navigateTo('home');
+  }, [authLoading, user, allowed, navigateTo]);
 
   if (authLoading) {
     return (
@@ -16,16 +26,7 @@ const AuthGuard: React.FC<{ children: React.ReactNode; requiredRole?: UserRole |
     );
   }
 
-  if (!user) {
-    navigateTo('login');
-    return null;
-  }
-
-  const allowed = !requiredRole || (Array.isArray(requiredRole) ? requiredRole.includes(user.role) : user.role === requiredRole);
-  if (!allowed) {
-    navigateTo('home');
-    return null;
-  }
+  if (!user || !allowed) return null;
 
   return <>{children}</>;
 };

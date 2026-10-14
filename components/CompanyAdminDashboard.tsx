@@ -124,13 +124,23 @@ const CompanyAdminDashboard: React.FC = () => {
 
   const deleteRoute = async (id: string) => {
     if (!confirm('Supprimer cette route ?')) return;
-    await fetch(`/api/routes/${id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/routes/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert(j.error || 'Suppression impossible.');
+      return;
+    }
     await reloadRoutes();
   };
 
   const deleteVehicle = async (id: string) => {
     if (!confirm('Désactiver ce véhicule ?')) return;
-    await fetch(`/api/vehicles/${id}`, { method: 'DELETE' });
+    const del = await fetch(`/api/vehicles/${id}`, { method: 'DELETE' });
+    if (!del.ok) {
+      const j = await del.json().catch(() => ({}));
+      alert(j.error || 'Désactivation impossible.');
+      return;
+    }
     const r = await fetch(`/api/agencies/${selectedAgencyId}/vehicles`).then((x) => x.json());
     setAgencyVehicles(r.data ?? []);
   };
@@ -211,7 +221,7 @@ const CompanyAdminDashboard: React.FC = () => {
                      <div key={r.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 shadow-subtle p-4 flex items-center justify-between gap-3 flex-wrap">
                       <div>
                         <div className="font-black text-text-main dark:text-white">{r.originCity.name} → {r.destinationCity.name}</div>
-                        <div className="text-xs text-text-muted">{Math.round(r.defaultDurationMin / 60)}h{r.defaultDurationMin % 60 ? (r.defaultDurationMin % 60) + 'min' : ''} • {r.distanceKm ?? '–'} km • {r._count?.departures ?? 0} départ(s)</div>
+                        <div className="text-xs text-text-muted">{Math.floor(r.defaultDurationMin / 60)}h{r.defaultDurationMin % 60 ? String(r.defaultDurationMin % 60).padStart(2, '0') : ''} • {r.distanceKm ?? '–'} km • {r._count?.departures ?? 0} départ(s)</div>
                       </div>
                       <button onClick={() => deleteRoute(r.id)} className="text-red-600 hover:text-red-800 p-2" aria-label="Supprimer">
                         <span className="material-symbols-outlined text-[20px]">delete</span>

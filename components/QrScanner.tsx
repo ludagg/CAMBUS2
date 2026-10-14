@@ -107,8 +107,11 @@ export default function QrScanner({
     if (code && code.data) {
       const now = Date.now();
       const last = lastDecodeRef.current;
-      if (!last || last.value !== code.data || now - last.at > debounceMs) {
-        lastDecodeRef.current = { value: code.data, at: now };
+      const isNew = !last || last.value !== code.data || now - last.at > debounceMs;
+      // Refresh the timestamp on every sighting: a code held in front of the
+      // camera only fires again after it has been out of view for debounceMs.
+      lastDecodeRef.current = { value: code.data, at: now };
+      if (isNew) {
         setLastValue(code.data);
         beep();
         onDecode(code.data);

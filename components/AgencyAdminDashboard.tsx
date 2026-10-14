@@ -84,6 +84,8 @@ const AgencyAdminDashboard: React.FC = () => {
         setActiveAgencyId(selected);
       } catch (e) {
         console.error(e);
+      } finally {
+        setIsLoading(false);
       }
     };
     init();
@@ -112,7 +114,12 @@ const AgencyAdminDashboard: React.FC = () => {
 
   const deleteDeparture = async (id: string) => {
     if (!confirm('Désactiver ce départ ?')) return;
-    await fetch(`/api/departures/${id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/departures/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert(j.error || 'Opération impossible.');
+      return;
+    }
     await reload();
   };
 

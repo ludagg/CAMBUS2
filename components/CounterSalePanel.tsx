@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import SeatMap from './SeatMap';
 
 type Departure = {
@@ -40,6 +40,7 @@ const CounterSalePanel: React.FC<Props> = ({ onSold }) => {
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'MOMO' | 'OM'>('CASH');
   const [paymentPhone, setPaymentPhone] = useState('');
   const [loading, setLoading] = useState(false);
+  const idemKeyRef = useRef('');
   const [error, setError] = useState<string | null>(null);
   const [lastSale, setLastSale] = useState<{ groupId: string; bookingId?: string } | null>(null);
 
@@ -78,13 +79,15 @@ const CounterSalePanel: React.FC<Props> = ({ onSold }) => {
       return setError('Numéro Mobile Money requis.');
     }
 
+    // One key per sale attempt: a retry after a network error must not create a second sale.
+    if (!idemKeyRef.current) idemKeyRef.current = crypto.randomUUID();
     setLoading(true);
     try {
       const res = await fetch('/api/bookings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Idempotency-Key': crypto.randomUUID(),
+          'Idempotency-Key': idemKeyRef.current,
         },
         body: JSON.stringify({
           outboundDepartureId: selectedDep.id,
@@ -104,6 +107,7 @@ const CounterSalePanel: React.FC<Props> = ({ onSold }) => {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Erreur à la vente.');
+      idemKeyRef.current = '';
       setLastSale({ groupId: json.data.groupId });
       onSold?.(json.data.groupId);
       reset();

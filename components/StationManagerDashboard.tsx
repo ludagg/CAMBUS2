@@ -34,6 +34,7 @@ const StationManagerDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [qrInput, setQrInput] = useState('');
   const [lastCheckin, setLastCheckin] = useState<{ ok: boolean; message: string } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<'manifest' | 'counter' | 'operations' | 'analytics'>('manifest');
   const [scanMode, setScanMode] = useState<'manual' | 'camera'>('manual');
 
@@ -43,8 +44,13 @@ const StationManagerDashboard: React.FC = () => {
       const params = new URLSearchParams({ date });
       if (user?.agencyId) params.set('agencyId', user.agencyId);
       const res = await fetch(`/api/admin/manifest?${params}`);
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Impossible de charger le manifeste.');
+      setLoadError(null);
       setManifest(json.data ?? []);
+    } catch (e) {
+      setLoadError((e as Error).message);
+      setManifest([]);
     } finally {
       setIsLoading(false);
     }
@@ -68,11 +74,11 @@ const StationManagerDashboard: React.FC = () => {
       } else {
         setLastCheckin({ ok: true, message: `${json.data.passenger} • ${json.data.from} → ${json.data.to}` });
         fetchManifest();
+        setQrInput('');
       }
     } catch (e) {
       setLastCheckin({ ok: false, message: (e as Error).message });
     }
-    setQrInput('');
   };
 
   return (
@@ -219,7 +225,13 @@ const StationManagerDashboard: React.FC = () => {
                 </div>
               </div>
             ))}
-            {manifest.length === 0 && <p className="text-text-muted text-center py-10">Aucun départ ce jour.</p>}
+            {loadError && (
+              <div role="alert" className="text-center py-10">
+                <p className="text-red-600 font-bold mb-3">{loadError}</p>
+                <button onClick={fetchManifest} className="px-4 py-2 rounded-lg bg-primary text-text-main font-bold text-sm">Réessayer</button>
+              </div>
+            )}
+            {!loadError && manifest.length === 0 && <p className="text-text-muted text-center py-10">Aucun départ ce jour.</p>}
           </div>
         )}
         </>)}

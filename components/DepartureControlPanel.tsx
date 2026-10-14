@@ -29,12 +29,18 @@ const DepartureControlPanel: React.FC = () => {
   const [delayInput, setDelayInput] = useState(30);
   const [reason, setReason] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const load = () => {
     setLoading(true);
     fetch(`/api/admin/departures-list?from=${from}&to=${to}`)
-      .then((r) => r.json())
+      .then(async (r) => {
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error || 'Impossible de charger les départs.');
+        return j;
+      })
       .then((j) => setList(j.data ?? []))
+      .catch((e: Error) => setMsg(`✖ ${e.message}`))
       .finally(() => setLoading(false));
   };
 
@@ -44,7 +50,19 @@ const DepartureControlPanel: React.FC = () => {
   }, [from, to]);
 
   const patch = async (id: string, action: 'DELAY' | 'CANCEL' | 'RESET') => {
+    if (busy) return;
+    setBusy(true);
     setMsg(null);
+    try {
+      await doPatch(id, action);
+    } catch (e) {
+      setMsg(`✖ ${(e as Error).message || 'Erreur réseau'}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doPatch = async (id: string, action: 'DELAY' | 'CANCEL' | 'RESET') => {
     const payload: Record<string, unknown> = { action }
     if (action === 'DELAY') payload.delayMinutes = delayInput
     if (action !== 'RESET' && reason.trim()) payload.reason = reason.trim()
@@ -53,7 +71,7 @@ const DepartureControlPanel: React.FC = () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    const json = await res.json();
+    const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       setMsg(`✖ ${json.error || 'Erreur'}`);
       return;
@@ -171,7 +189,7 @@ const DepartureControlPanel: React.FC = () => {
                   </a>
                   {d.tripStatus === 'SCHEDULED' ? (
                     <button
-                      onClick={() => setActionOn(actionOn === d.id ? null : d.id)}
+                      onClick={() => { setReason(''); setActionOn(actionOn === d.id ? null : d.id); }}
                       className="px-2 py-1 rounded bg-orange-500/20 text-orange-700 dark:text-orange-300 text-[10px] font-black"
                     >
                       Retard / Annuler
@@ -179,6 +197,7 @@ const DepartureControlPanel: React.FC = () => {
                   ) : (
                     <button
                       onClick={() => patch(d.id, 'RESET')}
+                      disabled={busy}
                       className="px-2 py-1 rounded bg-blue-500/20 text-blue-700 dark:text-blue-300 text-[10px] font-black"
                     >
                       Rétablir
@@ -199,6 +218,7 @@ const DepartureControlPanel: React.FC = () => {
                     <span className="text-[10px] text-text-muted">min de retard</span>
                     <button
                       onClick={() => patch(d.id, 'DELAY')}
+                      disabled={busy}
                       className="px-2 py-1 rounded bg-orange-500 text-white text-[10px] font-black"
                     >
                       Marquer retardé

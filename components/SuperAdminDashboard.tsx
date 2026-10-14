@@ -88,11 +88,17 @@ const SuperAdminDashboard: React.FC = () => {
   }, []);
 
   const toggleCompanyStatus = async (c: Company) => {
-    await fetch(`/api/companies/${c.id}`, {
+    if (c.status === 'ACTIVE' && !confirm(`Désactiver la compagnie « ${c.name} » ?`)) return;
+    const res = await fetch(`/api/companies/${c.id}`, {
       method: c.status === 'ACTIVE' ? 'DELETE' : 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: c.status === 'ACTIVE' ? undefined : JSON.stringify({ status: 'ACTIVE' }),
     });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert(j.error || 'Opération impossible.');
+      return;
+    }
     await refetch();
   };
 
