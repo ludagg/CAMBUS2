@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { assertOwnsDeparture } from '@/lib/scoping'
 import { handleError, bad } from '@/lib/api'
+import { cancelBookingGroup } from '@/lib/booking-cancel'
 import { notifyDepartureChange } from '@/lib/departure-notifications'
 import { logAudit } from '@/lib/audit'
 
@@ -27,6 +28,14 @@ export async function PATCH(
 
     const dep = await prisma.departure.findUnique({ where: { id } })
     if (!dep) return bad('Départ introuvable.', 404)
+
+    // Cancelling a trip is a company decision; station staff may only delay.
+    if (body.action === 'CANCEL' && session!.role === 'STATION_MANAGER') {
+      return bad('Action réservée aux administrateurs.', 403)
+    }
+    if (dep.tripStatus === 'CANCELLED' || dep.tripStatus === 'COMPLETED') {
+      return bad(`Ce départ est déjà ${dep.tripStatus === 'CANCELLED' ? 'annulé' : 'terminé'}.`, 409)
+    }
 
     if (body.action === 'DELAY') {
       const delay = body.delayMinutes ?? 0
@@ -53,33 +62,45 @@ export async function PATCH(
     }
 
     if (body.action === 'CANCEL') {
-      await prisma.$transaction(async (tx) => {
-        await tx.departure.update({
-          where: { id },
-          data: {
-            tripStatus: 'CANCELLED',
-            cancellationReason: body.reason ?? 'Départ annulé par la compagnie.',
-          },
-        })
-        await tx.booking.updateMany({
-          where: { departureId: id, status: { in: ['PENDING', 'CONFIRMED'] } },
-          data: { status: 'CANCELLED' },
-        })
+      const cancelReason = body.reason ?? 'Départ annulé par la compagnie.'
+      await prisma.departure.update({
+        where: { id },
+        data: { tripStatus: 'CANCELLED', cancellationReason: cancelReason },
       })
+      // Notify while the bookings are still active, then cancel + refund each group.
       await notifyDepartureChange(id, 'CANCELLED', { reason: body.reason })
+      const groups = await prisma.booking.findMany({
+        where: { departureId: id, status: { in: ['PENDING', 'CONFIRMED'] } },
+        select: { groupId: true },
+        distinct: ['groupId'],
+      })
+      let failed = 0
+      for (const g of groups) {
+        try {
+          await cancelBookingGroup(g.groupId, {
+            actorUserId: session!.sub,
+            reason: cancelReason,
+            companyInitiated: true,
+          })
+        } catch (err) {
+          failed++
+          console.error('[departure-cancel] group cancel failed', g.groupId, err)
+        }
+      }
       await logAudit(
         {
           action: 'departure.cancel',
           entityType: 'Departure',
           entityId: id,
-          metadata: { reason: body.reason },
+          metadata: { reason: body.reason, groups: groups.length, failedGroups: failed },
         },
         { session, req },
       )
-      return NextResponse.json({ data: { ok: true, notified: true } })
+      return NextResponse.json({ data: { ok: true, notified: true, cancelledGroups: groups.length - failed, failedGroups: failed } })
     }
 
     if (body.action === 'RESET') {
+      if (dep.tripStatus !== 'DELAYED') return bad('Seul un départ retardé peut être réinitialisé.', 409)
       await prisma.departure.update({
         where: { id },
         data: {

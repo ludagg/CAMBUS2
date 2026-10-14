@@ -26,7 +26,7 @@ const updateSchema = z.object({
   licenseNumber: z.string().min(3).max(40).optional(),
   licenseCategory: z.enum(['B', 'C', 'D', 'D1', 'DE']).optional(),
   licenseExpiresAt: z.string().datetime().optional(),
-  status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
+  status: z.enum(['ACTIVE']).optional(), // deactivation goes through DELETE (invariant checks)
 })
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

@@ -17,9 +17,8 @@ export async function GET() {
       now: new Date().toISOString(),
     })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'unknown'
     return NextResponse.json(
-      { status: 'degraded', db: 'unreachable', error: message },
+      { status: 'degraded', db: 'unreachable', },
       { status: 503 },
     )
   }

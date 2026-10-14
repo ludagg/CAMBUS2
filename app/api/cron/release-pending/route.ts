@@ -12,7 +12,7 @@ import { expireStaleWaitlistHolds } from '@/lib/waitlist'
  * any GET works.
  */
 export async function GET(req: NextRequest) {
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV !== 'development') {
     const secret = process.env.CRON_SECRET
     const auth = req.headers.get('authorization')
     if (!secret || auth !== `Bearer ${secret}`) {

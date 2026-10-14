@@ -40,10 +40,49 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const previous = await prisma.departure.findUnique({
       where: { id },
-      select: { priceCents: true, vehicleId: true, driverId: true, status: true },
+      select: {
+        priceCents: true,
+        vehicleId: true,
+        driverId: true,
+        status: true,
+        agencyId: true,
+        seatsTotal: true,
+        seatsAvailable: true,
+      },
     })
+    if (!previous) return bad('Départ introuvable.', 404)
 
-    const dep = await prisma.departure.update({ where: { id }, data: body })
+    if (body.vehicleId) {
+      const vehicle = await prisma.vehicle.findUnique({
+        where: { id: body.vehicleId },
+        select: { agencyId: true, status: true },
+      })
+      if (!vehicle) return bad('Véhicule introuvable.', 404)
+      if (vehicle.agencyId !== previous.agencyId)
+        return bad("Ce véhicule n'appartient pas à l'agence du départ.", 400)
+      if (vehicle.status !== 'ACTIVE') return bad('Ce véhicule est désactivé.', 409)
+    }
+
+    if (body.status === 'INACTIVE' && previous.status !== 'INACTIVE') {
+      const active = await prisma.booking.count({
+        where: { departureId: id, status: { in: ['PENDING', 'CONFIRMED'] } },
+      })
+      if (active > 0) {
+        return bad(`Impossible de désactiver: ${active} réservation(s) active(s). Annulez le départ à la place.`, 409)
+      }
+    }
+
+    // Keep seatsAvailable consistent with seatsTotal and never drop below sold seats.
+    const data: Record<string, unknown> = { ...body }
+    if (body.seatsTotal !== undefined) {
+      const sold = previous.seatsTotal - previous.seatsAvailable
+      if (body.seatsTotal < sold) {
+        return bad(`Impossible: ${sold} place(s) déjà vendue(s).`, 409)
+      }
+      data.seatsAvailable = body.seatsTotal - sold
+    }
+
+    const dep = await prisma.departure.update({ where: { id }, data })
     await logAudit(
       {
         action: 'departure.update',
@@ -65,6 +104,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENCY_ADMIN'])
     const { id } = await params
     await assertOwnsDeparture(session!, id)
+    const active = await prisma.booking.count({
+      where: { departureId: id, status: { in: ['PENDING', 'CONFIRMED'] } },
+    })
+    if (active > 0) {
+      return bad(`Impossible de supprimer: ${active} réservation(s) active(s). Annulez le départ à la place.`, 409)
+    }
     await prisma.departure.update({ where: { id }, data: { status: 'INACTIVE' } })
     await logAudit(
       { action: 'departure.disable', entityType: 'Departure', entityId: id },

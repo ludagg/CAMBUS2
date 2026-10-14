@@ -25,7 +25,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       include: { group: true },
     })
     if (!payment) return bad('Paiement introuvable.', 404)
-    if (payment.group.userId && payment.group.userId !== session!.sub && session!.role === 'USER') {
+    if (session!.role === 'USER' && payment.group.userId !== session!.sub) {
       return bad('Accès refusé.', 403)
     }
 

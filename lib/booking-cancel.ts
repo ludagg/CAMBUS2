@@ -38,7 +38,12 @@ export interface CancellationOutcome {
  */
 export async function cancelBookingGroup(
   groupId: string,
-  opts: { actorUserId: string; reason?: string },
+  opts: {
+    actorUserId: string
+    reason?: string
+    /** Company-initiated cancellation (e.g. trip cancelled): full refund, no deadline. */
+    companyInitiated?: boolean
+  },
 ): Promise<CancellationOutcome> {
   const group = await prisma.bookingGroup.findUnique({
     where: { id: groupId },
@@ -83,7 +88,7 @@ export async function cancelBookingGroup(
       earliestBooking.departure.route.companyId,
     )
     const earliestAt = earliestBooking.departure.departureAt
-    if (!isWithinDeadline(policy, earliestAt)) {
+    if (!opts.companyInitiated && !isWithinDeadline(policy, earliestAt)) {
       throw new CancellationError(
         `Annulation impossible: moins de ${policy.deadlineHours} h avant le départ.`,
         409,
@@ -95,7 +100,9 @@ export async function cancelBookingGroup(
   const reason =
     opts.reason?.trim() || `Annulée par l'utilisateur ${opts.actorUserId}.`
 
-  const refundPercent = policy && earliestBooking
+  const refundPercent = opts.companyInitiated
+    ? 100
+    : policy && earliestBooking
     ? computeRefundPercent(policy, earliestBooking.departure.departureAt)
     : 0
   const paidAmountCents = group.payment?.amountCents ?? 0
@@ -107,44 +114,47 @@ export async function cancelBookingGroup(
       })`
     : reason
 
-  await prisma.$transaction([
-    prisma.bookingSeat.deleteMany({
-      where: { bookingId: { in: bookingIds } },
-    }),
-    ...group.bookings.map((b) =>
-      prisma.departure.update({
+  await prisma.$transaction(async (tx) => {
+    // Claim the group atomically so concurrent cancels cannot double-restore seats.
+    const claimed = await tx.bookingGroup.updateMany({
+      where: { id: group.id, status: { in: ['PENDING', 'CONFIRMED'] } },
+      data: { status: 'CANCELLED', expiresAt: null },
+    })
+    if (claimed.count === 0) {
+      throw new CancellationError('Cette réservation ne peut plus être annulée.', 409)
+    }
+    // A leg that already boarded is never cancelled nor its seats restored.
+    const cancellable = group.bookings.filter((b) => b.status !== 'BOARDED')
+    const cancellableIds = cancellable.map((b) => b.id)
+    await tx.bookingSeat.deleteMany({ where: { bookingId: { in: cancellableIds } } })
+    for (const b of cancellable) {
+      await tx.departure.update({
         where: { id: b.departure.id },
         data: {
           seatsAvailable: {
             increment: Math.max(1, b.passengers.length || b.seats.length || 1),
           },
         },
-      }),
-    ),
-    prisma.booking.updateMany({
-      where: { groupId: group.id },
+      })
+    }
+    await tx.booking.updateMany({
+      where: { id: { in: cancellableIds } },
       data: { status: 'CANCELLED' },
-    }),
-    prisma.bookingGroup.update({
-      where: { id: group.id },
-      data: { status: 'CANCELLED', expiresAt: null },
-    }),
-    ...(group.payment
-      ? [
-          prisma.payment.update({
-            where: { id: group.payment.id },
-            data:
-              group.payment.status === 'SUCCEEDED'
-                ? refundPercent > 0
-                  ? { status: 'REFUNDED', failureReason: reasonWithPolicy }
-                  : { failureReason: reasonWithPolicy }
-                : group.payment.status === 'PENDING'
-                  ? { status: 'FAILED', failureReason: reasonWithPolicy }
-                  : { failureReason: reasonWithPolicy },
-          }),
-        ]
-      : []),
-  ])
+    })
+    if (group.payment) {
+      await tx.payment.update({
+        where: { id: group.payment.id },
+        data:
+          group.payment.status === 'SUCCEEDED'
+            ? refundPercent > 0
+              ? { status: 'REFUNDED', failureReason: reasonWithPolicy }
+              : { failureReason: reasonWithPolicy }
+            : group.payment.status === 'PENDING'
+              ? { status: 'FAILED', failureReason: reasonWithPolicy }
+              : { failureReason: reasonWithPolicy },
+      })
+    }
+  })
 
   // Best-effort waitlist promotion. Failures here must not roll back the
   // cancellation itself — waitlist notifications can be retried later.

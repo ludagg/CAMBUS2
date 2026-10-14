@@ -24,7 +24,7 @@ const updateSchema = z.object({
   model: z.string().min(1).optional(),
   capacity: z.number().int().positive().optional(),
   amenities: z.array(z.string()).optional(),
-  status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
+  status: z.enum(['ACTIVE']).optional(), // deactivation goes through DELETE (invariant checks)
   seatLayout: seatLayoutSchema.optional(),
 })
 
