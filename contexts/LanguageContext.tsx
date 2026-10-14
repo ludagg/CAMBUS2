@@ -166,6 +166,21 @@ const fr: Record<string, string> = {
   'testimonials.3.role': 'Enseignante, Garoua',
   'testimonials.3.quote':
     "Au début j'étais sceptique avec le paiement Mobile Money en ligne. Mais la confirmation USSD sur le téléphone rend l'expérience vraiment sécurisée.",
+  'testimonials.4.name': 'Samuel Etoga',
+  'testimonials.4.role': 'Chauffeur de taxi, Yaoundé',
+  'testimonials.4.quote':
+    "Je récupère ma famille à la gare de Yaoundé sans me tromper d'horaire : je suis les départs en temps réel et je sais exactement quand le bus arrive.",
+  'testimonials.5.name': 'Brigitte Fotso',
+  'testimonials.5.role': 'Infirmière, Bamenda',
+  'testimonials.5.quote':
+    "Je voyage souvent de nuit pour mon service. Choisir mon siège à l'avance et montrer simplement mon QR code à l'embarquement, c'est un vrai confort.",
+  'testimonials.6.name': 'Ibrahim Moussa',
+  'testimonials.6.role': 'Commerçant, Ngaoundéré',
+  'testimonials.6.quote':
+    "Quand mes plans changent, j'annule depuis mon téléphone et je suis remboursé selon la politique de la compagnie. Plus de déplacement inutile à l'agence.",
+  'testimonials.prev': 'Témoignage précédent',
+  'testimonials.next': 'Témoignage suivant',
+  'testimonials.goto': 'Aller au témoignage',
 
   // FAQ
   'faq.eyebrow': 'Questions fréquentes',
@@ -633,6 +648,21 @@ const en: Record<string, string> = {
   'testimonials.3.role': 'Teacher, Garoua',
   'testimonials.3.quote':
     'I was sceptical about online Mobile Money at first. But the USSD confirmation on my phone makes it genuinely secure.',
+  'testimonials.4.name': 'Samuel Etoga',
+  'testimonials.4.role': 'Taxi driver, Yaoundé',
+  'testimonials.4.quote':
+    'I pick up my family at the Yaoundé station without guessing the schedule: I follow departures in real time and know exactly when the bus arrives.',
+  'testimonials.5.name': 'Brigitte Fotso',
+  'testimonials.5.role': 'Nurse, Bamenda',
+  'testimonials.5.quote':
+    'I often travel at night for work. Picking my seat in advance and just showing my QR code at boarding is a real comfort.',
+  'testimonials.6.name': 'Ibrahim Moussa',
+  'testimonials.6.role': 'Trader, Ngaoundéré',
+  'testimonials.6.quote':
+    "When my plans change, I cancel from my phone and get refunded according to the company's policy. No more pointless trips to the agency.",
+  'testimonials.prev': 'Previous testimonial',
+  'testimonials.next': 'Next testimonial',
+  'testimonials.goto': 'Go to testimonial',
 
   // FAQ
   'faq.eyebrow': 'FAQ',

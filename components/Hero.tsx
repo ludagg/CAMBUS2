@@ -57,7 +57,7 @@ const Hero: React.FC = () => {
             href="#how"
             className="inline-flex items-center gap-2 rounded-full border border-ink-200 dark:border-white/15 bg-white/60 dark:bg-white/5 backdrop-blur text-text-main dark:text-gray-100 px-5 py-3 text-sm font-medium tracking-tight hover:bg-white dark:hover:bg-white/10 transition-all"
           >
-            <span className="material-symbols-outlined text-base">play_circle</span>
+            <span className="material-symbols-outlined text-base">expand_more</span>
             {t('how.eyebrow')}
           </a>
         </div>

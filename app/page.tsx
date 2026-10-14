@@ -1,4 +1,3 @@
-'use client';
 import Header from '../components/Header';
 import Hero from '../components/Hero';
 import StatsBanner from '../components/landing/StatsBanner';
