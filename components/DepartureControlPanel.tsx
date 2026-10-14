@@ -1,5 +1,6 @@
 'use client';
 
+import { todayLocal } from '../lib/datetime';
 import React, { useEffect, useState } from 'react';
 
 type Departure = {
@@ -20,7 +21,7 @@ type Departure = {
 };
 
 const DepartureControlPanel: React.FC = () => {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
   const [list, setList] = useState<Departure[]>([]);

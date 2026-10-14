@@ -1,5 +1,6 @@
 'use client';
 
+import { todayLocal } from '../lib/datetime';
 import React, { useEffect, useRef, useState } from 'react';
 import SeatMap from './SeatMap';
 
@@ -29,7 +30,7 @@ function formatXAF(cents: number) {
 }
 
 const CounterSalePanel: React.FC<Props> = ({ onSold }) => {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const [date, setDate] = useState(today);
   const [departures, setDepartures] = useState<Departure[]>([]);
   const [selectedDep, setSelectedDep] = useState<Departure | null>(null);

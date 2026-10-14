@@ -179,7 +179,7 @@ async function notifyWaitlistEntry(
   })
   if (!entry) return
 
-  const when = departure.departureAt.toLocaleString('fr-FR', {
+  const when = departure.departureAt.toLocaleString('fr-FR', { timeZone: 'Africa/Douala',
     dateStyle: 'long',
     timeStyle: 'short',
   })

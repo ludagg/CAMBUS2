@@ -4,6 +4,8 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
+import { localDateKey } from '@/lib/datetime'
+import { logAudit } from '@/lib/audit'
 import { getProvider, normalizeCameroonPhone, type PaymentProviderId } from '@/lib/payment'
 import {
   computeSeatPriceCents,
@@ -75,9 +77,9 @@ export async function GET() {
         to: b.departure.destStation.name,
         fromCity: b.departure.route.originCity.name,
         toCity: b.departure.route.destinationCity.name,
-        departureTime: b.departure.departureAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false }),
-        arrivalTime: b.departure.arrivalAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false }),
-        date: b.departure.departureAt.toISOString().split('T')[0],
+        departureTime: b.departure.departureAt.toLocaleTimeString('fr-FR', { timeZone: 'Africa/Douala', hour: '2-digit', minute: '2-digit', hour12: false }),
+        arrivalTime: b.departure.arrivalAt.toLocaleTimeString('fr-FR', { timeZone: 'Africa/Douala', hour: '2-digit', minute: '2-digit', hour12: false }),
+        date: localDateKey(b.departure.departureAt),
         passengers: b.passengers,
       })),
       payment: g.payment ? { method: g.payment.method, status: g.payment.status, provider: g.payment.provider, phoneNumber: g.payment.phoneNumber } : null,
@@ -413,6 +415,18 @@ export async function POST(req: NextRequest) {
         where: { id: result.paymentId },
         data: { providerRef: init.externalRef },
       })
+    }
+
+    if (session!.role !== 'USER') {
+      await logAudit(
+        {
+          action: body.paymentMethod === 'CASH' ? 'booking.counter_sale' : 'booking.staff_create',
+          entityType: 'BookingGroup',
+          entityId: result.groupId,
+          metadata: { totalCents, paymentMethod: body.paymentMethod, departureId: outDep.id, passengers: body.passengers.length },
+        },
+        { session, req },
+      )
     }
 
     return NextResponse.json(

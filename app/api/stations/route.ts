@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
       ...(agencyId ? { agencyId } : {}),
     },
     orderBy: { name: 'asc' },
+    take: 1000,
     include: {
       city: { select: { id: true, name: true } },
       agency: { select: { id: true, name: true } },

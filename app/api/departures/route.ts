@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { dayRange, isValidDateKey } from '@/lib/datetime'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -15,8 +16,10 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  const dateStart = new Date(`${date}T00:00:00`)
-  const dateEnd = new Date(`${date}T23:59:59`)
+  if (!isValidDateKey(date)) {
+    return NextResponse.json({ error: 'Date invalide (AAAA-MM-JJ).' }, { status: 400 })
+  }
+  const { start: dateStart, end: dateEnd } = dayRange(date)
 
   const departures = await prisma.departure.findMany({
     where: {
@@ -56,12 +59,12 @@ export async function GET(req: NextRequest) {
       agencyLogo: d.route.company.logo,
       companySlug: d.route.company.slug,
       color: d.route.company.brandColor,
-      departureTime: depTime.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+      departureTime: depTime.toLocaleTimeString('fr-FR', { timeZone: 'Africa/Douala', hour: '2-digit', minute: '2-digit', hour12: false }),
       departureLocation: d.originStation.name,
       departureAddress: d.originStation.address,
       departureLat: d.originStation.lat,
       departureLng: d.originStation.lng,
-      arrivalTime: arrTime.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+      arrivalTime: arrTime.toLocaleTimeString('fr-FR', { timeZone: 'Africa/Douala', hour: '2-digit', minute: '2-digit', hour12: false }),
       arrivalLocation: d.destStation.name,
       arrivalAddress: d.destStation.address,
       arrivalLat: d.destStation.lat,

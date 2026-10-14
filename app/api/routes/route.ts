@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
 import { assertOwnsCompany } from '@/lib/scoping'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -11,6 +12,7 @@ export async function GET(req: NextRequest) {
   const routes = await prisma.route.findMany({
     where: companyId ? { companyId } : undefined,
     orderBy: { createdAt: 'desc' },
+    take: 1000,
     include: {
       originCity: { select: { id: true, name: true } },
       destinationCity: { select: { id: true, name: true } },
@@ -45,6 +47,10 @@ export async function POST(req: NextRequest) {
         destinationCity: { select: { id: true, name: true } },
       },
     })
+    await logAudit(
+      { action: 'route.create', entityType: 'Route', entityId: route.id, metadata: { companyId: route.companyId } },
+      { session, req },
+    )
     return NextResponse.json({ data: route }, { status: 201 })
   } catch (err) {
     return handleError(err)

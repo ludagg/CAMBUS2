@@ -1,5 +1,6 @@
 'use client';
 
+import { todayLocal } from '../lib/datetime';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
 import CounterSalePanel from './CounterSalePanel';
@@ -28,7 +29,7 @@ interface Manifest {
 
 const StationManagerDashboard: React.FC = () => {
   const { user, logout } = useNavigation();
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const [date, setDate] = useState(today);
   const [manifest, setManifest] = useState<Manifest[]>([]);
   const [isLoading, setIsLoading] = useState(true);

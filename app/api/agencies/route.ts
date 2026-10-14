@@ -4,6 +4,7 @@ import { getSession, requireRole } from '@/lib/auth'
 import { handleError } from '@/lib/api'
 import { assertOwnsCompany } from '@/lib/scoping'
 import { z } from 'zod'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -43,6 +44,10 @@ export async function POST(req: NextRequest) {
       data: body,
       include: { company: { select: { name: true } }, city: { select: { name: true } } },
     })
+    await logAudit(
+      { action: 'agency.create', entityType: 'Agency', entityId: agency.id, metadata: { companyId: agency.companyId, name: agency.name } },
+      { session, req },
+    )
     return NextResponse.json({ data: agency }, { status: 201 })
   } catch (err) {
     return handleError(err)
