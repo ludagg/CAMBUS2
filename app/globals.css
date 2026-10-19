@@ -19,6 +19,20 @@
     font-family: '"Inter Tight"', Inter, system-ui, sans-serif;
     letter-spacing: -0.02em;
   }
+  /* Material Symbols are text ligatures. Reserve a 1em square so the layout
+     does not jump, and keep the glyph name invisible until the font loads
+     (the "icons-ready" class is set by a script in <head>). */
+  .material-symbols-outlined {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    overflow: hidden;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  html:not(.icons-ready) .material-symbols-outlined {
+    color: transparent !important;
+  }
   .font-serif-italic {
     font-family: '"Instrument Serif"', Georgia, serif;
     font-style: italic;
