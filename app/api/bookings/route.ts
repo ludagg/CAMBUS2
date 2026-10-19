@@ -6,6 +6,7 @@ import { getSession, requireRole } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
 import { localDateKey } from '@/lib/datetime'
 import { logAudit } from '@/lib/audit'
+import { markWaitlistPromoted } from '@/lib/waitlist'
 import { getProvider, normalizeCameroonPhone, type PaymentProviderId } from '@/lib/payment'
 import {
   computeSeatPriceCents,
@@ -415,6 +416,16 @@ export async function POST(req: NextRequest) {
         where: { id: result.paymentId },
         data: { providerRef: init.externalRef },
       })
+    }
+
+    // A booking by someone who was offered a freed seat closes their waitlist entry.
+    for (const depId of [outDep.id, retDep?.id]) {
+      if (!depId) continue
+      await markWaitlistPromoted(
+        depId,
+        { userId: session!.role === 'USER' ? session!.sub : null, email: body.contactEmail },
+        result.groupId,
+      ).catch((err) => console.error('[waitlist] mark promoted failed', err))
     }
 
     if (session!.role !== 'USER') {

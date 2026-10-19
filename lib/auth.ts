@@ -57,7 +57,17 @@ export async function getSession(): Promise<SessionPayload | null> {
   const store = await cookies()
   const token = store.get(COOKIE_NAME)?.value
   if (!token) return null
-  return verifySession(token)
+  const claims = await verifySession(token)
+  if (!claims) return null
+
+  // The JWT lives 30 days: re-read the account on every request so a deleted
+  // account is rejected and a changed role takes effect immediately.
+  const user = await prisma.user.findUnique({
+    where: { id: claims.sub },
+    select: { email: true, role: true, name: true },
+  })
+  if (!user) return null
+  return { sub: claims.sub, email: user.email, role: user.role, name: user.name }
 }
 
 export async function getCurrentUser(): Promise<User | null> {
