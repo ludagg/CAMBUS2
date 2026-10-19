@@ -26,6 +26,12 @@ type Analytics = {
   }[];
 };
 
+const TRIP_STATUS_LABELS: Record<string, string> = {
+  SCHEDULED: 'Prévu',
+  DELAYED: 'Retardé',
+  CANCELLED: 'Annulé',
+};
+
 function formatXAF(cents: number) {
   return `${cents.toLocaleString('fr-FR')} FCFA`;
 }
@@ -34,19 +40,53 @@ const AnalyticsPanel: React.FC = () => {
   const [data, setData] = useState<Analytics | null>(null);
   const [rangeDays, setRangeDays] = useState(30);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    const ac = new AbortController();
     setLoading(true);
-    fetch(`/api/admin/analytics?rangeDays=${rangeDays}`)
-      .then((r) => r.json())
-      .then((j) => setData(j.data))
-      .finally(() => setLoading(false));
-  }, [rangeDays]);
+    setError(null);
+    fetch(`/api/admin/analytics?rangeDays=${rangeDays}`, { signal: ac.signal })
+      .then(async (r) => {
+        const j: { data?: Analytics; error?: string } = await r.json().catch(() => ({}));
+        if (!r.ok || !j.data) throw new Error(j.error || 'Impossible de charger les statistiques.');
+        return j.data;
+      })
+      .then((d) => {
+        if (ac.signal.aborted) return;
+        setData(d);
+        setLoading(false);
+      })
+      .catch((e: Error) => {
+        if (ac.signal.aborted) return;
+        setData(null);
+        setError(e.message || 'Impossible de charger les statistiques.');
+        setLoading(false);
+      });
+    return () => ac.abort();
+  }, [rangeDays, attempt]);
 
-  if (loading || !data) {
+  if (loading) {
     return (
       <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-6">
         <div className="text-text-muted text-sm">Chargement des statistiques…</div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 p-6 space-y-3">
+        <div role="alert" className="text-sm font-black text-red-700 dark:text-red-300">
+          {error ?? 'Impossible de charger les statistiques.'}
+        </div>
+        <button
+          onClick={() => setAttempt((a) => a + 1)}
+          className="px-3 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-text-main dark:text-white text-xs font-black"
+        >
+          Réessayer
+        </button>
       </div>
     );
   }
@@ -62,10 +102,13 @@ const AnalyticsPanel: React.FC = () => {
           <span className="material-symbols-outlined text-primary">analytics</span>
           Analytics & rapports
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {[7, 30, 90].map((d) => (
             <button
               key={d}
+              type="button"
+              aria-pressed={rangeDays === d}
+              aria-label={`${d} derniers jours`}
               onClick={() => setRangeDays(d)}
               className={`px-3 py-1 rounded-lg text-xs font-black ${
                 rangeDays === d
@@ -135,7 +178,9 @@ const AnalyticsPanel: React.FC = () => {
               title={`${d.date} · ${formatXAF(d.revenue)} · ${d.bookings} billets`}
               className="flex-1 bg-primary/20 hover:bg-primary rounded-t"
               style={{ height: `${(d.revenue / maxDaily) * 100}%`, minHeight: d.revenue > 0 ? 2 : 0 }}
-            />
+            >
+              <span className="sr-only">{`${d.date} : ${formatXAF(d.revenue)}, ${d.bookings} billets`}</span>
+            </div>
           ))}
         </div>
         <div className="flex justify-between text-[10px] text-text-muted mt-1 font-mono">
@@ -155,11 +200,11 @@ const AnalyticsPanel: React.FC = () => {
               const max = data.topRoutes[0]?.bookings || 1;
               return (
                 <div key={`${r.from}-${r.to}`} className="text-xs">
-                  <div className="flex justify-between mb-0.5">
-                    <span className="font-black text-text-main dark:text-white">
+                  <div className="flex justify-between gap-2 mb-0.5">
+                    <span className="min-w-0 break-words font-black text-text-main dark:text-white">
                       {r.from} → {r.to}
                     </span>
-                    <span className="text-text-muted">{r.bookings} billets</span>
+                    <span className="shrink-0 text-text-muted">{r.bookings} billets</span>
                   </div>
                   <div className="h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                     <div
@@ -180,7 +225,18 @@ const AnalyticsPanel: React.FC = () => {
           <div className="text-xs font-black text-text-muted uppercase tracking-wider mb-3">
             Sièges les plus demandés
           </div>
-          <div className="flex flex-wrap gap-1.5">
+          <div
+            className="flex flex-wrap gap-1.5"
+            role="img"
+            aria-label={
+              data.seatHeatmap.length > 0
+                ? `Sièges les plus demandés : ${data.seatHeatmap
+                    .slice(0, 40)
+                    .map((s) => `${s.seat}, ${s.count} réservations`)
+                    .join(' ; ')}`
+                : 'Pas de sièges réservés sur la période.'
+            }
+          >
             {data.seatHeatmap.slice(0, 40).map((s) => {
               const intensity = s.count / maxHeat;
               const bg = `rgba(19, 236, 91, ${Math.max(0.15, intensity)})`;
@@ -210,8 +266,8 @@ const AnalyticsPanel: React.FC = () => {
         </div>
         <div className="space-y-1 max-h-80 overflow-auto">
           {data.occupancy.slice(0, 30).map((o) => (
-            <div key={o.id} className="flex items-center gap-2 text-xs">
-              <span className="font-mono text-text-muted w-24 shrink-0">
+            <div key={o.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+              <span className="font-mono text-text-muted w-20 sm:w-24 shrink-0">
                 {new Date(o.departureAt).toLocaleString('fr-FR', {
                   day: '2-digit',
                   month: '2-digit',
@@ -219,15 +275,19 @@ const AnalyticsPanel: React.FC = () => {
                   minute: '2-digit',
                 })}
               </span>
-              <span className="flex-1 truncate text-text-main dark:text-white font-black">
+              <span className="min-w-[9rem] flex-1 truncate text-text-main dark:text-white font-black">
                 {o.from} → {o.to}
               </span>
               {o.tripStatus !== 'SCHEDULED' && (
-                <span className="px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-black text-[9px]">
-                  {o.tripStatus}
+                <span className="shrink-0 px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-black text-[9px]">
+                  {TRIP_STATUS_LABELS[o.tripStatus] ?? o.tripStatus}
                 </span>
               )}
-              <div className="w-32 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+              <div
+                role="img"
+                aria-label={`Taux de remplissage ${o.occupancyPct}%`}
+                className="w-20 sm:w-32 shrink-0 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden"
+              >
                 <div
                   className={`h-full rounded-full ${
                     o.occupancyPct >= 80
@@ -239,10 +299,10 @@ const AnalyticsPanel: React.FC = () => {
                   style={{ width: `${o.occupancyPct}%` }}
                 />
               </div>
-              <span className="font-black text-text-main dark:text-white w-10 text-right">
+              <span className="shrink-0 font-black text-text-main dark:text-white w-10 text-right">
                 {o.occupancyPct}%
               </span>
-              <span className="text-text-muted w-12 text-right">
+              <span className="shrink-0 text-text-muted w-12 text-right">
                 {o.seatsBooked}/{o.seatsTotal}
               </span>
             </div>

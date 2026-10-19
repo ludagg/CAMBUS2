@@ -1,7 +1,7 @@
 'use client';
 
 import { todayLocal } from '../lib/datetime';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 type Departure = {
   id: string;
@@ -20,6 +20,12 @@ type Departure = {
   bookingsCount: number;
 };
 
+const TRIP_STATUS_LABELS: Record<string, string> = {
+  SCHEDULED: 'Prévu',
+  DELAYED: 'Retardé',
+  CANCELLED: 'Annulé',
+};
+
 const DepartureControlPanel: React.FC = () => {
   const today = todayLocal();
   const [from, setFrom] = useState(today);
@@ -31,24 +37,36 @@ const DepartureControlPanel: React.FC = () => {
   const [reason, setReason] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const load = () => {
+  // Only the latest request is applied: earlier in-flight requests are aborted.
+  const load = useCallback(() => {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
     setLoading(true);
-    fetch(`/api/admin/departures-list?from=${from}&to=${to}`)
+    fetch(`/api/admin/departures-list?from=${from}&to=${to}`, { signal: ac.signal })
       .then(async (r) => {
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(j.error || 'Impossible de charger les départs.');
         return j;
       })
-      .then((j) => setList(j.data ?? []))
-      .catch((e: Error) => setMsg(`✖ ${e.message}`))
-      .finally(() => setLoading(false));
-  };
+      .then((j) => {
+        if (ac.signal.aborted) return;
+        setList(j.data ?? []);
+        setLoading(false);
+      })
+      .catch((e: Error) => {
+        if (ac.signal.aborted) return;
+        setMsg(`✖ ${e.message}`);
+        setLoading(false);
+      });
+  }, [from, to]);
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [from, to]);
+    return () => abortRef.current?.abort();
+  }, [load]);
 
   const patch = async (id: string, action: 'DELAY' | 'CANCEL' | 'RESET') => {
     if (busy) return;
@@ -96,16 +114,18 @@ const DepartureControlPanel: React.FC = () => {
           <span className="material-symbols-outlined text-primary">schedule</span>
           Gestion des départs
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <input
             type="date"
+            aria-label="Date de début"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
             className="rounded-lg border border-gray-200 dark:border-gray-700 px-2 py-1 text-xs font-black bg-white dark:bg-background-dark text-text-main dark:text-white"
           />
-          <span className="text-xs text-text-muted">→</span>
+          <span className="text-xs text-text-muted" aria-hidden="true">→</span>
           <input
             type="date"
+            aria-label="Date de fin"
             value={to}
             onChange={(e) => setTo(e.target.value)}
             className="rounded-lg border border-gray-200 dark:border-gray-700 px-2 py-1 text-xs font-black bg-white dark:bg-background-dark text-text-main dark:text-white"
@@ -143,7 +163,7 @@ const DepartureControlPanel: React.FC = () => {
               }`}
             >
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <div>
+                <div className="min-w-0">
                   <div className="font-black text-text-main dark:text-white">
                     {new Date(d.departureAt).toLocaleString('fr-FR', {
                       day: '2-digit',
@@ -167,7 +187,7 @@ const DepartureControlPanel: React.FC = () => {
                             : 'bg-orange-200 text-orange-800'
                         }`}
                       >
-                        {d.tripStatus}
+                        {TRIP_STATUS_LABELS[d.tripStatus] ?? d.tripStatus}
                         {d.delayMinutes ? ` · ${d.delayMinutes}min` : ''}
                       </span>
                       {d.cancellationReason && (
@@ -209,16 +229,21 @@ const DepartureControlPanel: React.FC = () => {
 
               {actionOn === d.id && (
                 <div className="mt-3 p-3 rounded bg-white dark:bg-background-dark border border-gray-200 dark:border-gray-700 space-y-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <input
                       type="number"
+                      aria-label="Minutes de retard"
                       value={delayInput}
                       onChange={(e) => setDelayInput(Number(e.target.value))}
-                      className="w-24 rounded border border-gray-200 dark:border-gray-700 px-2 py-1 text-xs bg-white dark:bg-background-dark text-text-main dark:text-white"
+                      className="w-24 shrink-0 rounded border border-gray-200 dark:border-gray-700 px-2 py-1 text-xs bg-white dark:bg-background-dark text-text-main dark:text-white"
                     />
                     <span className="text-[10px] text-text-muted">min de retard</span>
                     <button
-                      onClick={() => patch(d.id, 'DELAY')}
+                      onClick={() => {
+                        if (confirm(`Notifier les passagers du retard de ${delayInput} min ?`)) {
+                          patch(d.id, 'DELAY');
+                        }
+                      }}
                       disabled={busy}
                       className="px-2 py-1 rounded bg-orange-500 text-white text-[10px] font-black"
                     >
@@ -226,6 +251,7 @@ const DepartureControlPanel: React.FC = () => {
                     </button>
                   </div>
                   <input
+                    aria-label="Motif"
                     placeholder="Motif (optionnel) — envoyé aux passagers"
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
