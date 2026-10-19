@@ -50,6 +50,11 @@ const SeatMap: React.FC<SeatMapProps> = ({ departureId, totalSeatsNeeded, select
     };
   }, [departureId]);
 
+  // Trim the selection when the passenger count drops below the number of selected seats.
+  useEffect(() => {
+    if (selectedSeats.length > totalSeatsNeeded) onChange(selectedSeats.slice(0, totalSeatsNeeded));
+  }, [selectedSeats, totalSeatsNeeded, onChange]);
+
   if (loading) {
     return (
       <div className="bg-surface-dark/40 dark:bg-surface-dark rounded-2xl p-6 border border-gray-200 dark:border-gray-800">
@@ -162,7 +167,8 @@ const SeatMap: React.FC<SeatMapProps> = ({ departureId, totalSeatsNeeded, select
                           type="button"
                           onClick={() => toggle(id)}
                           disabled={isBooked}
-                          aria-label={`Siège ${id}${isVipRow ? ' VIP' : ''}${isBooked ? ' (occupé)' : ''}`}
+                          aria-label={`Siège ${id}${isVipRow ? ', VIP' : ''}, ${isBooked ? 'occupé' : isSelected ? 'sélectionné' : 'libre'}`}
+                          aria-pressed={isBooked ? undefined : isSelected}
                           className={[
                             'size-9 sm:size-10 rounded-lg flex items-center justify-center font-bold text-[11px] transition-all border-b-2 active:translate-y-0.5',
                             isBooked
