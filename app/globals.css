@@ -101,3 +101,111 @@
   to { opacity: 1; transform: translateY(0); }
 }
 .animate-reveal { animation: reveal 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* ── Hero travel scene ─────────────────────────────────────────── */
+/* Parallax: --mx/--my in [-1, 1] are set by the Hero on pointer move,
+   --d is each layer's depth in px (negative = moves against the cursor). */
+.plx {
+  transform: translate3d(
+    calc(var(--mx, 0) * var(--d, 0) * 1px),
+    calc(var(--my, 0) * var(--d, 0) * 0.4px),
+    0
+  );
+  will-change: transform;
+}
+
+@keyframes scene-scroll {
+  to { transform: translate3d(-33.3333%, 0, 0); }
+}
+.scene-scroll { animation: scene-scroll var(--dur, 60s) linear infinite; }
+
+@keyframes road-dash {
+  to { background-position-x: -80px; }
+}
+.road-dash {
+  background-image: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.85) 0 40px, transparent 40px 80px);
+  animation: road-dash 0.45s linear infinite;
+}
+
+.bus-follow {
+  transform: translateX(calc(var(--mx, 0) * 22vw)) rotate(var(--lean, 0deg));
+  transform-origin: 50% 100%;
+  transition: transform 0.25s ease-out;
+}
+
+@keyframes bus-wheel { to { transform: rotate(360deg); } }
+.bus-wheel {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: bus-wheel 0.6s linear infinite;
+}
+
+@keyframes bus-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1.5px); }
+}
+.bus-bob { animation: bus-bob 0.5s ease-in-out infinite; }
+
+@keyframes bus-puff {
+  0% { opacity: 0.55; transform: translate(0, 0) scale(0.6); }
+  100% { opacity: 0; transform: translate(-36px, -14px) scale(1.8); }
+}
+.bus-puff {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: bus-puff 1.4s ease-out infinite;
+}
+.bus-puff-2 { animation-delay: -0.7s; }
+
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.float-y { animation: float-y 6s ease-in-out infinite; }
+
+@keyframes ride-bus {
+  0% { left: 4%; }
+  85%, 100% { left: 96%; }
+}
+@keyframes ride-progress {
+  0% { width: 0%; }
+  85%, 100% { width: 92%; }
+}
+.ride-bus { animation: ride-bus 9s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+.ride-progress { animation: ride-progress 9s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+
+/* Route line in "How it works": the bus hops from stop to stop. */
+@keyframes route-hop {
+  0%, 10% { left: 12.5%; }
+  25%, 35% { left: 37.5%; }
+  50%, 60% { left: 62.5%; }
+  75%, 92% { left: 87.5%; opacity: 1; }
+  96% { left: 87.5%; opacity: 0; }
+  97% { left: 12.5%; opacity: 0; }
+  100% { left: 12.5%; opacity: 1; }
+}
+.route-hop { animation: route-hop 10s ease-in-out infinite; }
+
+/* CTA: a small bus crossing the bottom road. */
+@keyframes cross-x {
+  from { transform: translateX(-30vw); }
+  to { transform: translateX(110vw); }
+}
+.cross-x { animation: cross-x 16s linear infinite; }
+
+/* Scroll reveal */
+.reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1), transform 0.8s cubic-bezier(0.22, 1, 0.36, 1); }
+.reveal.is-visible { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-scroll, .road-dash, .bus-wheel, .bus-bob, .bus-puff, .float-y,
+  .ride-bus, .ride-progress, .route-hop, .cross-x {
+    animation: none !important;
+  }
+  .ride-bus { left: 60%; }
+  .ride-progress { width: 58%; }
+  .route-hop { left: 12.5%; }
+  .cross-x { transform: translateX(10vw); }
+  .plx, .bus-follow { transform: none !important; }
+  .reveal { opacity: 1; transform: none; transition: none; }
+}

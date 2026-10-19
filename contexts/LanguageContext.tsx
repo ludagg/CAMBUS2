@@ -65,6 +65,12 @@ const fr: Record<string, string> = {
   'hero.trust.realtime': 'Horaires temps réel',
   'hero.trust.mobile_money': 'Paiement Mobile Money',
   'hero.trust.qr': 'Billet QR instantané',
+  'hero.scene.ticket': 'Billet aller',
+  'hero.scene.seat': 'Siège',
+  'hero.scene.live': 'En route',
+  'hero.scene.ontime': "À l'heure",
+  'hero.scene.arrival': 'Arrivée prévue',
+  'hero.scene.paid': 'Payé via MoMo',
 
   // Search widget
   'search.tab.trip': 'Trajet bus',
@@ -548,6 +554,12 @@ const en: Record<string, string> = {
   'hero.trust.realtime': 'Real-time schedules',
   'hero.trust.mobile_money': 'Mobile Money payment',
   'hero.trust.qr': 'Instant QR ticket',
+  'hero.scene.ticket': 'One-way ticket',
+  'hero.scene.seat': 'Seat',
+  'hero.scene.live': 'On the road',
+  'hero.scene.ontime': 'On time',
+  'hero.scene.arrival': 'Expected arrival',
+  'hero.scene.paid': 'Paid with MoMo',
 
   // Search widget
   'search.tab.trip': 'Bus trip',

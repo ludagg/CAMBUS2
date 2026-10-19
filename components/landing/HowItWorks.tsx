@@ -27,6 +27,21 @@ const HowItWorks: React.FC = () => {
         </p>
       </div>
 
+      {/* route line: the bus hops from one step to the next */}
+      <div aria-hidden className="relative hidden lg:block h-12 mb-2">
+        <div className="absolute left-[12.5%] right-[12.5%] top-1/2 -translate-y-1/2 border-t-2 border-dashed border-ink-200 dark:border-white/15" />
+        {[12.5, 37.5, 62.5, 87.5].map((left) => (
+          <span
+            key={left}
+            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 size-3 rounded-full bg-white dark:bg-surface-dark ring-2 ring-primary"
+            style={{ left: `${left}%` }}
+          />
+        ))}
+        <span className="route-hop absolute top-1/2 -translate-y-1/2 -translate-x-1/2 size-9 rounded-full bg-teal-accent text-white flex items-center justify-center shadow-card ring-4 ring-background-light dark:ring-background-dark">
+          <span className="material-symbols-outlined text-[18px]">directions_bus</span>
+        </span>
+      </div>
+
       <div className="relative grid sm:grid-cols-2 lg:grid-cols-4 gap-px bg-ink-100 dark:bg-white/10 border border-ink-100 dark:border-white/10 rounded-2xl overflow-hidden">
         {steps.map((s) => (
           <div
