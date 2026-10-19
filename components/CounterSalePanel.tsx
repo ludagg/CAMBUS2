@@ -29,6 +29,19 @@ function formatXAF(cents: number) {
   return `${cents.toLocaleString('fr-FR')} FCFA`;
 }
 
+// Cameroon mobile: 9 digits starting with 6, optional +237 / 00237 prefix, spaces tolerated.
+function normalizeCmPhone(value: string) {
+  return value.replace(/[\s.-]/g, '').replace(/^(\+237|00237)/, '');
+}
+
+function isValidCmMobile(value: string) {
+  return /^6\d{8}$/.test(normalizeCmPhone(value));
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 const CounterSalePanel: React.FC<Props> = ({ onSold }) => {
   const today = todayLocal();
   const [date, setDate] = useState(today);
@@ -76,8 +89,16 @@ const CounterSalePanel: React.FC<Props> = ({ onSold }) => {
     if (seats.length !== passengers.length) {
       return setError(`Sélectionnez ${passengers.length} siège(s) sur le plan.`);
     }
-    if ((paymentMethod === 'MOMO' || paymentMethod === 'OM') && !paymentPhone.trim()) {
-      return setError('Numéro Mobile Money requis.');
+    if (!contactPhone.trim()) return setError('Téléphone du client requis.');
+    if (!isValidCmMobile(contactPhone)) {
+      return setError('Téléphone du client invalide (9 chiffres, commençant par 6).');
+    }
+    const email = contactEmail.trim();
+    if (email && !isValidEmail(email)) return setError('Adresse e-mail invalide.');
+    const isMobileMoney = paymentMethod === 'MOMO' || paymentMethod === 'OM';
+    if (isMobileMoney && !paymentPhone.trim()) return setError('Numéro Mobile Money requis.');
+    if (isMobileMoney && !isValidCmMobile(paymentPhone)) {
+      return setError('Numéro Mobile Money invalide (9 chiffres, commençant par 6).');
     }
 
     // One key per sale attempt: a retry after a network error must not create a second sale.
@@ -98,12 +119,11 @@ const CounterSalePanel: React.FC<Props> = ({ onSold }) => {
             idNumber: p.idNumber || undefined,
             seat: seats[i],
           })),
-          contactEmail: contactEmail || 'guichet@easytravel.cm',
-          contactPhone: contactPhone || '000000000',
+          contactEmail: email || 'guichet@easytravel.cm',
+          contactPhone: normalizeCmPhone(contactPhone),
           contactName: passengers[0].fullName,
           paymentMethod,
-          paymentPhone:
-            paymentMethod === 'MOMO' || paymentMethod === 'OM' ? paymentPhone : undefined,
+          paymentPhone: isMobileMoney ? normalizeCmPhone(paymentPhone) : undefined,
         }),
       });
       const json = await res.json();
@@ -128,6 +148,7 @@ const CounterSalePanel: React.FC<Props> = ({ onSold }) => {
         </h2>
         <input
           type="date"
+          aria-label="Date des départs"
           value={date}
           onChange={(e) => setDate(e.target.value)}
           className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm font-black bg-white dark:bg-background-dark text-text-main dark:text-white"
@@ -135,7 +156,7 @@ const CounterSalePanel: React.FC<Props> = ({ onSold }) => {
       </div>
 
       {lastSale && (
-        <div className="mb-4 p-3 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 flex items-center justify-between flex-wrap gap-2">
+        <div role="status" aria-live="polite" className="mb-4 p-3 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 flex items-center justify-between flex-wrap gap-2">
           <div className="text-sm font-black text-green-700 dark:text-green-300">
             ✔ Billet vendu • référence {lastSale.groupId.slice(-8).toUpperCase()}
           </div>
@@ -233,6 +254,7 @@ const CounterSalePanel: React.FC<Props> = ({ onSold }) => {
                 </button>
                 <span className="font-black text-sm">{passengers.length}</span>
                 <button
+                  aria-label="Ajouter un passager"
                   onClick={() =>
                     setPassengers((p) =>
                       p.length < 10 ? [...p, { fullName: '', idNumber: '' }] : p,
@@ -247,12 +269,14 @@ const CounterSalePanel: React.FC<Props> = ({ onSold }) => {
             {passengers.map((p, i) => (
               <div key={i} className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 <input
+                  aria-label={`Nom complet passager ${i + 1}`}
                   placeholder={`Nom complet passager ${i + 1}`}
                   value={p.fullName}
                   onChange={(e) => updatePassenger(i, 'fullName', e.target.value)}
                   className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-background-dark text-text-main dark:text-white"
                 />
                 <input
+                  aria-label={`N° CNI passager ${i + 1} (optionnel)`}
                   placeholder="N° CNI (optionnel)"
                   value={p.idNumber}
                   onChange={(e) => updatePassenger(i, 'idNumber', e.target.value)}
@@ -273,13 +297,16 @@ const CounterSalePanel: React.FC<Props> = ({ onSold }) => {
           {/* Contact */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             <input
+              aria-label="Téléphone de contact"
+              required
               placeholder="Téléphone de contact (6XX XXX XXX)"
               value={contactPhone}
               onChange={(e) => setContactPhone(e.target.value)}
               className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-background-dark text-text-main dark:text-white"
             />
             <input
-              placeholder="Email de contact (optionnel)"
+              aria-label="Email de contact"
+              placeholder="Email de contact (optionnel, sinon guichet@easytravel.cm)"
               value={contactEmail}
               onChange={(e) => setContactEmail(e.target.value)}
               className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-background-dark text-text-main dark:text-white"
@@ -306,6 +333,7 @@ const CounterSalePanel: React.FC<Props> = ({ onSold }) => {
             </div>
             {(paymentMethod === 'MOMO' || paymentMethod === 'OM') && (
               <input
+                aria-label="Numéro Mobile Money"
                 placeholder="Numéro Mobile Money (6XX XXX XXX)"
                 value={paymentPhone}
                 onChange={(e) => setPaymentPhone(e.target.value)}
@@ -315,7 +343,7 @@ const CounterSalePanel: React.FC<Props> = ({ onSold }) => {
           </div>
 
           {error && (
-            <div className="p-2 rounded bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-300 font-black">
+            <div role="alert" className="p-2 rounded bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-300 font-black">
               {error}
             </div>
           )}

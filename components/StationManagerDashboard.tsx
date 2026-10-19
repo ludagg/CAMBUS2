@@ -92,14 +92,14 @@ const StationManagerDashboard: React.FC = () => {
             <p className="opacity-80 text-sm mt-1">{user?.name}</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="rounded-lg px-3 py-2 text-text-main text-sm font-black" />
+            <input type="date" aria-label="Date du manifeste" value={date} onChange={(e) => setDate(e.target.value)} className="rounded-lg px-3 py-2 text-text-main text-sm font-black" />
             <button onClick={logout} className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 font-black text-sm">Déconnexion</button>
           </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
-        <div className="flex gap-2 overflow-x-auto pb-2 border-b border-gray-200 dark:border-gray-800 mb-6">
+        <div role="tablist" aria-label="Sections du chef de station" className="flex gap-2 overflow-x-auto pb-2 border-b border-gray-200 dark:border-gray-800 mb-6">
           {(['manifest', 'counter', 'operations', 'analytics'] as const).map((t) => {
             const labels: Record<typeof t, string> = {
               manifest: 'Manifeste & check-in',
@@ -110,6 +110,9 @@ const StationManagerDashboard: React.FC = () => {
             return (
               <button
                 key={t}
+                type="button"
+                role="tab"
+                aria-selected={tab === t}
                 onClick={() => setTab(t)}
                 className={`px-4 py-2 font-black text-sm ${
                   tab === t ? 'text-primary border-b-2 border-primary' : 'text-text-muted'
@@ -121,7 +124,10 @@ const StationManagerDashboard: React.FC = () => {
           })}
         </div>
 
-        {tab === 'counter' && <CounterSalePanel />}
+        {/* Kept mounted so a half-entered sale survives tab switches. */}
+        <div className={tab === 'counter' ? '' : 'hidden'}>
+          <CounterSalePanel />
+        </div>
         {tab === 'operations' && <DepartureControlPanel />}
         {tab === 'analytics' && <AnalyticsPanel />}
 
@@ -166,6 +172,7 @@ const StationManagerDashboard: React.FC = () => {
                 value={qrInput}
                 onChange={(e) => setQrInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') doCheckin(qrInput); }}
+                aria-label="Code QR ou référence"
                 placeholder="Code QR / référence"
                 className="flex-1 min-w-64 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-2 font-mono text-sm bg-white dark:bg-background-dark text-text-main dark:text-white"
               />
@@ -174,7 +181,7 @@ const StationManagerDashboard: React.FC = () => {
           )}
 
           {lastCheckin && (
-            <div role="status" aria-live="polite" className={`mt-3 text-sm font-black ${lastCheckin.ok ? 'text-green-600' : 'text-red-600'}`}>
+            <div role={lastCheckin.ok ? 'status' : 'alert'} aria-live={lastCheckin.ok ? 'polite' : undefined} className={`mt-3 text-sm font-black ${lastCheckin.ok ? 'text-green-600' : 'text-red-600'}`}>
               {lastCheckin.ok ? '✔ ' : '✖ '}{lastCheckin.message}
             </div>
           )}

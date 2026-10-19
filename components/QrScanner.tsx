@@ -36,12 +36,19 @@ export default function QrScanner({
   const rafRef = useRef<number | null>(null);
   const lastDecodeRef = useRef<{ value: string; at: number } | null>(null);
   const runningRef = useRef(false);
+  // Bumped by every start, stop and unmount. Async work that started under an
+  // older value must release its stream and must not start the scan loop.
+  const sessionRef = useRef(0);
+  // Always points at the latest onDecode so the scan loop never calls a stale closure.
+  const onDecodeRef = useRef(onDecode);
+  onDecodeRef.current = onDecode;
 
   const [status, setStatus] = useState<ScannerStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastValue, setLastValue] = useState<string | null>(null);
 
   const stopScan = useCallback(() => {
+    sessionRef.current += 1;
     runningRef.current = false;
     if (rafRef.current != null) {
       cancelAnimationFrame(rafRef.current);
@@ -114,11 +121,11 @@ export default function QrScanner({
       if (isNew) {
         setLastValue(code.data);
         beep();
-        onDecode(code.data);
+        onDecodeRef.current(code.data);
       }
     }
     rafRef.current = requestAnimationFrame(tick);
-  }, [beep, debounceMs, onDecode]);
+  }, [beep, debounceMs]);
 
   const startScan = useCallback(async () => {
     setErrorMessage(null);
@@ -128,6 +135,8 @@ export default function QrScanner({
       return;
     }
     setStatus('starting');
+    const session = ++sessionRef.current;
+    const isCurrent = () => sessionRef.current === session;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: preferRearCamera
@@ -135,6 +144,11 @@ export default function QrScanner({
           : true,
         audio: false,
       });
+      // Stopped or unmounted while the permission prompt was open: release the camera.
+      if (!isCurrent()) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       streamRef.current = stream;
       const video = videoRef.current;
       if (!video) {
@@ -144,10 +158,13 @@ export default function QrScanner({
       video.srcObject = stream;
       video.setAttribute('playsinline', 'true');
       await video.play();
+      // stopScan() already stopped the tracks and cleared the video.
+      if (!isCurrent()) return;
       runningRef.current = true;
       setStatus('scanning');
       rafRef.current = requestAnimationFrame(tick);
     } catch (err) {
+      if (!isCurrent()) return;
       const e = err as DOMException;
       if (e?.name === 'NotAllowedError' || e?.name === 'PermissionDeniedError') {
         setStatus('denied');
@@ -247,7 +264,7 @@ export default function QrScanner({
       </div>
 
       {errorMessage && status !== 'scanning' && status !== 'starting' && (
-        <p className="mt-2 text-xs text-red-600 dark:text-red-400">{errorMessage}</p>
+        <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">{errorMessage}</p>
       )}
     </div>
   );
