@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
 import AdminModal from './AdminModal';
-import { Field, inputCls } from './SuperAdminDashboard';
+import { Field, inputCls, StatCard } from './SuperAdminDashboard';
 import SeatLayoutEditor from './SeatLayoutEditor';
 import AnalyticsPanel from './AnalyticsPanel';
 import DepartureControlPanel from './DepartureControlPanel';
@@ -52,11 +52,22 @@ interface Vehicle {
   seatLayout?: SeatLayout | null;
 }
 
+const LOAD_ERROR = 'Impossible de charger les données de la compagnie. Vérifiez votre connexion puis réessayez.';
+
+const fetchJson = async (url: string) => {
+  const res = await fetch(url);
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Erreur');
+  return json;
+};
+
 const CompanyAdminDashboard: React.FC = () => {
   const { user, logout } = useNavigation();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [tab, setTab] = useState<'overview' | 'routes' | 'vehicles' | 'operations' | 'analytics'>('overview');
   const [routes, setRoutes] = useState<RouteRow[]>([]);
   const [cities, setCities] = useState<City[]>([]);
@@ -70,31 +81,40 @@ const CompanyAdminDashboard: React.FC = () => {
     setIsLoading(true);
     try {
       if (user?.companyId) {
-        const res = await fetch(`/api/companies/${user.companyId}`);
-        const json = await res.json();
+        const json = await fetchJson(`/api/companies/${user.companyId}`);
         setCompanies(json.data ? [json.data] : []);
         setActiveId(user.companyId);
       } else {
-        const res = await fetch('/api/companies');
-        const json = await res.json();
+        const json = await fetchJson('/api/companies');
         const list: Company[] = json.data ?? [];
         setCompanies(list);
         setActiveId(list[0]?.id ?? null);
       }
+    } catch (err) {
+      console.error(err);
+      setLoadError(LOAD_ERROR);
     } finally {
       setIsLoading(false);
     }
   }, [user?.companyId]);
 
-  useEffect(() => { loadCompanies(); }, [loadCompanies]);
+  useEffect(() => { loadCompanies(); }, [loadCompanies, reloadKey]);
 
-  useEffect(() => { fetch('/api/cities').then((r) => r.json()).then((j) => setCities(j.data ?? [])); }, []);
+  useEffect(() => {
+    fetchJson('/api/cities')
+      .then((j) => setCities(j.data ?? []))
+      .catch((err) => { console.error(err); setLoadError(LOAD_ERROR); });
+  }, [reloadKey]);
 
   const reloadActiveCompany = useCallback(async () => {
     if (!activeId) return;
-    const res = await fetch(`/api/companies/${activeId}`);
-    const json = await res.json();
-    setCompanies((prev) => prev.map((c) => (c.id === activeId ? { ...c, ...json.data } : c)));
+    try {
+      const json = await fetchJson(`/api/companies/${activeId}`);
+      setCompanies((prev) => prev.map((c) => (c.id === activeId ? { ...c, ...json.data } : c)));
+    } catch (err) {
+      console.error(err);
+      setLoadError(LOAD_ERROR);
+    }
   }, [activeId]);
 
   useEffect(() => {
@@ -104,17 +124,37 @@ const CompanyAdminDashboard: React.FC = () => {
 
   const reloadRoutes = useCallback(async () => {
     if (!activeId) return;
-    const res = await fetch(`/api/routes?companyId=${activeId}`);
-    const json = await res.json();
-    setRoutes(json.data ?? []);
+    try {
+      const json = await fetchJson(`/api/routes?companyId=${activeId}`);
+      setRoutes(json.data ?? []);
+    } catch (err) {
+      console.error(err);
+      setLoadError(LOAD_ERROR);
+    }
   }, [activeId]);
 
-  useEffect(() => { if (tab === 'routes') reloadRoutes(); }, [tab, reloadRoutes]);
+  useEffect(() => { if (tab === 'routes') reloadRoutes(); }, [tab, reloadRoutes, reloadKey]);
+
+  const reloadVehicles = useCallback(async () => {
+    if (!selectedAgencyId) return;
+    try {
+      const json = await fetchJson(`/api/agencies/${selectedAgencyId}/vehicles`);
+      setAgencyVehicles(json.data ?? []);
+    } catch (err) {
+      console.error(err);
+      setLoadError(LOAD_ERROR);
+    }
+  }, [selectedAgencyId]);
 
   useEffect(() => {
     if (tab !== 'vehicles' || !selectedAgencyId) { setAgencyVehicles([]); return; }
-    fetch(`/api/agencies/${selectedAgencyId}/vehicles`).then((r) => r.json()).then((j) => setAgencyVehicles(j.data ?? []));
-  }, [tab, selectedAgencyId]);
+    reloadVehicles();
+  }, [tab, selectedAgencyId, reloadVehicles, reloadKey]);
+
+  const retry = () => {
+    setLoadError(null);
+    setReloadKey((k) => k + 1);
+  };
 
   const active = useMemo(() => companies.find((c) => c.id === activeId), [companies, activeId]);
 
@@ -131,6 +171,7 @@ const CompanyAdminDashboard: React.FC = () => {
       return;
     }
     await reloadRoutes();
+    await reloadActiveCompany();
   };
 
   const deleteVehicle = async (id: string) => {
@@ -141,8 +182,8 @@ const CompanyAdminDashboard: React.FC = () => {
       alert(j.error || 'Désactivation impossible.');
       return;
     }
-    const r = await fetch(`/api/agencies/${selectedAgencyId}/vehicles`).then((x) => x.json());
-    setAgencyVehicles(r.data ?? []);
+    await reloadVehicles();
+    await reloadActiveCompany();
   };
 
   return (
@@ -150,7 +191,7 @@ const CompanyAdminDashboard: React.FC = () => {
       <div className="bg-gradient-to-r from-orange-600 to-red-600 text-white px-4 py-6 md:p-8">
         <div className="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-4">
           <div>
-            <div className="text-[10px] font-black tracking-widest uppercase opacity-80">Company Admin</div>
+            <div className="text-[10px] font-black tracking-widest uppercase opacity-80">Administrateur compagnie</div>
             <h1 className="text-2xl md:text-3xl font-black">{active?.name ?? 'Ma compagnie'}</h1>
             <p className="opacity-80 text-sm mt-1">{user?.name}</p>
           </div>
@@ -159,11 +200,18 @@ const CompanyAdminDashboard: React.FC = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8 space-y-6">
+        {loadError && (
+          <div role="alert" className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap">
+            <span className="text-sm font-bold">{loadError}</span>
+            <button onClick={retry} className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-black hover:bg-red-700">Réessayer</button>
+          </div>
+        )}
+
         {isLoading ? (
           <div className="text-center py-16"><span className="material-symbols-outlined animate-spin text-5xl text-primary">progress_activity</span></div>
         ) : active ? (
           <>
-            <div className="flex gap-2 overflow-x-auto pb-2 border-b border-gray-200 dark:border-gray-800">
+            <div role="tablist" className="flex gap-2 overflow-x-auto pb-2 border-b border-gray-200 dark:border-gray-800">
               {(['overview', 'routes', 'vehicles', 'operations', 'analytics'] as const).map((t) => {
                 const labels: Record<typeof t, string> = {
                   overview: "Vue d'ensemble",
@@ -173,20 +221,20 @@ const CompanyAdminDashboard: React.FC = () => {
                   analytics: 'Analytics',
                 };
                 return (
-                  <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 font-black text-sm ${tab === t ? 'text-primary border-b-2 border-primary' : 'text-text-muted'}`}>
+                  <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`px-4 py-2 font-black text-sm ${tab === t ? 'text-primary border-b-2 border-primary' : 'text-text-muted'}`}>
                     {labels[t]}
                   </button>
                 );
               })}
             </div>
 
-            {tab === 'overview' && (
+            {!loadError && tab === 'overview' && (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <Stat label="Agences" value={active._count?.agencies ?? active.agencies?.length ?? 0} icon="store" />
-                  <Stat label="Routes" value={active._count?.routes ?? active.routes?.length ?? 0} icon="route" />
-                  <Stat label="Villes desservies" value={new Set(active.agencies?.map((a) => a.city.name) ?? []).size} icon="location_city" />
-                  <Stat label="Départs actifs" value={active.agencies?.reduce((sum, a) => sum + (a._count?.departures ?? 0), 0) ?? 0} icon="directions_bus" />
+                  <StatCard label="Agences" value={active._count?.agencies ?? active.agencies?.length ?? 0} icon="store" />
+                  <StatCard label="Routes" value={active._count?.routes ?? active.routes?.length ?? 0} icon="route" />
+                  <StatCard label="Villes desservies" value={new Set(active.agencies?.map((a) => a.city.name) ?? []).size} icon="location_city" />
+                  <StatCard label="Départs actifs" value={active.agencies?.reduce((sum, a) => sum + (a._count?.departures ?? 0), 0) ?? 0} icon="directions_bus" />
                 </div>
 
                 <section>
@@ -207,7 +255,7 @@ const CompanyAdminDashboard: React.FC = () => {
               </>
             )}
 
-            {tab === 'routes' && (
+            {!loadError && tab === 'routes' && (
               <section>
                 <div className="flex justify-between items-center flex-wrap gap-3 mb-3">
                   <h2 className="font-black text-lg text-text-main dark:text-white">Routes ({routes.length})</h2>
@@ -233,12 +281,12 @@ const CompanyAdminDashboard: React.FC = () => {
               </section>
             )}
 
-            {tab === 'vehicles' && (
+            {!loadError && tab === 'vehicles' && (
               <section>
                 <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-black text-text-muted uppercase tracking-wider">Agence:</span>
-                    <select value={selectedAgencyId} onChange={(e) => setSelectedAgencyId(e.target.value)} className={inputCls + ' w-auto'}>
+                    <label htmlFor="vehicle-agency-select" className="text-xs font-black text-text-muted uppercase tracking-wider">Agence:</label>
+                    <select id="vehicle-agency-select" value={selectedAgencyId} onChange={(e) => setSelectedAgencyId(e.target.value)} className={inputCls + ' w-auto'}>
                       {(active.agencies ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
                   </div>
@@ -283,7 +331,7 @@ const CompanyAdminDashboard: React.FC = () => {
             {tab === 'operations' && <DepartureControlPanel />}
             {tab === 'analytics' && <AnalyticsPanel />}
           </>
-        ) : (
+        ) : loadError ? null : (
           <p className="text-center text-text-muted py-16">Aucune compagnie assignée.</p>
         )}
       </div>
@@ -302,8 +350,8 @@ const CompanyAdminDashboard: React.FC = () => {
           onClose={() => setVehicleModalOpen(false)}
           onSaved={async () => {
             setVehicleModalOpen(false);
-            const r = await fetch(`/api/agencies/${selectedAgencyId}/vehicles`).then((x) => x.json());
-            setAgencyVehicles(r.data ?? []);
+            await reloadVehicles();
+            await reloadActiveCompany();
           }}
         />
       )}
@@ -313,10 +361,7 @@ const CompanyAdminDashboard: React.FC = () => {
           initialLayout={layoutVehicle.seatLayout ?? null}
           capacity={layoutVehicle.capacity}
           onClose={() => setLayoutVehicle(null)}
-          onSaved={async () => {
-            const r = await fetch(`/api/agencies/${selectedAgencyId}/vehicles`).then((x) => x.json());
-            setAgencyVehicles(r.data ?? []);
-          }}
+          onSaved={async () => { await reloadVehicles(); }}
         />
       )}
     </div>
@@ -332,8 +377,17 @@ const RouteForm: React.FC<{ companyId: string; cities: City[]; onClose: () => vo
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Cities may arrive after the modal opens: fill empty selections once they are loaded.
+  useEffect(() => {
+    if (cities.length === 0) return;
+    setOriginCityId((prev) => prev || cities[0].id);
+    setDestinationCityId((prev) => prev || (cities[1] ?? cities[0]).id);
+  }, [cities]);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!originCityId || !destinationCityId) { setError('Sélectionnez une origine et une destination.'); return; }
+    if (originCityId === destinationCityId) { setError("L'origine et la destination doivent être différentes."); return; }
     setSaving(true); setError(null);
     try {
       const res = await fetch('/api/routes', {
@@ -447,15 +501,5 @@ const VehicleForm: React.FC<{ agencyId: string; onClose: () => void; onSaved: ()
     </AdminModal>
   );
 };
-
-const Stat: React.FC<{ label: string; value: number | string; icon: string }> = ({ label, value, icon }) => (
-  <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 shadow-subtle p-5">
-    <div className="flex items-center justify-between mb-3">
-      <span className="text-xs font-black uppercase tracking-wider text-text-muted">{label}</span>
-      <span className="material-symbols-outlined text-primary">{icon}</span>
-    </div>
-    <div className="text-2xl font-black text-text-main dark:text-white">{value}</div>
-  </div>
-);
 
 export default CompanyAdminDashboard;

@@ -56,6 +56,15 @@ interface Station {
   agency: { id: string; name: string };
 }
 
+const LOAD_ERROR = "Impossible de charger les données de l'agence. Vérifiez votre connexion puis réessayez.";
+
+const fetchJson = async (url: string) => {
+  const res = await fetch(url);
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Erreur');
+  return json;
+};
+
 const AgencyAdminDashboard: React.FC = () => {
   const { user, logout } = useNavigation();
   const [agencies, setAgencies] = useState<Agency[]>([]);
@@ -64,6 +73,8 @@ const AgencyAdminDashboard: React.FC = () => {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [activeTab, setActiveTab] = useState<'departures' | 'vehicles' | 'operations' | 'counter' | 'analytics'>('departures');
   const [depModalOpen, setDepModalOpen] = useState(false);
   const [activeAgencyDetail, setActiveAgencyDetail] = useState<Agency | null>(null);
@@ -71,11 +82,12 @@ const AgencyAdminDashboard: React.FC = () => {
 
   useEffect(() => {
     const init = async () => {
+      setLoadError(null);
       try {
         const url = user?.companyId ? `/api/agencies?companyId=${user.companyId}` : '/api/agencies';
         const [agRes, ciRes] = await Promise.all([
-          fetch(url).then((r) => r.json()),
-          fetch('/api/cities').then((r) => r.json()),
+          fetchJson(url),
+          fetchJson('/api/cities'),
         ]);
         const list: Agency[] = agRes.data ?? [];
         setAgencies(list);
@@ -84,31 +96,38 @@ const AgencyAdminDashboard: React.FC = () => {
         setActiveAgencyId(selected);
       } catch (e) {
         console.error(e);
+        setLoadError(LOAD_ERROR);
       } finally {
         setIsLoading(false);
       }
     };
     init();
-  }, [user?.agencyId, user?.companyId]);
+  }, [user?.agencyId, user?.companyId, reloadKey]);
 
   const reload = useCallback(async () => {
     if (!activeAgencyId) return;
     setIsLoading(true);
+    setLoadError(null);
     try {
       const [dep, veh, detail] = await Promise.all([
-        fetch(`/api/agencies/${activeAgencyId}/departures`).then((r) => r.json()),
-        fetch(`/api/agencies/${activeAgencyId}/vehicles`).then((r) => r.json()),
-        fetch(`/api/agencies/${activeAgencyId}`).then((r) => r.json()),
+        fetchJson(`/api/agencies/${activeAgencyId}/departures`),
+        fetchJson(`/api/agencies/${activeAgencyId}/vehicles`),
+        fetchJson(`/api/agencies/${activeAgencyId}`),
       ]);
       setDepartures(dep.data ?? []);
       setVehicles(veh.data ?? []);
       setActiveAgencyDetail(detail.data ?? null);
+    } catch (e) {
+      console.error(e);
+      setLoadError(LOAD_ERROR);
     } finally {
       setIsLoading(false);
     }
   }, [activeAgencyId]);
 
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => { reload(); }, [reload, reloadKey]);
+
+  const retry = () => setReloadKey((k) => k + 1);
 
   const activeAgency = useMemo(() => agencies.find((a) => a.id === activeAgencyId), [agencies, activeAgencyId]);
 
@@ -128,7 +147,7 @@ const AgencyAdminDashboard: React.FC = () => {
       <div className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-4 py-6 md:p-8">
         <div className="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-4">
           <div>
-            <div className="text-[10px] font-black tracking-widest uppercase opacity-80">Agency Admin</div>
+            <div className="text-[10px] font-black tracking-widest uppercase opacity-80">Administrateur agence</div>
             <h1 className="text-2xl md:text-3xl font-black">{activeAgency?.name ?? 'Mon agence'}</h1>
             <p className="opacity-80 text-sm mt-1">{activeAgency?.company.name} • {activeAgency?.city.name}</p>
           </div>
@@ -137,6 +156,13 @@ const AgencyAdminDashboard: React.FC = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
+        {loadError && (
+          <div role="alert" className="mb-6 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap">
+            <span className="text-sm font-bold">{loadError}</span>
+            <button onClick={retry} className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-black hover:bg-red-700">Réessayer</button>
+          </div>
+        )}
+
         {agencies.length > 1 && !user?.agencyId && (
           <div className="mb-6 flex flex-wrap gap-2">
             {agencies.map((a) => (
@@ -154,7 +180,7 @@ const AgencyAdminDashboard: React.FC = () => {
         )}
 
          <div className="flex justify-between items-center flex-wrap gap-3 mb-4 border-b border-gray-200 dark:border-gray-800 pb-2">
-           <div className="flex gap-2 overflow-x-auto">
+           <div role="tablist" className="flex gap-2 overflow-x-auto">
             {(['departures', 'vehicles', 'operations', 'counter', 'analytics'] as const).map((t) => {
               const labels: Record<typeof t, string> = {
                 departures: 'Départs',
@@ -166,6 +192,8 @@ const AgencyAdminDashboard: React.FC = () => {
               return (
                 <button
                   key={t}
+                  role="tab"
+                  aria-selected={activeTab === t}
                   onClick={() => setActiveTab(t)}
                   className={`px-4 py-2 font-black text-sm ${
                     activeTab === t ? 'text-primary border-b-2 border-primary' : 'text-text-muted'
@@ -212,7 +240,7 @@ const AgencyAdminDashboard: React.FC = () => {
                 </div>
               </div>
             ))}
-            {departures.length === 0 && <p className="text-text-muted text-center py-10">Aucun départ programmé.</p>}
+            {departures.length === 0 && !loadError && <p className="text-text-muted text-center py-10">Aucun départ programmé.</p>}
           </div>
         ) : activeTab === 'operations' ? (
           <DepartureControlPanel />
@@ -249,7 +277,7 @@ const AgencyAdminDashboard: React.FC = () => {
                 </div>
               </div>
             ))}
-            {vehicles.length === 0 && <p className="text-text-muted text-center py-10 col-span-2">Aucun véhicule enregistré.</p>}
+            {vehicles.length === 0 && !loadError && <p className="text-text-muted text-center py-10 col-span-2">Aucun véhicule enregistré.</p>}
           </div>
         )}
       </div>
@@ -293,11 +321,22 @@ const DepartureForm: React.FC<{ agency: Agency; cities: City[]; vehicles: Vehicl
 
   useEffect(() => {
     if (!destinationCityId) { setDestStations([]); return; }
-    fetch(`/api/stations?cityId=${destinationCityId}`).then((r) => r.json()).then((j) => {
-      const list: Station[] = j.data ?? [];
-      setDestStations(list);
-      setDestStationId((prev) => list.find((s) => s.id === prev) ? prev : list[0]?.id ?? '');
-    });
+    let cancelled = false;
+    fetchJson(`/api/stations?cityId=${destinationCityId}`)
+      .then((j) => {
+        if (cancelled) return;
+        const list: Station[] = j.data ?? [];
+        setDestStations(list);
+        setDestStationId((prev) => list.find((s) => s.id === prev) ? prev : list[0]?.id ?? '');
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error(err);
+        setDestStations([]);
+        setDestStationId('');
+        setError('Impossible de charger les stations de destination.');
+      });
+    return () => { cancelled = true; };
   }, [destinationCityId]);
 
   useEffect(() => {

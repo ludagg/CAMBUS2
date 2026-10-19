@@ -49,6 +49,26 @@ interface Stats {
   totalRevenue: number;
 }
 
+const ROLE_LABELS: Record<string, string> = {
+  USER: 'Utilisateur',
+  SUPER_ADMIN: 'Super administrateur',
+  COMPANY_ADMIN: 'Administrateur compagnie',
+  AGENCY_ADMIN: 'Administrateur agence',
+  STATION_MANAGER: 'Chef de gare',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  ACTIVE: 'Actif',
+  INACTIVE: 'Inactif',
+};
+
+const fetchJson = async (url: string) => {
+  const res = await fetch(url);
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Erreur');
+  return json;
+};
+
 const SuperAdminDashboard: React.FC = () => {
   const { user, logout } = useNavigation();
   const [activeTab, setActiveTab] = useState<'overview' | 'companies' | 'agencies' | 'cities' | 'users' | 'operations' | 'analytics'>('overview');
@@ -58,18 +78,20 @@ const SuperAdminDashboard: React.FC = () => {
   const [users, setUsers] = useState<PlatformUser[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
   const [agencyModalOpen, setAgencyModalOpen] = useState(false);
 
   const refetch = async () => {
     setIsLoading(true);
+    setLoadError(null);
     try {
       const [companiesRes, agenciesRes, citiesRes, usersRes, statsRes] = await Promise.all([
-        fetch('/api/companies').then((r) => r.json()),
-        fetch('/api/agencies').then((r) => r.json()),
-        fetch('/api/cities').then((r) => r.json()),
-        fetch('/api/admin/users').then((r) => r.json()),
-        fetch('/api/admin/stats').then((r) => r.json()),
+        fetchJson('/api/companies'),
+        fetchJson('/api/agencies'),
+        fetchJson('/api/cities'),
+        fetchJson('/api/admin/users'),
+        fetchJson('/api/admin/stats'),
       ]);
       setCompanies(companiesRes.data ?? []);
       setAgencies(agenciesRes.data ?? []);
@@ -78,10 +100,13 @@ const SuperAdminDashboard: React.FC = () => {
       setStats(statsRes.data ?? null);
     } catch (err) {
       console.error(err);
+      setLoadError('Impossible de charger les données de la plateforme.');
     } finally {
       setIsLoading(false);
     }
   };
+
+  const showContent = !isLoading && !loadError;
 
   useEffect(() => {
     refetch();
@@ -107,7 +132,7 @@ const SuperAdminDashboard: React.FC = () => {
       <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-6 md:p-8">
         <div className="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-4">
           <div>
-            <div className="text-[10px] font-black tracking-widest uppercase opacity-80">Super Admin</div>
+            <div className="text-[10px] font-black tracking-widest uppercase opacity-80">Super administrateur</div>
             <h1 className="text-2xl md:text-3xl font-black">Administration Easy Travel</h1>
             <p className="opacity-80 text-sm mt-1">{user?.name} • {user?.email}</p>
           </div>
@@ -117,7 +142,7 @@ const SuperAdminDashboard: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
         {/* Tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-3 mb-6 border-b border-gray-200 dark:border-gray-800">
+        <div role="tablist" className="flex gap-2 overflow-x-auto pb-3 mb-6 border-b border-gray-200 dark:border-gray-800">
           {(['overview', 'companies', 'agencies', 'cities', 'users', 'operations', 'analytics'] as const).map((tab) => {
             const labels: Record<typeof tab, string> = {
               overview: "Vue d'ensemble",
@@ -131,6 +156,8 @@ const SuperAdminDashboard: React.FC = () => {
             return (
               <button
                 key={tab}
+                role="tab"
+                aria-selected={activeTab === tab}
                 onClick={() => setActiveTab(tab)}
                 className={`px-4 py-2 rounded-lg font-black text-sm whitespace-nowrap transition-colors ${
                   activeTab === tab ? 'bg-primary text-text-main' : 'text-text-muted hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -142,9 +169,16 @@ const SuperAdminDashboard: React.FC = () => {
           })}
         </div>
 
+        {loadError && (
+          <div role="alert" className="mb-6 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap">
+            <span className="text-sm font-bold">{loadError}</span>
+            <button onClick={refetch} className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-black hover:bg-red-700">Réessayer</button>
+          </div>
+        )}
+
         {isLoading && <div className="text-center py-20"><span className="material-symbols-outlined animate-spin text-5xl text-primary">progress_activity</span></div>}
 
-        {!isLoading && activeTab === 'overview' && stats && (
+        {showContent && activeTab === 'overview' && stats && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard label="Compagnies" value={stats.companies} icon="business" />
             <StatCard label="Agences" value={stats.agencies} icon="store" />
@@ -156,7 +190,7 @@ const SuperAdminDashboard: React.FC = () => {
           </div>
         )}
 
-        {!isLoading && activeTab === 'companies' && (
+        {showContent && activeTab === 'companies' && (
           <div className="space-y-3">
             <div className="flex justify-end mb-2">
               <button onClick={() => setCompanyModalOpen(true)} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm flex items-center gap-2 hover:bg-[#0fd651]">
@@ -176,17 +210,18 @@ const SuperAdminDashboard: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${c.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>{c.status}</span>
+                  <span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${c.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>{STATUS_LABELS[c.status] ?? c.status}</span>
                   <button onClick={() => toggleCompanyStatus(c)} className="px-3 py-1 rounded-lg text-xs font-black bg-gray-100 dark:bg-gray-800 text-text-main dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700">
                     {c.status === 'ACTIVE' ? 'Désactiver' : 'Réactiver'}
                   </button>
                 </div>
               </div>
             ))}
+            {companies.length === 0 && <p className="text-text-muted text-center py-10">Aucune compagnie enregistrée.</p>}
           </div>
         )}
 
-        {!isLoading && activeTab === 'agencies' && (
+        {showContent && activeTab === 'agencies' && (
           <div>
             <div className="flex justify-end mb-4">
               <button onClick={() => setAgencyModalOpen(true)} className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm flex items-center gap-2 hover:bg-[#0fd651]">
@@ -210,11 +245,12 @@ const SuperAdminDashboard: React.FC = () => {
                   </div>
                 </div>
               ))}
+              {agencies.length === 0 && <p className="text-text-muted text-center py-10 md:col-span-2">Aucune agence enregistrée.</p>}
             </div>
           </div>
         )}
 
-        {!isLoading && activeTab === 'cities' && (
+        {showContent && activeTab === 'cities' && (
            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
             {cities.map((c) => (
                <div key={c.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 shadow-subtle p-4">
@@ -222,10 +258,11 @@ const SuperAdminDashboard: React.FC = () => {
                 <div className="text-xs text-text-muted">{c.region}</div>
               </div>
             ))}
+            {cities.length === 0 && <p className="text-text-muted text-center py-10 col-span-full">Aucune ville enregistrée.</p>}
           </div>
         )}
 
-        {!isLoading && activeTab === 'users' && (
+        {showContent && activeTab === 'users' && (
           <div className="space-y-2">
             {users.map((u) => (
                <div key={u.id} className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 shadow-subtle p-4 flex items-center justify-between gap-3 flex-wrap">
@@ -236,9 +273,10 @@ const SuperAdminDashboard: React.FC = () => {
                     <div className="text-xs text-text-muted">{u.email}</div>
                   </div>
                 </div>
-                <span className="px-3 py-1 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest">{u.role}</span>
+                <span className="px-3 py-1 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest">{ROLE_LABELS[u.role] ?? u.role}</span>
               </div>
             ))}
+            {users.length === 0 && <p className="text-text-muted text-center py-10">Aucun utilisateur.</p>}
           </div>
         )}
 
@@ -415,7 +453,7 @@ export const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ 
   </label>
 );
 
-const StatCard: React.FC<{ label: string; value: string | number; icon: string }> = ({ label, value, icon }) => (
+export const StatCard: React.FC<{ label: string; value: string | number; icon: string }> = ({ label, value, icon }) => (
   <div className="bg-white dark:bg-surface-dark rounded-xl border border-gray-100 dark:border-gray-800 shadow-subtle p-5">
     <div className="flex items-center justify-between mb-3">
       <span className="text-xs font-black uppercase tracking-wider text-text-muted">{label}</span>
