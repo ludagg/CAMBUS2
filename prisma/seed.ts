@@ -286,7 +286,7 @@ async function main() {
       },
       {
         email: 'company@express.cm',
-        passwordHash: await hash('company123'),
+        passwordHash: await hash(SEED_PASSWORD),
         name: 'Express Voyage Manager',
         role: Role.COMPANY_ADMIN,
         companyId: firstCompany?.id,
@@ -294,7 +294,7 @@ async function main() {
       },
       {
         email: 'agency@express.cm',
-        passwordHash: await hash('agency123'),
+        passwordHash: await hash(SEED_PASSWORD),
         name: 'Agence Bonanjo',
         role: Role.AGENCY_ADMIN,
         companyId: firstCompany?.id,
@@ -303,7 +303,7 @@ async function main() {
       },
       {
         email: 'station@express.cm',
-        passwordHash: await hash('station123'),
+        passwordHash: await hash(SEED_PASSWORD),
         name: 'Chef de station',
         role: Role.STATION_MANAGER,
         companyId: firstCompany?.id,
@@ -313,7 +313,7 @@ async function main() {
       },
       {
         email: 'client@easytravel.cm',
-        passwordHash: await hash('client123'),
+        passwordHash: await hash(SEED_PASSWORD),
         name: 'Marie Nguelé',
         role: Role.USER,
         avatar: 'MN',
