@@ -617,8 +617,8 @@ const VehiclesSection: React.FC<{ vehicles: Vehicle[]; onNew: () => void; onLayo
                       <span className="material-symbols-outlined text-[20px]">airport_shuttle</span>
                     </span>
                     <div className="min-w-0">
-                      <div className="font-semibold">{v.plate}</div>
-                      <div className="text-xs text-text-muted">{v.model}</div>
+                      <div className="whitespace-nowrap font-semibold">{v.plate}</div>
+                      <div className="whitespace-nowrap text-xs text-text-muted">{v.model}</div>
                     </div>
                   </div>
                 </TD>
