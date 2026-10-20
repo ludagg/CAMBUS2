@@ -1,359 +1,256 @@
 'use client';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Badge,
-  Button,
-  ConfirmDialog,
-  Dialog,
-  EmptyState,
-  ErrorState,
-  Field,
-  Input,
   PageHeader,
   SearchInput,
-  Select,
-  SkeletonList,
-  StatusBadge,
+  SegmentedControl,
+  Input,
+  Button,
   Table,
-  TD,
-  Textarea,
-  TR,
-  Th,
   THead,
-  formatDateTime,
-  formatXAF,
+  Th,
+  TR,
+  TD,
+  StatusBadge,
+  Badge,
+  Dialog,
+  useConfirm,
   useToast,
+  Field,
+  Textarea
 } from '../ui';
+import { useNavigation } from '../../../contexts/NavigationContext';
 
-// Props contract is fixed: this section takes no props.
 export type BookingsSectionProps = Record<string, never>;
 
-interface Leg {
-  id: string;
-  leg: 'OUTBOUND' | 'RETURN';
-  status: string;
-  seats: string[];
-  departure: { id: string; departureAt: string; origin: string; destination: string; agencyName: string };
-  passengers: Array<{ fullName: string; idNumber: string | null; seat: string | null }>;
-}
-
-interface BookingItem {
-  id: string;
-  reference: string;
-  status: string;
-  tripType: 'ONE_WAY' | 'ROUND_TRIP';
-  channel: string | null;
-  totalCents: number;
-  contactName: string | null;
-  contactEmail: string;
-  contactPhone: string;
-  createdAt: string;
-  payment: { method: string; status: string } | null;
-  bookings: Leg[];
-}
-
-const STATUS_OPTIONS = [
-  { value: '', label: 'Tous les statuts' },
-  { value: 'CONFIRMED', label: 'Confirmé' },
-  { value: 'PENDING', label: 'En attente' },
-  { value: 'BOARDED', label: 'Embarqué' },
-  { value: 'CANCELLED', label: 'Annulé' },
-];
-
-const METHOD_LABELS: Record<string, string> = { MOMO: 'MTN MoMo', OM: 'Orange Money', CARD: 'Carte', CASH: 'Espèces' };
-const CHANNEL_LABELS: Record<string, string> = { online: 'En ligne', counter: 'Guichet', web: 'En ligne' };
-const LEG_LABELS: Record<string, string> = { OUTBOUND: 'Aller', RETURN: 'Retour' };
-
-const channelLabel = (c: string | null) => (c ? CHANNEL_LABELS[c.toLowerCase()] ?? c : 'En ligne');
-const passengerCount = (b: BookingItem) =>
-  b.bookings.reduce((n, l) => n + (l.passengers.length || l.seats.length), 0);
-
-const BookingsSection: React.FC<BookingsSectionProps> = () => {
-  const toast = useToast();
-  const [search, setSearch] = useState('');
-  const [debounced, setDebounced] = useState('');
-  const [status, setStatus] = useState('');
+export default function BookingsSection(_props: BookingsSectionProps) {
+  const [q, setQ] = useState('');
+  const [debouncedQ, setDebouncedQ] = useState('');
+  const [status, setStatus] = useState<string>('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
 
-  const [items, setItems] = useState<BookingItem[]>([]);
+  const [items, setItems] = useState<any[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const [selected, setSelected] = useState<BookingItem | null>(null);
-  const [cancelTarget, setCancelTarget] = useState<BookingItem | null>(null);
+  const [selected, setSelected] = useState<any | null>(null);
   const [cancelReason, setCancelReason] = useState('');
-  const [busy, setBusy] = useState<'resend' | 'cancel' | null>(null);
 
-  const seq = useRef(0);
+  const toast = useToast();
+  const { confirm, dialog } = useConfirm();
 
   useEffect(() => {
-    const t = window.setTimeout(() => setDebounced(search.trim()), 300);
-    return () => window.clearTimeout(t);
-  }, [search]);
+    const handler = setTimeout(() => setDebouncedQ(q), 300);
+    return () => clearTimeout(handler);
+  }, [q]);
 
-  const load = useCallback(
-    async (cursor?: string) => {
-      const id = ++seq.current;
+  const fetchBookings = useCallback(async (cursor?: string) => {
+    const params = new URLSearchParams();
+    if (debouncedQ) params.append('q', debouncedQ);
+    if (status) params.append('status', status);
+    if (from) params.append('from', from);
+    if (to) params.append('to', to);
+    if (cursor) params.append('cursor', cursor);
+
+    try {
       if (cursor) setLoadingMore(true);
-      else {
-        setLoading(true);
-        setError(null);
+      else setLoading(true);
+
+      const res = await fetch(`/api/admin/bookings?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to load');
+      const json = await res.json();
+
+      if (cursor) {
+        setItems(prev => [...prev, ...json.data.items]);
+      } else {
+        setItems(json.data.items);
       }
-      try {
-        const qs = new URLSearchParams();
-        if (debounced) qs.set('q', debounced);
-        if (status) qs.set('status', status);
-        if (from) qs.set('from', from);
-        if (to) qs.set('to', to);
-        if (cursor) qs.set('cursor', cursor);
-        qs.set('limit', '25');
-        const res = await fetch(`/api/admin/bookings?${qs.toString()}`);
-        const json = await res.json().catch(() => ({}));
-        if (id !== seq.current) return;
-        if (!res.ok) throw new Error(json?.error || 'Impossible de charger les réservations.');
-        const page = json.data as { items: BookingItem[]; nextCursor: string | null };
-        setItems((prev) => (cursor ? [...prev, ...page.items] : page.items));
-        setNextCursor(page.nextCursor);
-      } catch (e) {
-        if (id !== seq.current) return;
-        const msg = e instanceof Error ? e.message : 'Erreur réseau.';
-        if (cursor) toast(msg, 'error');
-        else setError(msg);
-      } finally {
-        if (id === seq.current) {
-          setLoading(false);
-          setLoadingMore(false);
-        }
-      }
-    },
-    [debounced, status, from, to, toast],
-  );
+      setNextCursor(json.data.nextCursor);
+    } catch (e) {
+      toast('Erreur lors du chargement des réservations', 'error');
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, [debouncedQ, status, from, to, toast]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    fetchBookings();
+  }, [fetchBookings]);
 
-  const hasFilters = !!(debounced || status || from || to);
-  const resetFilters = () => {
-    setSearch('');
-    setStatus('');
-    setFrom('');
-    setTo('');
+  const loadMore = () => {
+    if (nextCursor) fetchBookings(nextCursor);
   };
 
-  const resend = async (b: BookingItem) => {
-    setBusy('resend');
+  const handleResend = async (id: string) => {
     try {
-      const res = await fetch(`/api/bookings/${b.id}/resend`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel: 'both' }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || "Impossible de renvoyer le billet.");
-      toast(`Billet ${b.reference} renvoyé au client.`);
-    } catch (e) {
-      toast(e instanceof Error ? e.message : 'Erreur réseau.', 'error');
-    } finally {
-      setBusy(null);
+      const res = await fetch(`/api/bookings/${id}/resend`, { method: 'POST' });
+      if (!res.ok) throw new Error();
+      toast('Billet renvoyé avec succès', 'success');
+    } catch {
+      toast('Erreur lors du renvoi', 'error');
     }
   };
 
-  const cancel = async () => {
-    if (!cancelTarget) return;
-    const b = cancelTarget;
-    setBusy('cancel');
+  const handleCancel = async (booking: any) => {
+    const ok = await confirm({
+       title: 'Annuler la réservation',
+       message: 'Êtes-vous sûr de vouloir annuler cette réservation ?'
+    });
+    if (!ok) return;
+
     try {
-      const res = await fetch(`/api/bookings/${b.id}/cancel`, {
+      const payload = cancelReason ? { reason: cancelReason } : {};
+      const res = await fetch(`/api/bookings/${booking.id}/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cancelReason.trim() ? { reason: cancelReason.trim() } : {}),
+        body: JSON.stringify(payload)
       });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || "Impossible d'annuler la réservation.");
-      const d = json?.data ?? {};
-      const refund =
-        typeof d.refundPercent === 'number'
-          ? ` Remboursement : ${d.refundPercent} %${typeof d.refundAmountCents === 'number' ? ` (${formatXAF(d.refundAmountCents)})` : ''}.`
-          : '';
-      toast(`Réservation ${b.reference} annulée.${refund}`);
-      setCancelTarget(null);
-      setCancelReason('');
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erreur');
+
+      toast(`Réservation annulée. Remboursé : ${json.data?.refundAmountCents || 0}XAF (${json.data?.refundPercent || 0}%)`, 'success');
       setSelected(null);
-      load();
-    } catch (e) {
-      toast(e instanceof Error ? e.message : 'Erreur réseau.', 'error');
-    } finally {
-      setBusy(null);
+      setCancelReason('');
+      fetchBookings();
+    } catch (e: any) {
+      toast(e.message, 'error');
     }
   };
 
   return (
-    <>
+    <div className="space-y-6">
       <PageHeader
-        eyebrow="Exploitation"
         title="Réservations"
-        description="Recherchez, consultez et gérez les réservations de votre périmètre."
+        description="Gérez les réservations et consultez les détails."
       />
 
-      <div className="flex flex-wrap items-end gap-3 mb-4">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Référence, client, téléphone, passager…"
-          className="w-full sm:w-72"
-          label="Rechercher une réservation"
-        />
-        <Select aria-label="Filtrer par statut" value={status} onChange={(e) => setStatus(e.target.value)} className="sm:w-44">
-          {STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </Select>
-        <Field label="Du" className="w-40">
-          <Input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
-        </Field>
-        <Field label="Au" className="w-40">
-          <Input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
-        </Field>
-        {hasFilters && (
-          <Button variant="ghost" icon="filter_alt_off" onClick={resetFilters}>
-            Réinitialiser
-          </Button>
-        )}
-        {!loading && !error && (
-          <span className="ml-auto text-sm text-text-muted tabular-nums" aria-live="polite">
-            {items.length} réservation{items.length > 1 ? 's' : ''}
-            {nextCursor ? '+' : ''}
-          </span>
-        )}
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="w-64">
+           <SearchInput
+             value={q}
+             onChange={setQ}
+             placeholder="Référence, nom, email, téléphone..."
+             label="Rechercher"
+           />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold mb-1 text-text-muted">Statut</label>
+          <select
+            className="h-10 rounded-xl border border-ink-200 bg-white px-3 text-sm focus:ring-2 focus:ring-primary/60 outline-none"
+            value={status}
+            onChange={e => setStatus(e.target.value)}
+          >
+            <option value="">Tous</option>
+            <option value="CONFIRMED">CONFIRMED</option>
+            <option value="PENDING">PENDING</option>
+            <option value="BOARDED">BOARDED</option>
+            <option value="CANCELLED">CANCELLED</option>
+          </select>
+        </div>
+        <div className="flex items-end gap-2">
+           <Field label="Du" className="w-40">
+             <Input type="date" value={from} onChange={e => setFrom(e.target.value)} />
+           </Field>
+           <Field label="Au" className="w-40">
+             <Input type="date" value={to} onChange={e => setTo(e.target.value)} />
+           </Field>
+        </div>
+        <div className="text-sm text-text-muted pb-2">
+           {items.length} résultat{items.length > 1 ? 's' : ''}
+        </div>
       </div>
 
-      {loading ? (
-        <SkeletonList rows={6} />
-      ) : error ? (
-        <ErrorState message={error} onRetry={() => load()} />
-      ) : items.length === 0 ? (
-        <EmptyState
-          icon="confirmation_number"
-          title={hasFilters ? 'Aucun résultat' : 'Aucune réservation'}
-          description={
-            hasFilters
-              ? 'Aucune réservation ne correspond à ces critères.'
-              : 'Les réservations de votre périmètre apparaîtront ici.'
-          }
-          action={hasFilters ? <Button onClick={resetFilters}>Réinitialiser les filtres</Button> : undefined}
-        />
-      ) : (
-        <>
-          <Table>
-            <THead>
-              <Th>Référence</Th>
-              <Th>Client</Th>
-              <Th>Trajet</Th>
-              <Th className="text-right">Passagers</Th>
-              <Th className="text-right">Total</Th>
-              <Th>Paiement</Th>
-              <Th>Statut</Th>
-              <Th>Canal</Th>
-              <Th>
-                <span className="sr-only">Actions</span>
-              </Th>
-            </THead>
-            <tbody>
-              {items.map((b) => {
-                const first = b.bookings[0];
-                return (
-                  <TR key={b.id} className="cursor-pointer" onClick={() => setSelected(b)}>
-                    <TD className="font-mono text-xs font-semibold whitespace-nowrap">{b.reference}</TD>
-                    <TD>
-                      <div className="font-semibold">{b.contactName || 'Client'}</div>
-                      <div className="text-xs text-text-muted">{b.contactPhone}</div>
-                    </TD>
-                    <TD>
-                      {first ? (
-                        <>
-                          <div className="font-medium whitespace-nowrap">
-                            {first.departure.origin} → {first.departure.destination}
-                            {b.bookings.length > 1 && <span className="text-text-muted"> (+{b.bookings.length - 1})</span>}
-                          </div>
-                          <div className="text-xs text-text-muted">{formatDateTime(first.departure.departureAt)}</div>
-                        </>
-                      ) : (
-                        '—'
-                      )}
-                    </TD>
-                    <TD className="text-right tabular-nums">{passengerCount(b)}</TD>
-                    <TD className="text-right tabular-nums font-semibold whitespace-nowrap">{formatXAF(b.totalCents)}</TD>
-                    <TD>
-                      {b.payment ? (
-                        <div className="flex flex-col items-start gap-1">
-                          <StatusBadge status={b.payment.status} />
-                          <span className="text-xs text-text-muted">{METHOD_LABELS[b.payment.method] ?? b.payment.method}</span>
-                        </div>
-                      ) : (
-                        <span className="text-text-muted">—</span>
-                      )}
-                    </TD>
-                    <TD>
-                      <StatusBadge status={b.status} />
-                    </TD>
-                    <TD>
-                      <Badge tone="neutral">{channelLabel(b.channel)}</Badge>
-                    </TD>
-                    <TD>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelected(b);
-                        }}
-                      >
-                        Détails
-                      </Button>
-                    </TD>
-                  </TR>
-                );
-              })}
-            </tbody>
-          </Table>
-          {nextCursor && (
-            <div className="flex justify-center mt-4">
-              <Button loading={loadingMore} onClick={() => load(nextCursor)}>
-                Charger plus
-              </Button>
-            </div>
+      <Table>
+        <THead>
+          <Th>Référence</Th>
+          <Th>Client</Th>
+          <Th>Trajet</Th>
+          <Th className="text-right">Passagers</Th>
+          <Th className="text-right">Total</Th>
+          <Th>Paiement</Th>
+          <Th>Statut</Th>
+          <Th>Canal</Th>
+          <Th></Th>
+        </THead>
+        <tbody>
+          {items.map(b => (
+            <TR key={b.id} onClick={() => setSelected(b)} className="cursor-pointer hover:bg-ink-50 transition-colors">
+              <TD className="font-mono text-sm font-semibold">{b.reference}</TD>
+              <TD>
+                <div className="font-semibold">{b.contactName || 'Client'}</div>
+                <div className="text-xs text-text-muted">{b.contactPhone}</div>
+              </TD>
+              <TD>
+                {b.bookings[0] ? (
+                  <>
+                    <div className="font-medium">
+                      {b.bookings[0].departure.origin} → {b.bookings[0].departure.destination}
+                    </div>
+                    <div className="text-xs text-text-muted">
+                      {new Date(b.bookings[0].departure.departureAt).toLocaleString()}
+                    </div>
+                  </>
+                ) : '—'}
+              </TD>
+              <TD className="text-right tabular-nums">
+                 {b.bookings.reduce((acc: number, cur: any) => Math.max(acc, cur.passengers.length), 1)}
+              </TD>
+              <TD className="text-right tabular-nums font-semibold">
+                 {(b.totalCents / 100).toLocaleString('fr-FR')} XAF
+              </TD>
+              <TD>
+                {b.payment ? (
+                  <div className="flex flex-col gap-1">
+                    <StatusBadge status={b.payment.status} />
+                    <span className="text-xs text-text-muted">{b.payment.method}</span>
+                  </div>
+                ) : '—'}
+              </TD>
+              <TD><StatusBadge status={b.status} /></TD>
+              <TD><Badge tone="neutral">{b.channel || 'INCONNU'}</Badge></TD>
+              <TD>
+                <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); setSelected(b); }}>
+                   Détails
+                </Button>
+              </TD>
+            </TR>
+          ))}
+          {items.length === 0 && !loading && (
+            <TR><TD colSpan={9} className="text-center py-4">Aucune réservation trouvée.</TD></TR>
           )}
-        </>
+        </tbody>
+      </Table>
+
+      {nextCursor && (
+        <div className="flex justify-center mt-4">
+           <Button variant="secondary" onClick={loadMore} loading={loadingMore}>
+             Charger plus
+           </Button>
+        </div>
       )}
 
       {selected && (
         <Dialog
           size="lg"
           title={`Réservation ${selected.reference}`}
-          description={`Créée le ${formatDateTime(selected.createdAt)}`}
-          onClose={() => setSelected(null)}
+          description={`Date: ${new Date(selected.createdAt).toLocaleString()}`}
+          onClose={() => { setSelected(null); setCancelReason(''); }}
           footer={
             <>
               <a
                 href={`/admin/ticket/${selected.id}/print`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-ink-200 dark:border-white/15 bg-white dark:bg-white/5 px-4 text-sm font-semibold tracking-tight text-text-main dark:text-white hover:bg-ink-50 dark:hover:bg-white/10"
+                className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl border border-ink-200 text-sm font-semibold hover:bg-ink-50"
               >
-                <span className="material-symbols-outlined text-[18px]">print</span>
-                Voir le billet
+                <span className="material-symbols-outlined text-[18px]">print</span> Voir le billet
               </a>
-              <Button icon="forward_to_inbox" loading={busy === 'resend'} onClick={() => resend(selected)}>
-                Renvoyer le billet
-              </Button>
+              <Button icon="send" onClick={() => handleResend(selected.id)}>Renvoyer le billet</Button>
               {(selected.status === 'PENDING' || selected.status === 'CONFIRMED') && (
-                <Button variant="danger" icon="cancel" onClick={() => setCancelTarget(selected)}>
+                <Button variant="danger" icon="cancel" onClick={() => handleCancel(selected)}>
                   Annuler la réservation
                 </Button>
               )}
@@ -361,104 +258,58 @@ const BookingsSection: React.FC<BookingsSectionProps> = () => {
           }
         >
           <div className="space-y-6">
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge status={selected.status} />
-              <Badge tone="neutral">{selected.tripType === 'ROUND_TRIP' ? 'Aller-retour' : 'Aller simple'}</Badge>
-              <Badge tone="neutral">{channelLabel(selected.channel)}</Badge>
-              <span className="ml-auto text-lg font-display font-semibold tabular-nums">{formatXAF(selected.totalCents)}</span>
+            <div className="grid grid-cols-2 gap-4 border p-4 rounded-xl">
+               <div>
+                  <h4 className="text-xs font-semibold text-text-muted uppercase mb-1">Contact</h4>
+                  <div>{selected.contactName}</div>
+                  <div className="text-sm">{selected.contactPhone}</div>
+                  <div className="text-sm">{selected.contactEmail}</div>
+               </div>
+               <div>
+                  <h4 className="text-xs font-semibold text-text-muted uppercase mb-1">Paiement</h4>
+                  {selected.payment ? (
+                    <div>
+                      <StatusBadge status={selected.payment.status} /> {selected.payment.method}
+                    </div>
+                  ) : <span className="text-sm text-text-muted">Aucun paiement</span>}
+               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-muted mb-1.5">Contact</h3>
-                <div className="text-sm font-semibold">{selected.contactName || 'Client'}</div>
-                <div className="text-sm text-text-muted">{selected.contactPhone}</div>
-                <div className="text-sm text-text-muted break-all">{selected.contactEmail}</div>
-              </div>
-              <div>
-                <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-muted mb-1.5">Paiement</h3>
-                {selected.payment ? (
-                  <div className="flex items-center gap-2">
-                    <StatusBadge status={selected.payment.status} />
-                    <span className="text-sm text-text-muted">
-                      {METHOD_LABELS[selected.payment.method] ?? selected.payment.method}
-                    </span>
-                  </div>
-                ) : (
-                  <span className="text-sm text-text-muted">Aucun paiement enregistré</span>
-                )}
-              </div>
-            </div>
+            {selected.status === 'PENDING' || selected.status === 'CONFIRMED' ? (
+              <Field label="Motif d'annulation (Optionnel - Seulement si vous allez annuler)">
+                 <Textarea value={cancelReason} onChange={e => setCancelReason(e.target.value)} />
+              </Field>
+            ) : null}
 
-            {selected.bookings.map((leg) => (
-              <section key={leg.id} className="rounded-2xl border border-ink-100 dark:border-white/10 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                  <div className="min-w-0">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-muted">
-                      {LEG_LABELS[leg.leg] ?? leg.leg}
-                    </div>
-                    <div className="font-semibold">
-                      {leg.departure.origin} → {leg.departure.destination}
-                    </div>
-                    <div className="text-xs text-text-muted">
-                      {formatDateTime(leg.departure.departureAt)} · {leg.departure.agencyName}
-                    </div>
+            <div className="space-y-4">
+              <h4 className="font-semibold text-lg">Trajets</h4>
+              {selected.bookings.map((leg: any) => (
+                <div key={leg.id} className="border p-4 rounded-xl">
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="font-semibold">{leg.departure.origin} → {leg.departure.destination}</div>
+                    <StatusBadge status={leg.status} />
                   </div>
-                  <StatusBadge status={leg.status} />
+                  <div className="text-sm text-text-muted mb-2">
+                    {new Date(leg.departure.departureAt).toLocaleString()} - {leg.departure.agencyName}
+                  </div>
+                  {leg.passengers.length > 0 && (
+                     <table className="w-full text-sm">
+                       <thead><tr className="border-b"><th className="text-left py-1">Passager</th><th className="text-left py-1">CNI</th><th className="text-left py-1">Siège</th></tr></thead>
+                       <tbody>
+                         {leg.passengers.map((p: any, idx: number) => (
+                           <tr key={idx}><td className="py-1">{p.fullName}</td><td className="py-1">{p.idNumber || '-'}</td><td className="py-1">{p.seat || '-'}</td></tr>
+                         ))}
+                       </tbody>
+                     </table>
+                  )}
                 </div>
-                {leg.passengers.length === 0 ? (
-                  <p className="text-sm text-text-muted">
-                    Sièges : {leg.seats.length ? leg.seats.join(', ') : '—'}
-                  </p>
-                ) : (
-                  <Table className="shadow-none">
-                    <THead>
-                      <Th>Passager</Th>
-                      <Th>CNI</Th>
-                      <Th>Siège</Th>
-                    </THead>
-                    <tbody>
-                      {leg.passengers.map((p, i) => (
-                        <TR key={i}>
-                          <TD className="font-medium">{p.fullName}</TD>
-                          <TD className="text-text-muted">{p.idNumber || '—'}</TD>
-                          <TD className="tabular-nums">{p.seat || '—'}</TD>
-                        </TR>
-                      ))}
-                    </tbody>
-                  </Table>
-                )}
-              </section>
-            ))}
+              ))}
+            </div>
           </div>
         </Dialog>
       )}
 
-      {cancelTarget && (
-        <ConfirmDialog
-          title="Annuler la réservation ?"
-          confirmLabel="Annuler la réservation"
-          loading={busy === 'cancel'}
-          onCancel={() => {
-            setCancelTarget(null);
-            setCancelReason('');
-          }}
-          onConfirm={cancel}
-          message={
-            <div className="space-y-3">
-              <p>
-                La réservation <strong>{cancelTarget.reference}</strong> sera annulée et les places libérées. Le remboursement
-                suit la politique d&apos;annulation de la compagnie.
-              </p>
-              <Field label="Motif (facultatif)">
-                <Textarea rows={3} maxLength={500} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} />
-              </Field>
-            </div>
-          }
-        />
-      )}
-    </>
+      {dialog}
+    </div>
   );
-};
-
-export default BookingsSection;
+}
