@@ -353,11 +353,8 @@ const DriverDialog: React.FC<{
       licenseCategory: form.licenseCategory,
       licenseExpiresAt: new Date(`${form.expiry}T23:59:59+01:00`).toISOString(),
     };
-    if (form.phone.trim() || !driver) {
-      if (form.phone.trim()) payload.phone = form.phone.trim();
-    } else {
-      payload.phone = '';
-    }
+    if (driver) payload.phone = form.phone.trim();
+    else if (form.phone.trim()) payload.phone = form.phone.trim();
     setSaving(true);
     try {
       const res = await fetch(driver ? `/api/drivers/${driver.id}` : `/api/agencies/${agencyId}/drivers`, {
