@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import jsQR from 'jsqr';
+import { Button, cx } from './admin/ui';
 
 interface QrScannerProps {
   /** Called with the decoded QR string when a code is successfully scanned. */
@@ -187,49 +188,69 @@ export default function QrScanner({
   }, [stopScan]);
 
   const isLive = status === 'scanning' || status === 'starting';
+  const problem = status === 'denied' || status === 'unsupported' || status === 'error';
+  const problemIcon = status === 'denied' ? 'no_photography' : status === 'unsupported' ? 'videocam_off' : 'error';
+  const problemTitle =
+    status === 'denied' ? 'Accès à la caméra refusé' : status === 'unsupported' ? 'Caméra non prise en charge' : 'Caméra indisponible';
 
   return (
-    <div className={`w-full ${className}`}>
-      <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800">
+    <div className={cx('w-full', className)}>
+      <style>{`@keyframes qr-scan-line{0%{top:6%}50%{top:92%}100%{top:6%}}@media (prefers-reduced-motion:reduce){.qr-scan-line{animation:none!important;top:50%!important}}`}</style>
+      <div className="relative w-full aspect-video bg-ink-950 rounded-2xl overflow-hidden border border-ink-100 dark:border-white/10 shadow-subtle">
         <video
           ref={videoRef}
           muted
           playsInline
-          className={`w-full h-full object-cover ${isLive ? 'opacity-100' : 'opacity-0'}`}
+          className={cx('w-full h-full object-cover', isLive ? 'opacity-100' : 'opacity-0')}
         />
         <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
 
         {!isLive && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-white gap-3 p-6 text-center">
-            <span className="material-symbols-outlined text-5xl opacity-70">qr_code_scanner</span>
-            <p className="text-sm opacity-80 max-w-sm">
-              {status === 'denied'
+            <span
+              className={cx(
+                'inline-flex size-14 items-center justify-center rounded-2xl',
+                problem ? 'bg-red-500/20 text-red-300' : 'bg-white/10 text-white/80',
+              )}
+            >
+              <span className="material-symbols-outlined text-[28px]">{problem ? problemIcon : 'qr_code_scanner'}</span>
+            </span>
+            {problem && <h3 className="font-display text-base font-semibold">{problemTitle}</h3>}
+            <p className="text-sm text-white/70 max-w-sm">
+              {problem
                 ? errorMessage
-                : status === 'unsupported' || status === 'error'
-                ? errorMessage
-                : "Appuyez sur « Démarrer » et autorisez l'accès à la caméra pour scanner les billets."}
+                : "Appuyez sur « Démarrer le scan » et autorisez l'accès à la caméra pour scanner les billets."}
             </p>
+            {problem && status !== 'unsupported' && (
+              <Button variant="primary" size="sm" icon="refresh" onClick={startScan}>
+                Réessayer
+              </Button>
+            )}
           </div>
         )}
 
         {isLive && (
           <>
             {/* Viewfinder frame */}
-            <div
-              aria-hidden="true"
-              className="absolute inset-0 pointer-events-none flex items-center justify-center"
-            >
+            <div aria-hidden="true" className="absolute inset-0 pointer-events-none flex items-center justify-center">
               <div className="relative w-3/5 max-w-[280px] aspect-square">
-                <span className="absolute inset-0 rounded-2xl ring-2 ring-white/40" />
-                <span className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-primary rounded-tl-xl" />
-                <span className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-primary rounded-tr-xl" />
-                <span className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-primary rounded-bl-xl" />
-                <span className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-primary rounded-br-xl" />
+                <span className="absolute inset-0 rounded-2xl ring-1 ring-white/25" />
+                <span className="absolute top-0 left-0 w-9 h-9 border-t-4 border-l-4 border-primary rounded-tl-2xl" />
+                <span className="absolute top-0 right-0 w-9 h-9 border-t-4 border-r-4 border-primary rounded-tr-2xl" />
+                <span className="absolute bottom-0 left-0 w-9 h-9 border-b-4 border-l-4 border-primary rounded-bl-2xl" />
+                <span className="absolute bottom-0 right-0 w-9 h-9 border-b-4 border-r-4 border-primary rounded-br-2xl" />
+                <span
+                  className="qr-scan-line absolute left-2 right-2 h-0.5 rounded-full bg-primary shadow-[0_0_12px_2px_rgba(19,236,91,0.7)]"
+                  style={{ animation: 'qr-scan-line 2.4s ease-in-out infinite' }}
+                />
               </div>
             </div>
-            <div className="absolute top-2 left-2 px-2 py-1 rounded-full bg-red-600/90 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-1">
-              <span className="size-1.5 rounded-full bg-white animate-pulse" />
-              Live
+            <div
+              role="status"
+              className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-black/55 backdrop-blur text-white text-[11px] font-semibold flex items-center gap-1.5"
+            >
+              <span className="size-1.5 rounded-full bg-red-500 animate-pulse" />
+              {status === 'starting' ? 'Démarrage…' : 'En direct'}
             </div>
           </>
         )}
@@ -237,23 +258,13 @@ export default function QrScanner({
 
       <div className="mt-3 flex items-center gap-2 flex-wrap">
         {!isLive ? (
-          <button
-            type="button"
-            onClick={startScan}
-            className="px-4 py-2 rounded-lg bg-primary text-text-main font-black text-sm flex items-center gap-2 hover:shadow-subtle transition-shadow"
-          >
-            <span className="material-symbols-outlined text-[18px]">videocam</span>
+          <Button variant="primary" icon="videocam" onClick={startScan}>
             Démarrer le scan
-          </button>
+          </Button>
         ) : (
-          <button
-            type="button"
-            onClick={stopScan}
-            className="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-800 text-text-main dark:text-white font-black text-sm flex items-center gap-2"
-          >
-            <span className="material-symbols-outlined text-[18px]">stop_circle</span>
+          <Button variant="secondary" icon="stop_circle" onClick={stopScan}>
             Arrêter
-          </button>
+          </Button>
         )}
         {lastValue && (
           <span className="text-[11px] font-mono text-text-muted truncate max-w-full">
@@ -263,8 +274,8 @@ export default function QrScanner({
         )}
       </div>
 
-      {errorMessage && status !== 'scanning' && status !== 'starting' && (
-        <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">{errorMessage}</p>
+      {errorMessage && !isLive && (
+        <p role="alert" className="sr-only">{errorMessage}</p>
       )}
     </div>
   );
