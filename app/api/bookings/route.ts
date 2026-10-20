@@ -7,7 +7,9 @@ import { handleError, bad } from '@/lib/api'
 import { localDateKey } from '@/lib/datetime'
 import { logAudit } from '@/lib/audit'
 import { markWaitlistPromoted } from '@/lib/waitlist'
-import { getProvider, normalizeCameroonPhone, type PaymentProviderId } from '@/lib/payment'
+import { getProvider, normalizeCameroonPhone, PaymentUnavailableError, type PaymentProviderId } from '@/lib/payment'
+import { failPayment } from '@/lib/booking-confirm'
+import { MIN_AMOUNT_XAF, fapshiConfigured } from '@/lib/fapshi'
 import {
   computeSeatPriceCents,
   defaultLayoutForCapacity,
@@ -204,6 +206,13 @@ export async function POST(req: NextRequest) {
       if (!normalizedPhone) {
         return bad('Numéro Mobile Money invalide. Format attendu: 6XX XXX XXX.')
       }
+      // Fail early (before holding seats) when no payment gateway can process this.
+      try {
+        getProvider(body.paymentMethod as PaymentProviderId)
+      } catch (err) {
+        if (err instanceof PaymentUnavailableError) return bad(err.message, 503)
+        throw err
+      }
     }
 
     const outDep = await prisma.departure.findUnique({
@@ -262,6 +271,9 @@ export async function POST(req: NextRequest) {
       ? sumSeats(retDep.priceCents, retLayout, retSeats, body.passengers.length)
       : 0
     const totalCents = outPrice + retPrice
+    if (isMobileMoney && fapshiConfigured() && totalCents < MIN_AMOUNT_XAF) {
+      return bad(`Montant minimum pour Mobile Money: ${MIN_AMOUNT_XAF} FCFA.`)
+    }
 
     const initialStatus = isMobileMoney ? 'PENDING' : 'CONFIRMED'
     const expiresAt = isMobileMoney
@@ -406,16 +418,29 @@ export async function POST(req: NextRequest) {
 
     if (isMobileMoney && normalizedPhone) {
       const provider = getProvider(body.paymentMethod as PaymentProviderId)
-      const init = await provider.initiate({
-        amountCents: totalCents,
-        currency: outDep.currency,
-        phoneNumber: normalizedPhone,
-        reference: result.groupId,
-      })
-      await prisma.payment.update({
-        where: { id: result.paymentId },
-        data: { providerRef: init.externalRef },
-      })
+      try {
+        const init = await provider.initiate({
+          amountCents: totalCents,
+          currency: outDep.currency,
+          phoneNumber: normalizedPhone,
+          reference: result.groupId,
+        })
+        await prisma.payment.update({
+          where: { id: result.paymentId },
+          data: { providerRef: init.externalRef },
+        })
+      } catch (err) {
+        // The prompt never reached the customer: release the seats right away.
+        console.error('[payment] initiate failed', result.groupId, err)
+        await failPayment(result.paymentId, "Le paiement n'a pas pu être initié auprès de l'opérateur.").catch(
+          (e) => console.error('[payment] release after initiate failure failed', e),
+        )
+        const message =
+          err instanceof Error && 'status' in err && (err as { status: number }).status === 400
+            ? err.message
+            : "Impossible de lancer le paiement Mobile Money. Réessayez dans un instant."
+        return bad(message, 502)
+      }
     }
 
     // A booking by someone who was offered a freed seat closes their waitlist entry.

@@ -12,7 +12,17 @@
  * PAYMENT_PROVIDER=om|momo and filling in the corresponding credentials.
  */
 
+import { FapshiError, directPay, fapshiConfigured, paymentStatus, toLifecycle } from './fapshi'
+
 export type PaymentProviderId = 'OM' | 'MOMO'
+
+/** Thrown when mobile money cannot be processed (no gateway configured in production). */
+export class PaymentUnavailableError extends Error {
+  constructor() {
+    super("Le paiement Mobile Money n'est pas disponible pour le moment.")
+    this.name = 'PaymentUnavailableError'
+  }
+}
 
 export interface PaymentInitiateInput {
   amountCents: number
@@ -82,10 +92,58 @@ export const PROVIDERS: Record<PaymentProviderId, PaymentProvider> = {
   MOMO: MtnMoMo,
 }
 
+/**
+ * Real provider: Fapshi aggregator (MTN MoMo + Orange Money). `externalRef` is
+ * the Fapshi transId, which the webhook and status polling use to find the payment.
+ */
+function buildFapshi(base: PaymentProvider): PaymentProvider {
+  return {
+    ...base,
+    async initiate(input) {
+      const { transId } = await directPay({
+        amountXaf: input.amountCents,
+        phone: input.phoneNumber,
+        provider: base.id,
+        externalId: input.reference,
+      })
+      return { externalRef: transId, status: 'PENDING' }
+    },
+    async getStatus(externalRef) {
+      try {
+        const tx = await paymentStatus(externalRef)
+        const status = toLifecycle(tx.status)
+        return {
+          externalRef,
+          status,
+          failureReason:
+            status === 'FAILED'
+              ? tx.status === 'EXPIRED'
+                ? 'Délai de confirmation dépassé.'
+                : tx.reason || "Paiement refusé par l'opérateur (solde insuffisant ou annulé)."
+              : undefined,
+        }
+      } catch (err) {
+        // Status checks are rate limited (6/min per transaction) and the webhook is
+        // the primary signal: treat throttling / transient errors as "still pending".
+        if (err instanceof FapshiError && (err.status === 429 || err.status >= 500)) {
+          return { externalRef, status: 'PENDING' }
+        }
+        throw err
+      }
+    },
+  }
+}
+
 export function getProvider(id: PaymentProviderId): PaymentProvider {
-  const p = PROVIDERS[id]
-  if (!p) throw new Error(`Unknown payment provider: ${id}`)
-  return p
+  const sim = PROVIDERS[id]
+  if (!sim) throw new Error(`Unknown payment provider: ${id}`)
+  if (fapshiConfigured()) return buildFapshi(sim)
+  // The simulator confirms every payment: never allow it on a production deployment
+  // unless explicitly opted in (demo sites).
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_SIMULATED_PAYMENTS !== 'true') {
+    throw new PaymentUnavailableError()
+  }
+  return sim
 }
 
 /**

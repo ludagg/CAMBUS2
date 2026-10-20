@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
-import { getProvider, type PaymentProviderId } from '@/lib/payment'
-import { confirmPayment, failPayment } from '@/lib/booking-confirm'
+import { syncPendingPayment } from '@/lib/payment-sync'
+import { failPayment } from '@/lib/booking-confirm'
 
 /**
  * GET /api/payments/:id
@@ -34,19 +34,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     if (payment.status === 'PENDING') {
       const expired = payment.group.expiresAt && payment.group.expiresAt.getTime() < Date.now()
       if (expired) {
-        await failPayment(payment.id, 'Délai de confirmation dépassé.')
-      } else if (isMobileMoney && payment.providerRef && payment.phoneNumber) {
-        const provider = getProvider(payment.method as PaymentProviderId)
-        const remote = await provider.getStatus(
-          payment.providerRef,
-          payment.createdAt,
-          payment.phoneNumber,
-        )
-        if (remote.status === 'SUCCEEDED') {
-          await confirmPayment(payment.id)
-        } else if (remote.status === 'FAILED') {
-          await failPayment(payment.id, remote.failureReason ?? 'Paiement refusé.')
-        }
+        // Ask the real gateway first: the customer may have paid right at the deadline.
+        const state = await syncPendingPayment(payment.id, { gatewayOnly: true })
+        if (state === 'PENDING') await failPayment(payment.id, 'Délai de confirmation dépassé.')
+      } else if (isMobileMoney) {
+        await syncPendingPayment(payment.id)
       }
     }
 
