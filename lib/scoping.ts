@@ -123,3 +123,20 @@ export async function getSessionScope(session: SessionPayload): Promise<{
     agencyId: user?.agencyId ?? null,
   }
 }
+
+/**
+ * Staff (non super-admin) may only act on a booking group when every leg
+ * departs from an agency they own. Prevents cross-tenant cancel/resend.
+ */
+export async function assertOwnsBookingGroup(session: SessionPayload, groupId: string): Promise<void> {
+  if (session.role === 'SUPER_ADMIN') return
+  const bookings = await prisma.booking.findMany({
+    where: { groupId },
+    select: { departure: { select: { agencyId: true } } },
+  })
+  if (bookings.length === 0) throw new AuthError('Réservation introuvable.', 404)
+  const agencyIds = Array.from(new Set(bookings.map((b) => b.departure.agencyId)))
+  for (const agencyId of agencyIds) {
+    await assertOwnsAgency(session, agencyId)
+  }
+}

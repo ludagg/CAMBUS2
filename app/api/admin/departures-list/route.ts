@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { getSessionScope } from '@/lib/scoping'
 import { handleError } from '@/lib/api'
+import { dayRange, isValidDateKey, todayLocal } from '@/lib/datetime'
 
 /**
  * Lists departures accessible to staff for counter sale, manifest, delay/cancel
@@ -17,10 +18,16 @@ export async function GET(req: NextRequest) {
     requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENCY_ADMIN', 'STATION_MANAGER'])
 
     const { searchParams } = new URL(req.url)
-    const dateFrom = searchParams.get('from') || new Date().toISOString().split('T')[0]
+    const dateFrom = searchParams.get('from') || todayLocal()
     const dateTo = searchParams.get('to') || dateFrom
-    const start = new Date(`${dateFrom}T00:00:00`)
-    const end = new Date(`${dateTo}T23:59:59`)
+    if (!isValidDateKey(dateFrom) || !isValidDateKey(dateTo)) {
+      return NextResponse.json({ error: 'Date invalide.' }, { status: 400 })
+    }
+    const start = dayRange(dateFrom).start
+    const end = dayRange(dateTo).end
+    if (end.getTime() - start.getTime() > 62 * 24 * 3600 * 1000) {
+      return NextResponse.json({ error: 'Période trop longue (62 jours max).' }, { status: 400 })
+    }
 
     const scope: {
       agencyId?: string

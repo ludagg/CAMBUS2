@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { getSessionScope } from '@/lib/scoping'
 import { handleError } from '@/lib/api'
+import { localDateKey } from '@/lib/datetime'
 
 type Scope = { companyId?: string; agencyId?: string }
 
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
     requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENCY_ADMIN', 'STATION_MANAGER'])
 
     const { searchParams } = new URL(req.url)
-    const rangeDays = Math.min(365, Math.max(1, Number(searchParams.get('rangeDays') || 30)))
+    const rangeDays = Math.min(365, Math.max(1, Number(searchParams.get('rangeDays')) || 30))
     const now = new Date()
     const from = new Date(now.getTime() - rangeDays * 24 * 60 * 60 * 1000)
 
@@ -40,13 +41,16 @@ export async function GET(req: NextRequest) {
     // Revenue + counts over range
     const groups = await prisma.bookingGroup.findMany({
       where: groupScope,
+      take: 20000,
       select: {
         id: true,
-        totalCents: true,
         channel: true,
         createdAt: true,
         bookings: {
+          // Only legs inside the caller's scope: a round trip may span companies.
+          where: { departure: departureScope },
           select: {
+            priceCents: true,
             seats: true,
             departureId: true,
             departure: {
@@ -67,24 +71,23 @@ export async function GET(req: NextRequest) {
     // Daily time series (YYYY-MM-DD → { revenue, bookings })
     const daily = new Map<string, { revenue: number; bookings: number }>()
     for (let i = 0; i < rangeDays; i++) {
-      const d = new Date(from)
-      d.setDate(d.getDate() + i)
-      daily.set(d.toISOString().split('T')[0], { revenue: 0, bookings: 0 })
+      daily.set(localDateKey(new Date(from.getTime() + i * 86_400_000)), { revenue: 0, bookings: 0 })
     }
     let totalRevenue = 0
     let totalBookings = 0
     let counterRevenue = 0
     let onlineRevenue = 0
+    const groupTotal = (g: (typeof groups)[number]) => g.bookings.reduce((n, b) => n + b.priceCents, 0)
     for (const g of groups) {
-      const key = g.createdAt.toISOString().split('T')[0]
+      const key = localDateKey(g.createdAt)
       const row = daily.get(key) ?? { revenue: 0, bookings: 0 }
-      row.revenue += g.totalCents
+      row.revenue += groupTotal(g)
       row.bookings += 1
       daily.set(key, row)
-      totalRevenue += g.totalCents
+      totalRevenue += groupTotal(g)
       totalBookings += 1
-      if (g.channel === 'COUNTER') counterRevenue += g.totalCents
-      else onlineRevenue += g.totalCents
+      if (g.channel === 'COUNTER') counterRevenue += groupTotal(g)
+      else onlineRevenue += groupTotal(g)
     }
 
     // Top routes
@@ -101,6 +104,7 @@ export async function GET(req: NextRequest) {
             bookings: 0,
           }
         row.bookings += 1
+        row.revenue += b.priceCents
         routeAgg.set(rk, row)
       }
     }

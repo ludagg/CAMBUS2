@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
 import { assertOwnsAgency } from '@/lib/scoping'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -72,6 +73,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const departureAt = new Date(body.departureAt)
     const arrivalAt = new Date(departureAt.getTime() + body.durationMin * 60_000)
 
+    // Referenced resources must belong to this agency / company.
+    if (body.vehicleId) {
+      const vehicle = await prisma.vehicle.findUnique({
+        where: { id: body.vehicleId },
+        select: { agencyId: true, status: true },
+      })
+      if (!vehicle || vehicle.agencyId !== agency.id) return bad("Véhicule invalide pour cette agence.", 400)
+      if (vehicle.status !== 'ACTIVE') return bad('Ce véhicule est désactivé.', 409)
+    }
+    const [originStation, destStation] = await Promise.all([
+      prisma.station.findUnique({ where: { id: body.originStationId }, select: { agencyId: true, agency: { select: { companyId: true } } } }),
+      prisma.station.findUnique({ where: { id: body.destStationId }, select: { agencyId: true, agency: { select: { companyId: true } } } }),
+    ])
+    if (!originStation || originStation.agencyId !== agency.id) return bad("Gare de départ invalide pour cette agence.", 400)
+    if (!destStation) return bad("Gare d'arrivée introuvable.", 404)
+
     if (body.vehicleId) {
       const conflict = await prisma.departure.findFirst({
         where: {
@@ -85,7 +102,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       })
       if (conflict) {
         return bad(
-          `Ce véhicule est déjà programmé sur ${conflict.route.originCity.name} → ${conflict.route.destinationCity.name} à ${conflict.departureAt.toISOString()}.`
+          `Ce véhicule est déjà programmé sur ${conflict.route.originCity.name} → ${conflict.route.destinationCity.name} à ${conflict.departureAt.toISOString()}.`,
+          409,
         )
       }
     }
@@ -105,6 +123,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         amenities: body.amenities ?? [],
       },
     })
+    await logAudit(
+      { action: 'departure.create', entityType: 'Departure', entityId: dep.id, metadata: { agencyId: agency.id, routeId: route.id, priceCents: dep.priceCents, departureAt: dep.departureAt.toISOString() } },
+      { session, req },
+    )
     return NextResponse.json({ data: dep }, { status: 201 })
   } catch (err) {
     return handleError(err)

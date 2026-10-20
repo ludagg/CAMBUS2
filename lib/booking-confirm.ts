@@ -18,20 +18,25 @@ export async function confirmPayment(paymentId: string): Promise<void> {
   if (payment.status === 'SUCCEEDED' && payment.group.notifiedAt) return
 
   if (payment.status !== 'SUCCEEDED') {
-    await prisma.$transaction([
-      prisma.payment.update({
-        where: { id: payment.id },
+    // Conditional transition: only a still-PENDING payment may be confirmed,
+    // so a concurrent failPayment (cron/expiry) cannot be silently overwritten.
+    const confirmed = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.payment.updateMany({
+        where: { id: payment.id, status: 'PENDING' },
         data: { status: 'SUCCEEDED' },
-      }),
-      prisma.bookingGroup.update({
+      })
+      if (claimed.count === 0) return false
+      await tx.bookingGroup.update({
         where: { id: payment.groupId },
         data: { status: 'CONFIRMED', expiresAt: null },
-      }),
-      prisma.booking.updateMany({
+      })
+      await tx.booking.updateMany({
         where: { groupId: payment.groupId },
         data: { status: 'CONFIRMED' },
-      }),
-    ])
+      })
+      return true
+    })
+    if (!confirmed) return
   }
 
   await sendBookingNotifications(payment.groupId).catch((err) => {
@@ -63,29 +68,32 @@ export async function failPayment(paymentId: string, reason: string): Promise<vo
 
   const bookingIds = payment.group.bookings.map((b) => b.id)
 
-  await prisma.$transaction([
-    prisma.payment.update({
-      where: { id: payment.id },
+  // Conditional transition: only a still-PENDING payment may fail. If it was
+  // confirmed (or already failed) in the meantime, do not release the seats.
+  const failed = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.payment.updateMany({
+      where: { id: payment.id, status: 'PENDING' },
       data: { status: 'FAILED', failureReason: reason },
-    }),
-    prisma.bookingGroup.update({
+    })
+    if (claimed.count === 0) return false
+    await tx.bookingGroup.update({
       where: { id: payment.groupId },
       data: { status: 'CANCELLED' },
-    }),
-    prisma.booking.updateMany({
+    })
+    await tx.booking.updateMany({
       where: { groupId: payment.groupId },
       data: { status: 'CANCELLED' },
-    }),
-    prisma.bookingSeat.deleteMany({
-      where: { bookingId: { in: bookingIds } },
-    }),
-    ...payment.group.bookings.map((b) =>
-      prisma.departure.update({
+    })
+    await tx.bookingSeat.deleteMany({ where: { bookingId: { in: bookingIds } } })
+    for (const b of payment.group.bookings) {
+      await tx.departure.update({
         where: { id: b.departureId },
         data: { seatsAvailable: { increment: b.passengers.length || 1 } },
-      }),
-    ),
-  ])
+      })
+    }
+    return true
+  })
+  if (!failed) return
 
   // Best-effort waitlist promotion — failures don't roll back the cancellation.
   const seen = new Set<string>()

@@ -5,6 +5,7 @@ import { getSession } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
 import { joinWaitlist, WaitlistError } from '@/lib/waitlist'
 import { logAudit } from '@/lib/audit'
+import { clientKey, rateLimit } from '@/lib/rate-limit'
 
 /**
  * GET /api/waitlist — returns the current user's WAITING or NOTIFIED entries.
@@ -54,6 +55,12 @@ const createSchema = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await getSession()
+    // Anonymous joins notify arbitrary contacts later: throttle per IP.
+    const rl = rateLimit(clientKey(req, session ? `waitlist:${session.sub}` : 'waitlist-anon'), {
+      limit: session ? 20 : 5,
+      windowSec: 600,
+    })
+    if (!rl.ok) return bad(`Trop de demandes. Réessayez dans ${rl.retryAfterSeconds}s.`, 429)
     const body = createSchema.parse(await req.json())
 
     let passengerFullName = body.passengerFullName

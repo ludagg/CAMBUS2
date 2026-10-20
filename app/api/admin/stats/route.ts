@@ -6,7 +6,7 @@ import { handleError } from '@/lib/api'
 export async function GET() {
   try {
     const session = await getSession()
-    requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENCY_ADMIN'])
+    requireRole(session, ['SUPER_ADMIN'])
 
     const [companies, agencies, cities, users, bookings, departures, revenue] =
       await Promise.all([

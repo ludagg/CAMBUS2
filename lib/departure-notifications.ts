@@ -33,7 +33,7 @@ export async function notifyDepartureChange(
   if (!dep) return
 
   const publicBaseUrl = process.env.PUBLIC_BASE_URL || 'https://easytravel.cm'
-  const originalTime = dep.departureAt.toLocaleString('fr-FR', {
+  const originalTime = dep.departureAt.toLocaleString('fr-FR', { timeZone: 'Africa/Douala',
     day: '2-digit',
     month: '2-digit',
     hour: '2-digit',
@@ -43,7 +43,7 @@ export async function notifyDepartureChange(
   const newTime = options.delayMinutes
     ? new Date(dep.departureAt.getTime() + options.delayMinutes * 60_000).toLocaleString(
         'fr-FR',
-        { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' },
+        { timeZone: 'Africa/Douala', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' },
       )
     : null
 

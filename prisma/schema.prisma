@@ -312,6 +312,9 @@ model Departure {
   @@index([departureAt])
   @@index([agencyId])
   @@index([driverId])
+  @@index([vehicleId])
+  @@index([originStationId])
+  @@index([destStationId])
 }
 
 /// Liste d'attente sur un départ plein. Une entrée est créée par l'utilisateur
@@ -428,7 +431,7 @@ model Booking {
   seats       String[]      @default([])
   priceCents  Int
   status      BookingStatus @default(CONFIRMED)
-  qrCode      String        @unique @default(cuid())
+  qrCode      String        @unique @default(uuid())
   group       BookingGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
   departure   Departure     @relation(fields: [departureId], references: [id])
   passengers  Passenger[]
@@ -464,6 +467,8 @@ model Passenger {
   idNumber  String?
   seat      String?
   booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
 }
 
 model Payment {
@@ -485,4 +490,5 @@ model Payment {
   /// creating ambiguous Payment rows. (provider, providerRef) is the natural
   /// idempotency key of a Mobile Money / card event.
   @@unique([provider, providerRef])
+  @@index([providerRef])
 }

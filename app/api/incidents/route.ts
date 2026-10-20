@@ -43,6 +43,8 @@ export async function GET(req: NextRequest) {
           select: { id: true },
         })
         where.agencyId = { in: agencies.map((a) => a.id) }
+      } else {
+        return NextResponse.json({ data: [] })
       }
     }
     if (departureId) where.departureId = departureId

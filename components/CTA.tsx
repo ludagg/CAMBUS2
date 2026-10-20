@@ -2,6 +2,7 @@
 import React from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import Bus from './landing/Bus';
 
 const CTA: React.FC = () => {
   const { navigateTo } = useNavigation();
@@ -71,6 +72,16 @@ const CTA: React.FC = () => {
             <span className="material-symbols-outlined text-[16px] text-primary">language</span>
             {t('cta.trust.langs')}
           </span>
+        </div>
+      </div>
+
+      {/* road along the bottom with a coach crossing */}
+      <div aria-hidden className="relative h-24 md:h-28 overflow-hidden">
+        <div className="absolute inset-x-0 bottom-6 h-9 bg-white/[0.04] border-y border-white/10">
+          <div className="road-dash absolute inset-x-0 top-1/2 -translate-y-1/2 h-[2px] opacity-40" />
+        </div>
+        <div className="cross-x absolute bottom-[26px] left-0">
+          <Bus beam className="w-[170px] md:w-[210px] opacity-90" />
         </div>
       </div>
     </section>

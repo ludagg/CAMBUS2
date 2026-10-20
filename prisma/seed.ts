@@ -268,7 +268,9 @@ async function main() {
   console.log(`  ✓ ${depCount} départs sur 7 jours`)
 
   // Users
+  // Demo accounts share one password: admin123 locally, SEED_PASSWORD on any shared/deployed database.
   const hash = (pwd: string) => bcrypt.hash(pwd, 10)
+  const SEED_PASSWORD = process.env.SEED_PASSWORD || 'admin123'
   const firstCompany = await prisma.company.findFirst()
   const firstAgency = await prisma.agency.findFirst({ where: { companyId: firstCompany?.id } })
   const firstStation = await prisma.station.findFirst({ where: { agencyId: firstAgency?.id } })
@@ -277,14 +279,14 @@ async function main() {
     data: [
       {
         email: 'admin@easytravel.cm',
-        passwordHash: await hash('admin123'),
+        passwordHash: await hash(SEED_PASSWORD),
         name: 'Super Admin',
         role: Role.SUPER_ADMIN,
         avatar: 'SA',
       },
       {
         email: 'company@express.cm',
-        passwordHash: await hash('company123'),
+        passwordHash: await hash(SEED_PASSWORD),
         name: 'Express Voyage Manager',
         role: Role.COMPANY_ADMIN,
         companyId: firstCompany?.id,
@@ -292,7 +294,7 @@ async function main() {
       },
       {
         email: 'agency@express.cm',
-        passwordHash: await hash('agency123'),
+        passwordHash: await hash(SEED_PASSWORD),
         name: 'Agence Bonanjo',
         role: Role.AGENCY_ADMIN,
         companyId: firstCompany?.id,
@@ -301,7 +303,7 @@ async function main() {
       },
       {
         email: 'station@express.cm',
-        passwordHash: await hash('station123'),
+        passwordHash: await hash(SEED_PASSWORD),
         name: 'Chef de station',
         role: Role.STATION_MANAGER,
         companyId: firstCompany?.id,
@@ -311,7 +313,7 @@ async function main() {
       },
       {
         email: 'client@easytravel.cm',
-        passwordHash: await hash('client123'),
+        passwordHash: await hash(SEED_PASSWORD),
         name: 'Marie Nguelé',
         role: Role.USER,
         avatar: 'MN',

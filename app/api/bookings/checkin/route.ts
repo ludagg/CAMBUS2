@@ -3,7 +3,8 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
-import { boardBookingAndSyncGroup } from '@/lib/booking-invariants'
+import { assertOwnsAgency } from '@/lib/scoping'
+import { AlreadyBoardedError, boardBookingAndSyncGroup } from '@/lib/booking-invariants'
 
 const schema = z.object({
   qrCode: z.string().min(1),
@@ -29,10 +30,20 @@ export async function POST(req: NextRequest) {
     })
 
     if (!booking) return bad('Billet introuvable.', 404)
+    await assertOwnsAgency(session!, booking.departure.agencyId)
     if (booking.status === 'BOARDED') return bad('Billet déjà validé.')
     if (booking.status !== 'CONFIRMED') return bad(`Statut invalide: ${booking.status}`)
 
-    await boardBookingAndSyncGroup(booking.id)
+    if (booking.departure.status !== 'ACTIVE' || ['CANCELLED', 'COMPLETED'].includes(booking.departure.tripStatus)) {
+      return bad("Ce départ n'est plus ouvert à l'embarquement.", 409)
+    }
+
+    try {
+      await boardBookingAndSyncGroup(booking.id)
+    } catch (err) {
+      if (err instanceof AlreadyBoardedError) return bad(err.message, 409)
+      throw err
+    }
 
     return NextResponse.json({
       data: {

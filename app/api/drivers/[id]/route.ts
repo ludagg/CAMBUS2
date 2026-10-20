@@ -7,10 +7,17 @@ import { assertOwnsDriver } from '@/lib/scoping'
 import { logAudit } from '@/lib/audit'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
-  const driver = await prisma.driver.findUnique({ where: { id } })
-  if (!driver) return bad('Chauffeur introuvable.', 404)
-  return NextResponse.json({ data: driver })
+  try {
+    const session = await getSession()
+    requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENCY_ADMIN', 'STATION_MANAGER'])
+    const { id } = await params
+    await assertOwnsDriver(session!, id)
+    const driver = await prisma.driver.findUnique({ where: { id } })
+    if (!driver) return bad('Chauffeur introuvable.', 404)
+    return NextResponse.json({ data: driver })
+  } catch (err) {
+    return handleError(err)
+  }
 }
 
 const updateSchema = z.object({
@@ -19,7 +26,7 @@ const updateSchema = z.object({
   licenseNumber: z.string().min(3).max(40).optional(),
   licenseCategory: z.enum(['B', 'C', 'D', 'D1', 'DE']).optional(),
   licenseExpiresAt: z.string().datetime().optional(),
-  status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
+  status: z.enum(['ACTIVE']).optional(), // deactivation goes through DELETE (invariant checks)
 })
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

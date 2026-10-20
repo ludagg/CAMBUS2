@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { ZodError } from 'zod'
+import { Prisma } from '@prisma/client'
 import { AuthError } from './auth'
 
 export function ok<T>(data: T, init?: ResponseInit) {
@@ -20,7 +21,11 @@ export function handleError(err: unknown) {
       { status: 422 },
     )
   }
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    if (err.code === 'P2002') return bad('Cet élément existe déjà.', 409)
+    if (err.code === 'P2025') return bad('Ressource introuvable.', 404)
+    if (err.code === 'P2003') return bad('Opération impossible: des éléments liés existent.', 409)
+  }
   console.error('API error:', err)
-  const msg = err instanceof Error ? err.message : 'Erreur interne'
-  return bad(msg, 500)
+  return bad('Erreur interne', 500)
 }

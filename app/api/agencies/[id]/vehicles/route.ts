@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError } from '@/lib/api'
 import { assertOwnsAgency } from '@/lib/scoping'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -37,6 +38,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         amenities: body.amenities ?? [],
       },
     })
+    await logAudit(
+      { action: 'vehicle.create', entityType: 'Vehicle', entityId: vehicle.id, metadata: { agencyId: id, plate: vehicle.plate, capacity: vehicle.capacity } },
+      { session, req },
+    )
     return NextResponse.json({ data: vehicle }, { status: 201 })
   } catch (err) {
     return handleError(err)

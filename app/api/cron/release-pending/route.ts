@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { failPayment } from '@/lib/booking-confirm'
+import { syncPendingPayment } from '@/lib/payment-sync'
 import { expireStaleWaitlistHolds } from '@/lib/waitlist'
 
 /**
@@ -12,7 +13,7 @@ import { expireStaleWaitlistHolds } from '@/lib/waitlist'
  * any GET works.
  */
 export async function GET(req: NextRequest) {
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV !== 'development') {
     const secret = process.env.CRON_SECRET
     const auth = req.headers.get('authorization')
     if (!secret || auth !== `Bearer ${secret}`) {
@@ -34,8 +35,12 @@ export async function GET(req: NextRequest) {
   for (const group of expired) {
     if (!group.payment) continue
     try {
-      await failPayment(group.payment.id, 'Délai de confirmation dépassé (cron).')
-      released += 1
+      // Consult the gateway first so a payment confirmed late is honoured, not released.
+      const state = await syncPendingPayment(group.payment.id, { gatewayOnly: true })
+      if (state === 'PENDING') {
+        await failPayment(group.payment.id, 'Délai de confirmation dépassé (cron).')
+        released += 1
+      }
     } catch (err) {
       console.error('[cron] failed to release', group.id, err)
     }

@@ -1,5 +1,7 @@
 import { prisma } from '@/lib/prisma';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
+import { getSession } from '@/lib/auth';
+import { assertOwnsDeparture } from '@/lib/scoping';
 import PrintButton from '@/components/PrintButton';
 
 export const dynamic = 'force-dynamic';
@@ -10,6 +12,16 @@ export default async function ManifestPrintPage({
   params: Promise<{ departureId: string }>;
 }) {
   const { departureId } = await params;
+
+  // Passenger PII: staff only, scoped to their own agency/company.
+  const session = await getSession();
+  if (!session) redirect('/login');
+  if (!['SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENCY_ADMIN', 'STATION_MANAGER'].includes(session.role)) notFound();
+  try {
+    await assertOwnsDeparture(session, departureId);
+  } catch {
+    notFound();
+  }
   const dep = await prisma.departure.findUnique({
     where: { id: departureId },
     include: {
@@ -94,6 +106,7 @@ export default async function ManifestPrintPage({
           <br />
           Édité le{' '}
           {new Date().toLocaleString('fr-FR', {
+            timeZone: 'Africa/Douala',
             day: '2-digit',
             month: '2-digit',
             year: 'numeric',
@@ -107,6 +120,7 @@ export default async function ManifestPrintPage({
         <div>
           <strong>Date & Heure de départ</strong>
           {dep.departureAt.toLocaleString('fr-FR', {
+            timeZone: 'Africa/Douala',
             weekday: 'long',
             day: '2-digit',
             month: 'long',
@@ -119,6 +133,7 @@ export default async function ManifestPrintPage({
         <div>
           <strong>Heure d'arrivée prévue</strong>
           {dep.arrivalAt.toLocaleString('fr-FR', {
+            timeZone: 'Africa/Douala',
             day: '2-digit',
             month: 'long',
             hour: '2-digit',

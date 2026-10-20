@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError } from '@/lib/api'
+import { dayRange, isValidDateKey, todayLocal } from '@/lib/datetime'
+import { assertOwnsAgency, getSessionScope } from '@/lib/scoping'
 
 // Station manifest: list departures from a given agency for a given date
 export async function GET(req: NextRequest) {
@@ -11,12 +13,24 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url)
     const agencyId = searchParams.get('agencyId')
-    const date = searchParams.get('date') ?? new Date().toISOString().split('T')[0]
-    const start = new Date(`${date}T00:00:00`)
-    const end = new Date(`${date}T23:59:59`)
+    const date = searchParams.get('date') ?? todayLocal()
+    if (!isValidDateKey(date)) return NextResponse.json({ error: 'Date invalide.' }, { status: 400 })
+    const { start, end } = dayRange(date)
+
+    const scope: { agencyId?: string; route?: { companyId: string } } = {}
+    if (agencyId) await assertOwnsAgency(session!, agencyId)
+    const userScope = await getSessionScope(session!)
+    if (userScope.role === 'AGENCY_ADMIN' || userScope.role === 'STATION_MANAGER') {
+      if (!userScope.agencyId) return NextResponse.json({ data: [] })
+      scope.agencyId = userScope.agencyId
+    } else if (userScope.role === 'COMPANY_ADMIN') {
+      if (!userScope.companyId) return NextResponse.json({ data: [] })
+      scope.route = { companyId: userScope.companyId }
+    }
 
     const departures = await prisma.departure.findMany({
       where: {
+        ...scope,
         ...(agencyId ? { agencyId } : {}),
         departureAt: { gte: start, lte: end },
       },
@@ -33,6 +47,7 @@ export async function GET(req: NextRequest) {
         },
       },
       orderBy: { departureAt: 'asc' },
+      take: 200,
     })
 
     const mapped = departures.map((d) => ({

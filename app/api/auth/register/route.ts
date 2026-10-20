@@ -18,14 +18,15 @@ export async function POST(req: NextRequest) {
     const ipRl = rateLimit(clientKey(req, 'register-ip'), { limit: 5, windowSec: 300 })
     if (!ipRl.ok) return bad(`Trop de comptes créés. Réessayez dans ${ipRl.retryAfterSeconds}s.`, 429)
 
-    const exists = await prisma.user.findUnique({ where: { email: body.email } })
+    const email = body.email.trim().toLowerCase()
+    const exists = await prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } } })
     if (exists) return bad('Un compte avec cet email existe déjà.', 409)
 
     const passwordHash = await hashPassword(body.password)
     const user = await prisma.user.create({
       data: {
         name: body.name,
-        email: body.email,
+        email,
         passwordHash,
         role: 'USER',
         avatar: body.name.charAt(0).toUpperCase(),

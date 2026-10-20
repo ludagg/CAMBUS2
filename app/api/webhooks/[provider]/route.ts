@@ -64,7 +64,7 @@ export async function POST(
     if (!timingSafeEqual(expected, provided)) {
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
     }
-  } else if (process.env.NODE_ENV === 'production') {
+  } else if (process.env.NODE_ENV !== 'development') {
     return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 500 })
   }
 
@@ -80,7 +80,10 @@ export async function POST(
   }
 
   const payment = await prisma.payment.findFirst({
-    where: { providerRef: parsed.data.externalRef },
+    where: {
+      providerRef: parsed.data.externalRef,
+      method: provider === 'om' ? 'OM' : 'MOMO',
+    },
   })
   if (!payment) {
     return NextResponse.json({ error: 'Payment not found' }, { status: 404 })

@@ -3,22 +3,33 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { getSessionScope } from '@/lib/scoping'
+import { handleError } from '@/lib/api'
 
 function csvEscape(value: unknown): string {
   if (value === null || value === undefined) return ''
-  const s = String(value)
-  if (s.includes('"') || s.includes(',') || s.includes('\n')) {
+  let s = String(value)
+  // Neutralise spreadsheet formula injection (=, +, -, @, tab, CR).
+  if (/^[=+\-@\t\r]/.test(s) && typeof value === 'string') s = `'${s}`
+  if (s.includes('"') || s.includes(',') || s.includes('\n') || s.includes('\r')) {
     return `"${s.replace(/"/g, '""')}"`
   }
   return s
 }
 
 export async function GET(req: NextRequest) {
+  try {
+    return await buildExport(req)
+  } catch (err) {
+    return handleError(err)
+  }
+}
+
+async function buildExport(req: NextRequest) {
   const session = await getSession()
   requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENCY_ADMIN', 'STATION_MANAGER'])
 
   const { searchParams } = new URL(req.url)
-  const rangeDays = Math.min(365, Math.max(1, Number(searchParams.get('rangeDays') || 30)))
+  const rangeDays = Math.min(365, Math.max(1, Number(searchParams.get('rangeDays')) || 30))
   const from = new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000)
 
   const s = await getSessionScope(session!)
@@ -36,6 +47,7 @@ export async function GET(req: NextRequest) {
     },
     include: {
       bookings: {
+        where: { departure: departureScope },
         include: {
           departure: {
             include: {
@@ -55,6 +67,7 @@ export async function GET(req: NextRequest) {
       soldBy: { select: { name: true, email: true } },
     },
     orderBy: { createdAt: 'desc' },
+    take: 5000,
   })
 
   const header = [

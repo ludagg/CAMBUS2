@@ -11,9 +11,9 @@ const ALG = 'HS256'
 function getSecret() {
   const secret = process.env.AUTH_SECRET
   if (!secret) {
-    if (process.env.NODE_ENV === 'production') {
+    if (process.env.NODE_ENV !== 'development' && process.env.NODE_ENV !== 'test') {
       throw new Error(
-        'AUTH_SECRET environment variable is required in production. Generate one with `openssl rand -hex 64`.',
+        'AUTH_SECRET environment variable is required outside local development. Generate one with `openssl rand -hex 64`.',
       )
     }
     return new TextEncoder().encode(DEFAULT_SECRET)
@@ -57,7 +57,17 @@ export async function getSession(): Promise<SessionPayload | null> {
   const store = await cookies()
   const token = store.get(COOKIE_NAME)?.value
   if (!token) return null
-  return verifySession(token)
+  const claims = await verifySession(token)
+  if (!claims) return null
+
+  // The JWT lives 30 days: re-read the account on every request so a deleted
+  // account is rejected and a changed role takes effect immediately.
+  const user = await prisma.user.findUnique({
+    where: { id: claims.sub },
+    select: { email: true, role: true, name: true },
+  })
+  if (!user) return null
+  return { sub: claims.sub, email: user.email, role: user.role, name: user.name }
 }
 
 export async function getCurrentUser(): Promise<User | null> {

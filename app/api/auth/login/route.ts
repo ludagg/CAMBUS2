@@ -19,7 +19,9 @@ export async function POST(req: NextRequest) {
     const emailRl = rateLimit(`login-email:${body.email.toLowerCase()}`, { limit: 5, windowSec: 60 })
     if (!emailRl.ok) return bad(`Trop de tentatives pour cet email. Réessayez dans ${emailRl.retryAfterSeconds}s.`, 429)
 
-    const user = await prisma.user.findUnique({ where: { email: body.email } })
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: body.email.trim(), mode: 'insensitive' } },
+    })
     if (!user) return bad('Email ou mot de passe incorrect.', 401)
 
     const valid = await verifyPassword(body.password, user.passwordHash)

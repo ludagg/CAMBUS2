@@ -4,15 +4,27 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
-import { getProvider, normalizeCameroonPhone, type PaymentProviderId } from '@/lib/payment'
+import { localDateKey } from '@/lib/datetime'
+import { logAudit } from '@/lib/audit'
+import { markWaitlistPromoted } from '@/lib/waitlist'
+import { getProvider, normalizeCameroonPhone, PaymentUnavailableError, type PaymentProviderId } from '@/lib/payment'
+import { failPayment } from '@/lib/booking-confirm'
+import { MIN_AMOUNT_XAF, fapshiConfigured } from '@/lib/fapshi'
 import {
   computeSeatPriceCents,
   defaultLayoutForCapacity,
   DEFAULT_VIP_MULTIPLIER,
+  allSeatIds,
   type SeatLayout,
 } from '@/lib/seat-layout'
 
 const PENDING_EXPIRY_MIN = 10
+
+class SoldOutError extends Error {
+  constructor(public leg: string) {
+    super('sold out')
+  }
+}
 
 export async function GET() {
   try {
@@ -68,9 +80,9 @@ export async function GET() {
         to: b.departure.destStation.name,
         fromCity: b.departure.route.originCity.name,
         toCity: b.departure.route.destinationCity.name,
-        departureTime: b.departure.departureAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false }),
-        arrivalTime: b.departure.arrivalAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false }),
-        date: b.departure.departureAt.toISOString().split('T')[0],
+        departureTime: b.departure.departureAt.toLocaleTimeString('fr-FR', { timeZone: 'Africa/Douala', hour: '2-digit', minute: '2-digit', hour12: false }),
+        arrivalTime: b.departure.arrivalAt.toLocaleTimeString('fr-FR', { timeZone: 'Africa/Douala', hour: '2-digit', minute: '2-digit', hour12: false }),
+        date: localDateKey(b.departure.departureAt),
         passengers: b.passengers,
       })),
       payment: g.payment ? { method: g.payment.method, status: g.payment.status, provider: g.payment.provider, phoneNumber: g.payment.phoneNumber } : null,
@@ -100,6 +112,14 @@ const bookingSchema = z.object({
   paymentMethod: z.enum(['MOMO', 'OM', 'CARD', 'CASH']),
   paymentPhone: z.string().optional(),
 })
+
+function isBookable(dep: { status: string; tripStatus: string; departureAt: Date }): boolean {
+  return (
+    dep.status === 'ACTIVE' &&
+    (dep.tripStatus === 'SCHEDULED' || dep.tripStatus === 'DELAYED') &&
+    dep.departureAt.getTime() > Date.now()
+  )
+}
 
 function resolveLayout(seatLayout: Prisma.JsonValue | null, capacity: number): SeatLayout {
   if (seatLayout && typeof seatLayout === 'object' && !Array.isArray(seatLayout)) {
@@ -142,6 +162,17 @@ export async function POST(req: NextRequest) {
       return bad('Le paiement en espèces est uniquement disponible au guichet.', 403)
     }
 
+    // No real card provider is wired in: a "CARD" payment is simulated and
+    // would confirm the booking for free. Only allow it outside production
+    // (or when explicitly opted in).
+    if (
+      body.paymentMethod === 'CARD' &&
+      process.env.NODE_ENV === 'production' &&
+      process.env.ALLOW_SIMULATED_CARD !== 'true'
+    ) {
+      return bad("Le paiement par carte n'est pas encore disponible.", 400)
+    }
+
     const idempotencyKey = req.headers.get('idempotency-key')?.trim() || null
     if (idempotencyKey) {
       const existing = await prisma.bookingGroup.findUnique({
@@ -149,6 +180,9 @@ export async function POST(req: NextRequest) {
         include: { payment: true },
       })
       if (existing) {
+        if (existing.userId !== session!.sub && existing.soldByUserId !== session!.sub) {
+          return bad("Clé d'idempotence déjà utilisée.", 409)
+        }
         return NextResponse.json(
           {
             data: {
@@ -172,6 +206,13 @@ export async function POST(req: NextRequest) {
       if (!normalizedPhone) {
         return bad('Numéro Mobile Money invalide. Format attendu: 6XX XXX XXX.')
       }
+      // Fail early (before holding seats) when no payment gateway can process this.
+      try {
+        getProvider(body.paymentMethod as PaymentProviderId)
+      } catch (err) {
+        if (err instanceof PaymentUnavailableError) return bad(err.message, 503)
+        throw err
+      }
     }
 
     const outDep = await prisma.departure.findUnique({
@@ -179,6 +220,7 @@ export async function POST(req: NextRequest) {
       include: { vehicle: { select: { seatLayout: true, capacity: true } } },
     })
     if (!outDep) return bad('Départ aller introuvable.', 404)
+    if (!isBookable(outDep)) return bad("Ce départ aller n'est plus disponible à la réservation.", 409)
     if (outDep.seatsAvailable < body.passengers.length) return bad('Places insuffisantes pour l\'aller.')
 
     let retDep: Awaited<ReturnType<typeof prisma.departure.findUnique>> | null = null
@@ -188,6 +230,7 @@ export async function POST(req: NextRequest) {
         include: { vehicle: { select: { seatLayout: true, capacity: true } } },
       })
       if (!retDep) return bad('Départ retour introuvable.', 404)
+      if (!isBookable(retDep)) return bad("Ce départ retour n'est plus disponible à la réservation.", 409)
       if (retDep.seatsAvailable < body.passengers.length) return bad('Places insuffisantes pour le retour.')
     }
 
@@ -211,11 +254,26 @@ export async function POST(req: NextRequest) {
         )
       : null
 
+    if (outSeats.length > body.passengers.length || retSeats.length > body.passengers.length) {
+      return bad('Plus de sièges sélectionnés que de passagers.')
+    }
+    const outValid = new Set(allSeatIds(outLayout))
+    if (outSeats.some((x) => !outValid.has(x))) return bad('Siège aller invalide.')
+    if (retLayout) {
+      const retValid = new Set(allSeatIds(retLayout))
+      if (retSeats.some((x) => !retValid.has(x))) return bad('Siège retour invalide.')
+    } else if (retSeats.length > 0) {
+      return bad('Sièges retour sans départ retour.')
+    }
+
     const outPrice = sumSeats(outDep.priceCents, outLayout, outSeats, body.passengers.length)
     const retPrice = retDep && retLayout
       ? sumSeats(retDep.priceCents, retLayout, retSeats, body.passengers.length)
       : 0
     const totalCents = outPrice + retPrice
+    if (isMobileMoney && fapshiConfigured() && totalCents < MIN_AMOUNT_XAF) {
+      return bad(`Montant minimum pour Mobile Money: ${MIN_AMOUNT_XAF} FCFA.`)
+    }
 
     const initialStatus = isMobileMoney ? 'PENDING' : 'CONFIRMED'
     const expiresAt = isMobileMoney
@@ -225,15 +283,18 @@ export async function POST(req: NextRequest) {
     let result: { groupId: string; paymentId: string; paymentStatus: string }
     try {
       result = await prisma.$transaction(async (tx) => {
-        await tx.departure.update({
-          where: { id: outDep.id },
-          data: { seatsAvailable: { decrement: body.passengers.length } },
+        const n = body.passengers.length
+        const outUpd = await tx.departure.updateMany({
+          where: { id: outDep.id, seatsAvailable: { gte: n } },
+          data: { seatsAvailable: { decrement: n } },
         })
+        if (outUpd.count === 0) throw new SoldOutError('aller')
         if (retDep) {
-          await tx.departure.update({
-            where: { id: retDep.id },
-            data: { seatsAvailable: { decrement: body.passengers.length } },
+          const retUpd = await tx.departure.updateMany({
+            where: { id: retDep.id, seatsAvailable: { gte: n } },
+            data: { seatsAvailable: { decrement: n } },
           })
+          if (retUpd.count === 0) throw new SoldOutError('retour')
         }
 
         const isStaff = session!.role !== 'USER'
@@ -327,6 +388,7 @@ export async function POST(req: NextRequest) {
         return { groupId: group.id, paymentId: payment.id, paymentStatus: payment.status }
       })
     } catch (err) {
+      if (err instanceof SoldOutError) return bad(`Places insuffisantes pour le ${err.leg}.`, 409)
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         const target = (err.meta?.target as string[] | undefined) ?? []
         if (target.includes('idempotencyKey')) {
@@ -334,7 +396,7 @@ export async function POST(req: NextRequest) {
             where: { idempotencyKey: idempotencyKey! },
             include: { payment: true },
           })
-          if (existing) {
+          if (existing && (existing.userId === session!.sub || existing.soldByUserId === session!.sub)) {
             return NextResponse.json(
               {
                 data: {
@@ -356,16 +418,51 @@ export async function POST(req: NextRequest) {
 
     if (isMobileMoney && normalizedPhone) {
       const provider = getProvider(body.paymentMethod as PaymentProviderId)
-      const init = await provider.initiate({
-        amountCents: totalCents,
-        currency: outDep.currency,
-        phoneNumber: normalizedPhone,
-        reference: result.groupId,
-      })
-      await prisma.payment.update({
-        where: { id: result.paymentId },
-        data: { providerRef: init.externalRef },
-      })
+      try {
+        const init = await provider.initiate({
+          amountCents: totalCents,
+          currency: outDep.currency,
+          phoneNumber: normalizedPhone,
+          reference: result.groupId,
+        })
+        await prisma.payment.update({
+          where: { id: result.paymentId },
+          data: { providerRef: init.externalRef },
+        })
+      } catch (err) {
+        // The prompt never reached the customer: release the seats right away.
+        console.error('[payment] initiate failed', result.groupId, err)
+        await failPayment(result.paymentId, "Le paiement n'a pas pu être initié auprès de l'opérateur.").catch(
+          (e) => console.error('[payment] release after initiate failure failed', e),
+        )
+        const message =
+          err instanceof Error && 'status' in err && (err as { status: number }).status === 400
+            ? err.message
+            : "Impossible de lancer le paiement Mobile Money. Réessayez dans un instant."
+        return bad(message, 502)
+      }
+    }
+
+    // A booking by someone who was offered a freed seat closes their waitlist entry.
+    for (const depId of [outDep.id, retDep?.id]) {
+      if (!depId) continue
+      await markWaitlistPromoted(
+        depId,
+        { userId: session!.role === 'USER' ? session!.sub : null, email: body.contactEmail },
+        result.groupId,
+      ).catch((err) => console.error('[waitlist] mark promoted failed', err))
+    }
+
+    if (session!.role !== 'USER') {
+      await logAudit(
+        {
+          action: body.paymentMethod === 'CASH' ? 'booking.counter_sale' : 'booking.staff_create',
+          entityType: 'BookingGroup',
+          entityId: result.groupId,
+          metadata: { totalCents, paymentMethod: body.paymentMethod, departureId: outDep.id, passengers: body.passengers.length },
+        },
+        { session, req },
+      )
     }
 
     return NextResponse.json(

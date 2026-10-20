@@ -1,6 +1,8 @@
 import QRCode from 'qrcode';
 import { prisma } from '@/lib/prisma';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
+import { getSession } from '@/lib/auth';
+import { assertOwnsBookingGroup } from '@/lib/scoping';
 import PrintButton from '@/components/PrintButton';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +17,23 @@ export default async function TicketPrintPage({
   params: Promise<{ groupId: string }>;
 }) {
   const { groupId } = await params;
+
+  // Tickets carry check-in QR codes: owner or in-scope staff only.
+  const session = await getSession();
+  if (!session) redirect('/login');
+  if (session.role === 'USER') {
+    const owned = await prisma.bookingGroup.findFirst({
+      where: { id: groupId, userId: session.sub },
+      select: { id: true },
+    });
+    if (!owned) notFound();
+  } else {
+    try {
+      await assertOwnsBookingGroup(session, groupId);
+    } catch {
+      notFound();
+    }
+  }
   const group = await prisma.bookingGroup.findUnique({
     where: { id: groupId },
     include: {
@@ -97,6 +116,7 @@ export default async function TicketPrintPage({
                 <div>
                   <strong>Départ :</strong>{' '}
                   {d.departureAt.toLocaleString('fr-FR', {
+            timeZone: 'Africa/Douala',
                     day: '2-digit',
                     month: 'long',
                     year: 'numeric',
@@ -107,6 +127,7 @@ export default async function TicketPrintPage({
                 <div>
                   <strong>Arrivée :</strong>{' '}
                   {d.arrivalAt.toLocaleString('fr-FR', {
+            timeZone: 'Africa/Douala',
                     day: '2-digit',
                     month: 'long',
                     hour: '2-digit',
@@ -156,6 +177,7 @@ export default async function TicketPrintPage({
               </span>
               <span className="muted">
                 {new Date().toLocaleString('fr-FR', {
+            timeZone: 'Africa/Douala',
                   day: '2-digit',
                   month: '2-digit',
                   year: 'numeric',

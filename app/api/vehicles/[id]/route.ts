@@ -24,7 +24,7 @@ const updateSchema = z.object({
   model: z.string().min(1).optional(),
   capacity: z.number().int().positive().optional(),
   amenities: z.array(z.string()).optional(),
-  status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
+  status: z.enum(['ACTIVE']).optional(), // deactivation goes through DELETE (invariant checks)
   seatLayout: seatLayoutSchema.optional(),
 })
 
@@ -41,6 +41,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data.seatLayout = seatLayout === null ? null : (seatLayout as unknown as object)
     }
     const vehicle = await prisma.vehicle.update({ where: { id }, data })
+    await logAudit(
+      { action: 'vehicle.update', entityType: 'Vehicle', entityId: id, metadata: { fields: Object.keys(data) } },
+      { session, req },
+    )
     return NextResponse.json({ data: vehicle })
   } catch (err) {
     return handleError(err)

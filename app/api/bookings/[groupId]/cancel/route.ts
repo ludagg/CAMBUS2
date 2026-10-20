@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSession, requireRole } from '@/lib/auth'
 import { handleError, bad } from '@/lib/api'
+import { assertOwnsBookingGroup } from '@/lib/scoping'
 import { cancelBookingGroup, CancellationError } from '@/lib/booking-cancel'
 import { logAudit } from '@/lib/audit'
 
@@ -36,6 +37,7 @@ export async function POST(
     if (session!.role === 'USER' && group.userId !== session!.sub) {
       return bad("Vous n'êtes pas autorisé à annuler cette réservation.", 403)
     }
+    if (session!.role !== 'USER') await assertOwnsBookingGroup(session!, groupId)
 
     let reason: string | undefined
     try {

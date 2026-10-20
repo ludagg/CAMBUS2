@@ -9,11 +9,22 @@ import type { Prisma } from '@prisma/client'
  * child Booking rows are BOARDED` can drift — the check-in endpoint updated
  * only the individual Booking, leaving the group in CONFIRMED forever.
  */
+export class AlreadyBoardedError extends Error {
+  constructor() {
+    super('Billet déjà validé.')
+  }
+}
+
 export async function boardBookingAndSyncGroup(bookingId: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
-    const booking = await tx.booking.update({
-      where: { id: bookingId },
+    // Conditional update so two concurrent scans of the same QR cannot both succeed.
+    const claimed = await tx.booking.updateMany({
+      where: { id: bookingId, status: 'CONFIRMED' },
       data: { status: 'BOARDED' },
+    })
+    if (claimed.count === 0) throw new AlreadyBoardedError()
+    const booking = await tx.booking.findUniqueOrThrow({
+      where: { id: bookingId },
       select: { groupId: true },
     })
     const siblings = await tx.booking.findMany({

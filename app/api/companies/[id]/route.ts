@@ -27,7 +27,7 @@ const updateSchema = z.object({
   brandColor: z.string().optional(),
   description: z.string().optional(),
   email: z.string().email().optional(),
-  status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
+  status: z.enum(['ACTIVE']).optional(), // deactivation goes through DELETE (invariant checks)
 })
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

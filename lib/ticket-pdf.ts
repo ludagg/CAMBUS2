@@ -243,6 +243,7 @@ export async function buildTicketPdf(
 function formatDate(iso: string, locale: 'fr' | 'en'): string {
   try {
     return new Date(iso).toLocaleDateString(locale === 'en' ? 'en-US' : 'fr-FR', {
+      timeZone: 'Africa/Douala',
       weekday: 'long',
       day: 'numeric',
       month: 'long',

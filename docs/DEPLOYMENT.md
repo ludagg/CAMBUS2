@@ -22,6 +22,10 @@ Postgres.
 | `AUTH_SECRET`         | ✅          | `openssl rand -hex 64` — min 32 chars              |
 | `PUBLIC_BASE_URL`     | ✅          | `https://easytravel.cm` (utilisé dans emails/SMS)  |
 | `CRON_SECRET`         | ✅          | `openssl rand -hex 32` — protège `/api/cron/*`     |
+| `FAPSHI_API_USER`     | ✅          | Identifiant API du service Fapshi                  |
+| `FAPSHI_API_KEY`      | ✅          | Clé API du service Fapshi (affichée une seule fois) |
+| `FAPSHI_ENV`          | ✅          | `sandbox` (défaut) ou `live`                       |
+| `FAPSHI_WEBHOOK_SECRET` | ✅        | Même secret que sur le dashboard Fapshi (`x-wh-secret`) |
 | `OM_WEBHOOK_SECRET`   | ⚠️          | Partagé avec Orange Money pour vérifier les hooks  |
 | `MOMO_WEBHOOK_SECRET` | ⚠️          | Partagé avec MTN pour vérifier les hooks           |
 | `RESEND_API_KEY`      | ⚪          | Sans → emails en mock console                      |
@@ -93,3 +97,26 @@ toute requête sans signature valide en production.
 - `/api/health` → à brancher sur UptimeRobot / BetterStack / Vercel Monitoring.
 - Logs Vercel : `vercel logs --follow`.
 - Alertes suggérées : health 5xx > 1 min, latence p95 > 2s, erreurs DB.
+
+
+## Paiement Mobile Money — Fapshi
+
+Easy Travel utilise l'agrégateur [Fapshi](https://fapshi.com) (MTN MoMo + Orange Money)
+en « direct pay » : le client reçoit une demande de confirmation sur son téléphone.
+
+1. Crée un compte Fapshi puis un *service* ; récupère `apiuser` et `apikey`
+   (sandbox d'abord, ils sont distincts de ceux du mode live).
+2. Renseigne `FAPSHI_API_USER`, `FAPSHI_API_KEY`, `FAPSHI_ENV=sandbox` sur Vercel.
+3. Sur le dashboard Fapshi, configure le webhook du service :
+   `https://<ton-domaine>/api/webhooks/fapshi` avec un secret, et mets ce secret dans
+   `FAPSHI_WEBHOOK_SECRET`.
+4. Test en sandbox : `670000000` / `690000000` réussissent, `670000001` / `690000001`
+   échouent (autres numéros : résultat aléatoire).
+5. Passage en production : active ton compte Fapshi (et *direct pay*, désactivé par
+   défaut en live), mets les identifiants live et `FAPSHI_ENV=live`.
+
+Fapshi n'envoie **qu'un seul** webhook par événement (pas de nouvelle tentative) : la page
+de paiement interroge aussi `/payment-status` (limité à 6 requêtes/minute par transaction)
+et le cron vérifie chez Fapshi avant de libérer une réservation expirée.
+Sans identifiants Fapshi, un simulateur confirme tous les paiements : il est **refusé en
+production** sauf `ALLOW_SIMULATED_PAYMENTS=true` (démo uniquement).

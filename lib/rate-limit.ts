@@ -45,8 +45,15 @@ export function rateLimit(
 }
 
 export function clientKey(req: NextRequest, prefix: string): string {
+  // The first X-Forwarded-For entry is client-controlled. Prefer the headers
+  // set by the platform edge, then the last (proxy-appended) hop.
   const forwarded = req.headers.get('x-forwarded-for')
-  const ip = forwarded?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown'
+  const lastHop = forwarded?.split(',').pop()?.trim()
+  const ip =
+    req.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim() ||
+    req.headers.get('x-real-ip') ||
+    lastHop ||
+    'unknown'
   return `${prefix}:${ip}`
 }
 

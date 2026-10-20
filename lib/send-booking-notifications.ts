@@ -1,3 +1,4 @@
+import { localDateKey } from './datetime'
 import { prisma } from './prisma'
 import {
   getEmailProvider,
@@ -59,8 +60,8 @@ export async function sendBookingNotifications(
     bookings: group.bookings.map((b) => ({
       from: b.departure.route.originCity.name,
       to: b.departure.route.destinationCity.name,
-      date: b.departure.departureAt.toISOString().split('T')[0],
-      departureTime: b.departure.departureAt.toLocaleTimeString('fr-FR', {
+      date: localDateKey(b.departure.departureAt),
+      departureTime: b.departure.departureAt.toLocaleTimeString('fr-FR', { timeZone: 'Africa/Douala',
         hour: '2-digit',
         minute: '2-digit',
         hour12: false,
@@ -99,7 +100,7 @@ export async function sendBookingNotifications(
             body: renderBookingSms({
               fromCity: b.departure.route.originCity.name,
               toCity: b.departure.route.destinationCity.name,
-              departureAt: b.departure.departureAt.toLocaleString('fr-FR', {
+              departureAt: b.departure.departureAt.toLocaleString('fr-FR', { timeZone: 'Africa/Douala',
                 day: '2-digit',
                 month: '2-digit',
                 hour: '2-digit',

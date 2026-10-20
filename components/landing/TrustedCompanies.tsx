@@ -14,13 +14,27 @@ interface Company {
 const TrustedCompanies: React.FC = () => {
   const { t } = useLanguage();
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch('/api/companies')
       .then((r) => r.json())
       .then((j) => setCompanies(j.data ?? []))
-      .catch(() => setCompanies([]));
+      .catch(() => setCompanies([]))
+      .finally(() => setLoading(false));
   }, []);
+
+  if (loading) {
+    return (
+      <section aria-hidden className="py-20 md:py-24 px-6 md:px-10 bg-white dark:bg-background-dark border-y border-ink-100 dark:border-white/10">
+        <div className="max-w-6xl mx-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="h-24 rounded-2xl bg-ink-100 dark:bg-white/5 animate-pulse" />
+          ))}
+        </div>
+      </section>
+    );
+  }
 
   if (companies.length === 0) return null;
 

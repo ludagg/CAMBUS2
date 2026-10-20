@@ -130,7 +130,12 @@ export async function promoteWaitlistForDeparture(
   if (departure.seatsAvailable <= 0) return 0
   if (departure.departureAt.getTime() <= Date.now()) return 0
 
-  let seatsLeft = departure.seatsAvailable
+  // Seats already offered to people still inside their hold window are not free.
+  const held = await prisma.waitlistEntry.aggregate({
+    where: { departureId, status: 'NOTIFIED', holdExpiresAt: { gt: new Date() } },
+    _sum: { seatsRequested: true },
+  })
+  let seatsLeft = departure.seatsAvailable - (held._sum.seatsRequested ?? 0)
   let promoted = 0
   const hold = WAITLIST_HOLD_MINUTES * 60 * 1000
 
@@ -147,14 +152,16 @@ export async function promoteWaitlistForDeparture(
       break
     }
     const now = new Date()
-    await prisma.waitlistEntry.update({
-      where: { id: next.id },
+    // Atomic claim: if a concurrent promotion already took this entry, move on.
+    const claimed = await prisma.waitlistEntry.updateMany({
+      where: { id: next.id, status: 'WAITING' },
       data: {
         status: 'NOTIFIED',
         notifiedAt: now,
         holdExpiresAt: new Date(now.getTime() + hold),
       },
     })
+    if (claimed.count === 0) continue
     await notifyWaitlistEntry(next.id, departure)
     seatsLeft -= next.seatsRequested
     promoted += 1
@@ -179,7 +186,7 @@ async function notifyWaitlistEntry(
   })
   if (!entry) return
 
-  const when = departure.departureAt.toLocaleString('fr-FR', {
+  const when = departure.departureAt.toLocaleString('fr-FR', { timeZone: 'Africa/Douala',
     dateStyle: 'long',
     timeStyle: 'short',
   })
@@ -217,13 +224,47 @@ async function notifyWaitlistEntry(
 export async function expireStaleWaitlistHolds(
   now: Date = new Date(),
 ): Promise<number> {
+  const where = {
+    status: 'NOTIFIED' as const,
+    holdExpiresAt: { lt: now },
+    promotedGroupId: null,
+  }
+  const stale = await prisma.waitlistEntry.findMany({
+    where,
+    select: { id: true, departureId: true },
+  })
+  if (stale.length === 0) return 0
   const result = await prisma.waitlistEntry.updateMany({
-    where: {
-      status: 'NOTIFIED',
-      holdExpiresAt: { lt: now },
-      promotedGroupId: null,
-    },
+    where: { ...where, id: { in: stale.map((e) => e.id) } },
     data: { status: 'EXPIRED' },
   })
+  // The seat is free again: offer it to the next person in the queue.
+  for (const departureId of new Set(stale.map((e) => e.departureId))) {
+    try {
+      await promoteWaitlistForDeparture(departureId)
+    } catch (err) {
+      console.error('[waitlist] promotion after expiry failed', departureId, err)
+    }
+  }
   return result.count
+}
+
+/**
+ * Archive the waitlist entry (status PROMOTED) of someone who booked the
+ * departure they had been notified about. Matches by user id or contact email.
+ */
+export async function markWaitlistPromoted(
+  departureId: string,
+  who: { userId?: string | null; email?: string | null },
+  groupId: string,
+): Promise<void> {
+  const or = [
+    ...(who.userId ? [{ userId: who.userId }] : []),
+    ...(who.email ? [{ email: { equals: who.email, mode: 'insensitive' as const } }] : []),
+  ]
+  if (or.length === 0) return
+  await prisma.waitlistEntry.updateMany({
+    where: { departureId, status: 'NOTIFIED', OR: or },
+    data: { status: 'PROMOTED', promotedGroupId: groupId },
+  })
 }
