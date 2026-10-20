@@ -268,7 +268,9 @@ async function main() {
   console.log(`  ✓ ${depCount} départs sur 7 jours`)
 
   // Users
+  // Demo accounts share one password: admin123 locally, SEED_PASSWORD on any shared/deployed database.
   const hash = (pwd: string) => bcrypt.hash(pwd, 10)
+  const SEED_PASSWORD = process.env.SEED_PASSWORD || 'admin123'
   const firstCompany = await prisma.company.findFirst()
   const firstAgency = await prisma.agency.findFirst({ where: { companyId: firstCompany?.id } })
   const firstStation = await prisma.station.findFirst({ where: { agencyId: firstAgency?.id } })
@@ -277,7 +279,7 @@ async function main() {
     data: [
       {
         email: 'admin@easytravel.cm',
-        passwordHash: await hash('admin123'),
+        passwordHash: await hash(SEED_PASSWORD),
         name: 'Super Admin',
         role: Role.SUPER_ADMIN,
         avatar: 'SA',
