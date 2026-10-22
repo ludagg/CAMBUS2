@@ -128,7 +128,14 @@ const BookingsPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  if (!user) return null;
+  if (!user) return (
+    <div className="min-h-[80vh] flex flex-col items-center justify-center p-4 bg-background-light dark:bg-background-dark">
+      <div className="bg-white dark:bg-surface-dark p-8 rounded-2xl shadow-subtle text-center border border-ink-100 dark:border-white/10">
+        <div className="size-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4"><span className="material-symbols-outlined text-primary text-2xl animate-spin">progress_activity</span></div>
+        <p className="text-text-muted dark:text-gray-400 font-medium">Vérification de la session...</p>
+      </div>
+    </div>
+  );
 
   const now = new Date();
   const earliestDate = (b: Booking) => {

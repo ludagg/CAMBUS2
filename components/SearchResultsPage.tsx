@@ -90,7 +90,14 @@ const SearchResultsPage: React.FC = () => {
 
   if (!searchParams) {
     setTimeout(() => navigateTo('home'), 100);
-    return null;
+    return (
+      <div className="min-h-[80vh] flex flex-col items-center justify-center p-4 bg-background-light dark:bg-background-dark">
+        <div className="bg-white dark:bg-surface-dark p-8 rounded-2xl shadow-subtle text-center border border-ink-100 dark:border-white/10">
+          <p className="text-text-muted dark:text-gray-400 font-medium mb-4">Redirection vers l'accueil...</p>
+          <div className="size-10 bg-primary/10 rounded-full flex items-center justify-center mx-auto"><span className="material-symbols-outlined text-primary text-xl animate-spin">sync</span></div>
+        </div>
+      </div>
+    );
   }
 
   const isRoundTrip = searchParams.tripType === 'round-trip';

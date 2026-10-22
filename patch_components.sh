@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# AccountPage.tsx patch
+sed -i 's/if (authLoading || !user) return null;/if (authLoading || !user) return (\n    <div className="min-h-[80vh] flex flex-col items-center justify-center p-4 bg-background-light dark:bg-background-dark">\n      <div className="bg-white dark:bg-surface-dark p-8 rounded-2xl shadow-subtle text-center border border-ink-100 dark:border-white\/10">\n        <div className="size-12 bg-primary\/10 rounded-full flex items-center justify-center mx-auto mb-4"><span className="material-symbols-outlined text-primary text-2xl animate-spin">progress_activity<\/span><\/div>\n        <p className="text-text-muted dark:text-gray-400 font-medium">Chargement de votre profil...<\/p>\n      <\/div>\n    <\/div>\n  );/g' components/AccountPage.tsx
+
+# BookingsPage.tsx patch
+sed -i 's/if (!user) return null;/if (!user) return (\n    <div className="min-h-[80vh] flex flex-col items-center justify-center p-4 bg-background-light dark:bg-background-dark">\n      <div className="bg-white dark:bg-surface-dark p-8 rounded-2xl shadow-subtle text-center border border-ink-100 dark:border-white\/10">\n        <div className="size-12 bg-primary\/10 rounded-full flex items-center justify-center mx-auto mb-4"><span className="material-symbols-outlined text-primary text-2xl animate-spin">progress_activity<\/span><\/div>\n        <p className="text-text-muted dark:text-gray-400 font-medium">Vérification de la session...<\/p>\n      <\/div>\n    <\/div>\n  );/g' components/BookingsPage.tsx
