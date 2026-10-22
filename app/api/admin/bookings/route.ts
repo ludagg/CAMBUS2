@@ -1,163 +1,128 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { z } from 'zod'
-import { Prisma } from '@prisma/client'
-import { prisma } from '@/lib/prisma'
-import { getSession, requireRole } from '@/lib/auth'
-import { getSessionScope } from '@/lib/scoping'
-import { handleError } from '@/lib/api'
-import { dayRange, isValidDateKey } from '@/lib/datetime'
-
-/**
- * GET /api/admin/bookings — paginated booking groups for staff.
- * Scope (same as the CSV export): SUPER all, COMPANY by route.companyId,
- * AGENCY/STATION by departure.agencyId. Fails closed (empty list) when the
- * staff account has no company / agency.
- */
-const dateKey = z.string().refine(isValidDateKey, 'Date invalide.')
-const querySchema = z.object({
-  q: z.string().trim().max(100).optional(),
-  status: z.enum(['PENDING', 'CONFIRMED', 'BOARDED', 'CANCELLED']).optional(),
-  from: dateKey.optional(),
-  to: dateKey.optional(),
-  cursor: z.string().max(200).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(25),
-})
-
-function decodeCursor(raw: string): { createdAt: Date; id: string } | null {
-  try {
-    const [iso, id] = Buffer.from(raw, 'base64url').toString('utf8').split('|')
-    const createdAt = new Date(iso)
-    if (!id || Number.isNaN(createdAt.getTime())) return null
-    return { createdAt, id }
-  } catch {
-    return null
-  }
-}
-
-const encodeCursor = (createdAt: Date, id: string) =>
-  Buffer.from(`${createdAt.toISOString()}|${id}`).toString('base64url')
+import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
+import { getSession, requireRole } from '@/lib/auth';
+import { getSessionScope } from '@/lib/scoping';
+import { handleError } from '@/lib/api';
+import { dayRange } from '@/lib/datetime';
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getSession()
-    requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENCY_ADMIN', 'STATION_MANAGER'])
-    const params = Object.fromEntries(new URL(req.url).searchParams.entries())
-    const q = querySchema.parse(params)
+    const session = await getSession();
+    requireRole(session, ['SUPER_ADMIN', 'COMPANY_ADMIN', 'AGENCY_ADMIN', 'STATION_MANAGER']);
 
-    const s = await getSessionScope(session!)
-    let departureScope: Prisma.DepartureWhereInput = {}
-    if (s.role === 'COMPANY_ADMIN') {
-      if (!s.companyId) return NextResponse.json({ data: { items: [], nextCursor: null } })
-      departureScope = { route: { companyId: s.companyId } }
-    } else if (s.role !== 'SUPER_ADMIN') {
-      if (!s.agencyId) return NextResponse.json({ data: { items: [], nextCursor: null } })
-      departureScope = { agencyId: s.agencyId }
-    }
+    const s = await getSessionScope(session!);
+    const { searchParams } = new URL(req.url);
 
-    const and: Prisma.BookingGroupWhereInput[] = [{ bookings: { some: { departure: departureScope } } }]
-    if (q.status) and.push({ status: q.status })
-    if (q.from || q.to) {
-      const createdAt: Prisma.DateTimeFilter = {}
-      if (q.from) createdAt.gte = dayRange(q.from).start
-      if (q.to) createdAt.lte = dayRange(q.to).end
-      and.push({ createdAt })
-    }
-    if (q.q) {
-      const ci = { contains: q.q, mode: 'insensitive' as const }
-      and.push({
-        OR: [
-          { id: { endsWith: q.q, mode: 'insensitive' } },
-          { contactName: ci },
-          { contactPhone: ci },
-          { contactEmail: ci },
-          { bookings: { some: { departure: departureScope, passengers: { some: { fullName: ci } } } } },
-        ],
-      })
-    }
-    if (q.cursor) {
-      const c = decodeCursor(q.cursor)
-      if (!c) return NextResponse.json({ error: 'Curseur invalide.' }, { status: 400 })
-      and.push({
-        OR: [{ createdAt: { lt: c.createdAt } }, { createdAt: c.createdAt, id: { lt: c.id } }],
-      })
+    const q = searchParams.get('q');
+    const status = searchParams.get('status');
+    const fromStr = searchParams.get('from');
+    const toStr = searchParams.get('to');
+    const cursor = searchParams.get('cursor');
+    const limit = Math.min(100, Math.max(1, Number(searchParams.get('limit')) || 25));
+
+    if (s.role !== 'SUPER_ADMIN' && !s.companyId && !s.agencyId) {
+       return NextResponse.json({ data: { items: [], nextCursor: null } });
     }
 
-    const rows = await prisma.bookingGroup.findMany({
-      where: { AND: and },
+    const departureScope: Prisma.DepartureWhereInput =
+      s.role === 'SUPER_ADMIN'
+        ? {}
+        : s.role === 'COMPANY_ADMIN'
+          ? { route: { companyId: s.companyId ?? '__none__' } }
+          : { agencyId: s.agencyId ?? '__none__' };
+
+    const where: Prisma.BookingGroupWhereInput = {
+      bookings: { some: { departure: departureScope } },
+    };
+
+    if (status) {
+      where.status = status as any;
+    }
+
+    if (fromStr && toStr) {
+      const from = dayRange(fromStr).start;
+      const to = dayRange(toStr).end;
+      where.createdAt = { gte: from, lte: to };
+    }
+
+    if (q) {
+      const qLower = q.toLowerCase();
+      where.OR = [
+        { id: { endsWith: qLower } },
+        { contactName: { contains: qLower, mode: 'insensitive' } },
+        { contactEmail: { contains: qLower, mode: 'insensitive' } },
+        { contactPhone: { contains: qLower, mode: 'insensitive' } },
+        { bookings: { some: { passengers: { some: { fullName: { contains: qLower, mode: 'insensitive' } } } } } }
+      ];
+    }
+
+    const items = await prisma.bookingGroup.findMany({
+      where,
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: q.limit + 1,
-      select: {
-        id: true,
-        status: true,
-        tripType: true,
-        channel: true,
-        contactName: true,
-        contactEmail: true,
-        contactPhone: true,
-        createdAt: true,
+      include: {
         payment: { select: { method: true, status: true } },
         bookings: {
           where: { departure: departureScope },
-          orderBy: { leg: 'asc' },
-          select: {
-            id: true,
-            leg: true,
-            status: true,
-            seats: true,
-            priceCents: true,
+          include: {
             departure: {
-              select: {
-                id: true,
-                departureAt: true,
-                agency: { select: { name: true } },
+              include: {
                 route: {
-                  select: {
+                  include: {
                     originCity: { select: { name: true } },
                     destinationCity: { select: { name: true } },
-                  },
+                  }
                 },
-              },
+                agency: { select: { name: true } }
+              }
             },
-            passengers: { select: { fullName: true, idNumber: true, seat: true } },
-          },
-        },
-      },
-    })
+            passengers: { select: { fullName: true, idNumber: true, seat: true } }
+          }
+        }
+      }
+    });
 
-    const hasMore = rows.length > q.limit
-    const page = hasMore ? rows.slice(0, q.limit) : rows
-    const items = page.map((g) => ({
-      id: g.id,
-      reference: g.id.slice(-8).toUpperCase(),
-      status: g.status,
-      tripType: g.tripType,
-      channel: g.channel,
-      totalCents: g.bookings.reduce((sum, b) => sum + b.priceCents, 0),
-      contactName: g.contactName,
-      contactEmail: g.contactEmail,
-      contactPhone: g.contactPhone,
-      createdAt: g.createdAt,
-      payment: g.payment,
-      bookings: g.bookings.map((b) => ({
-        id: b.id,
-        leg: b.leg,
-        status: b.status,
-        seats: b.seats,
-        departure: {
-          id: b.departure.id,
-          departureAt: b.departure.departureAt,
-          origin: b.departure.route.originCity.name,
-          destination: b.departure.route.destinationCity.name,
-          agencyName: b.departure.agency.name,
-        },
-        passengers: b.passengers,
-      })),
-    }))
-    const last = page[page.length - 1]
-    return NextResponse.json({
-      data: { items, nextCursor: hasMore && last ? encodeCursor(last.createdAt, last.id) : null },
-    })
+    let nextCursor: string | null = null;
+    if (items.length > limit) {
+      const nextItem = items.pop();
+      nextCursor = nextItem!.id;
+    }
+
+    const formattedItems = items.map((g: any) => {
+      const totalCents = g.bookings.reduce((sum: number, b: any) => sum + b.priceCents, 0);
+      return {
+        id: g.id,
+        reference: g.id.slice(-8).toUpperCase(),
+        status: g.status,
+        tripType: g.tripType,
+        channel: g.channel,
+        totalCents,
+        contactName: g.contactName,
+        contactEmail: g.contactEmail,
+        contactPhone: g.contactPhone,
+        createdAt: g.createdAt.toISOString(),
+        payment: g.payment,
+        bookings: g.bookings.map((b: any) => ({
+          id: b.id,
+          leg: b.leg,
+          status: b.status,
+          seats: b.seats,
+          departure: {
+            id: b.departure.id,
+            departureAt: b.departure.departureAt.toISOString(),
+            origin: b.departure.route.originCity.name,
+            destination: b.departure.route.destinationCity.name,
+            agencyName: b.departure.agency.name,
+          },
+          passengers: b.passengers
+        }))
+      };
+    });
+
+    return NextResponse.json({ data: { items: formattedItems, nextCursor } });
   } catch (err) {
-    return handleError(err)
+    return handleError(err);
   }
 }

@@ -55,8 +55,16 @@ const CheckoutPage: React.FC = () => {
   const totalSeatsNeeded = bookingDetails ? bookingDetails.passengers.adults + bookingDetails.passengers.children : 1;
 
   if (!bookingDetails || !user) {
-    // Component will unmount or redirect shortly
-    return null; 
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-2xl shadow-subtle text-center">
+          <p className="text-text-muted mb-4">Aucune réservation en cours. Veuillez rechercher un trajet.</p>
+          <button onClick={() => navigateTo('home')} className="bg-primary px-6 py-2 rounded-full font-semibold">
+            Retour à l'accueil
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // Update specific passenger info
