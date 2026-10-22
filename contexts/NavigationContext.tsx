@@ -136,8 +136,48 @@ function roleToPage(role: UserRole): Page | null {
 export const NavigationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const router = useRouter();
   const pathname = usePathname();
-  const [searchParams, setSearchParams] = useState<SearchParams | null>(null);
-  const [bookingDetails, setBookingDetails] = useState<BookingDetails | null>(null);
+
+  const [bookingDetails, _setBookingDetails] = useState<BookingDetails | null>(() => {
+    if (typeof window !== "undefined") {
+       const saved = localStorage.getItem('easytravel_booking_details');
+       if (saved) {
+          try { return JSON.parse(saved); } catch(e) {}
+       }
+    }
+    return null;
+  });
+
+  const setBookingDetails = useCallback((details: BookingDetails | null) => {
+    _setBookingDetails(details);
+    if (typeof window !== "undefined") {
+       if (details) {
+         localStorage.setItem('easytravel_booking_details', JSON.stringify(details));
+       } else {
+         localStorage.removeItem('easytravel_booking_details');
+       }
+    }
+  }, []);
+
+  const [searchParams, _setSearchParams] = useState<SearchParams | null>(() => {
+    if (typeof window !== "undefined") {
+       const saved = localStorage.getItem('easytravel_search_params');
+       if (saved) {
+          try { return JSON.parse(saved); } catch(e) {}
+       }
+    }
+    return null;
+  });
+
+  const setSearchParams = useCallback((params: SearchParams | null) => {
+    _setSearchParams(params);
+    if (typeof window !== "undefined") {
+       if (params) {
+         localStorage.setItem('easytravel_search_params', JSON.stringify(params));
+       } else {
+         localStorage.removeItem('easytravel_search_params');
+       }
+    }
+  }, []);
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
