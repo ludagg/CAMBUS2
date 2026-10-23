@@ -1,6 +1,0 @@
-sed -i 's/const AGENCY_CONFIG: Record<string, Array<{ city: string; name: string; address: string }>> = {/const AGENCY_CONFIG: Record<string, Array<{ city: string; name: string; address: string; lat?: number; lng?: number }>> = {/g' prisma/seed.ts
-sed -i 's/{ city: '"'"'Douala'"'"', name: '"'"'Gare Centrale Bonanjo'"'"', address: '"'"'Bd de la Liberté, Douala'"'"' }/{ city: '"'"'Douala'"'"', name: '"'"'Gare Centrale Bonanjo'"'"', address: '"'"'Bd de la Liberté, Douala'"'"', lat: 4.0511, lng: 9.7679 }/g' prisma/seed.ts
-sed -i 's/{ city: '"'"'Douala'"'"', name: '"'"'Akwa Nord'"'"', address: '"'"'Rue Joffre, Akwa, Douala'"'"' }/{ city: '"'"'Douala'"'"', name: '"'"'Akwa Nord'"'"', address: '"'"'Rue Joffre, Akwa, Douala'"'"', lat: 4.0520, lng: 9.7000 }/g' prisma/seed.ts
-sed -i 's/{ city: '"'"'Douala'"'"', name: '"'"'Bonabéri Terminal'"'"', address: '"'"'Bonabéri, Douala'"'"' }/{ city: '"'"'Douala'"'"', name: '"'"'Bonabéri Terminal'"'"', address: '"'"'Bonabéri, Douala'"'"', lat: 4.0700, lng: 9.6600 }/g' prisma/seed.ts
-sed -i 's/{ city: '"'"'Douala'"'"', name: '"'"'Agence Bali'"'"', address: '"'"'Bali, Douala'"'"' }/{ city: '"'"'Douala'"'"', name: '"'"'Agence Bali'"'"', address: '"'"'Bali, Douala'"'"', lat: 4.0400, lng: 9.6900 }/g' prisma/seed.ts
-sed -i 's/address: ag.address,/address: ag.address,\n          lat: ag.lat,\n          lng: ag.lng,/g' prisma/seed.ts

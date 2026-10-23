@@ -319,10 +319,10 @@ const SearchResultsPage: React.FC = () => {
         : sortedTrips.slice(0, 15);
 
       tripsToMark.forEach(trip => {
-        const start = { lat: trip.departureLat, lng: trip.departureLng };
-        const end = { lat: trip.arrivalLat, lng: trip.arrivalLng };
+        const start = stationLocations[trip.departureLocation];
+        const end = stationLocations[trip.arrivalLocation];
 
-        if (start.lat && start.lng) {
+        if (start) {
           const distText = trip.distanceToUser ? `<div class="text-[10px] text-primary font-bold">À ${trip.distanceToUser.toFixed(1)} km de vous</div>` : '';
           
           const marker = L.circleMarker([start.lat, start.lng], { 

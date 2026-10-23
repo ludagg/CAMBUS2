@@ -59,24 +59,24 @@ const ROUTE_PAIRS: Array<[string, string, number, number]> = [
 ]
 
 // Agencies per company (cityName -> street-style name)
-const AGENCY_CONFIG: Record<string, Array<{ city: string; name: string; address: string; lat?: number; lng?: number }>> = {
+const AGENCY_CONFIG: Record<string, Array<{ city: string; name: string; address: string }>> = {
   'express-voyage': [
-    { city: 'Douala', name: 'Gare Centrale Bonanjo', address: 'Bd de la Liberté, Douala', lat: 4.0511, lng: 9.7679 },
+    { city: 'Douala', name: 'Gare Centrale Bonanjo', address: 'Bd de la Liberté, Douala' },
     { city: 'Yaoundé', name: 'Terminal Mvan', address: 'Mvan, Yaoundé' },
     { city: 'Bafoussam', name: 'Agence Marché A', address: 'Av. du 20 Mai, Bafoussam' },
   ],
   greenlines: [
-    { city: 'Douala', name: 'Akwa Nord', address: 'Rue Joffre, Akwa, Douala', lat: 4.0520, lng: 9.7000 },
+    { city: 'Douala', name: 'Akwa Nord', address: 'Rue Joffre, Akwa, Douala' },
     { city: 'Yaoundé', name: 'Biyem-Assi', address: 'Biyem-Assi, Yaoundé' },
     { city: 'Bamenda', name: 'Commercial Avenue', address: 'Commercial Ave, Bamenda' },
   ],
   'royal-road': [
-    { city: 'Douala', name: 'Bonabéri Terminal', address: 'Bonabéri, Douala', lat: 4.0700, lng: 9.6600 },
+    { city: 'Douala', name: 'Bonabéri Terminal', address: 'Bonabéri, Douala' },
     { city: 'Yaoundé', name: 'Poste Centrale', address: 'Place de la Poste, Yaoundé' },
     { city: 'Kribi', name: 'Kribi Beach', address: 'Front de mer, Kribi' },
   ],
   citylink: [
-    { city: 'Douala', name: 'Agence Bali', address: 'Bali, Douala', lat: 4.0400, lng: 9.6900 },
+    { city: 'Douala', name: 'Agence Bali', address: 'Bali, Douala' },
     { city: 'Yaoundé', name: 'Nsam Terminal', address: 'Nsam, Yaoundé' },
     { city: 'Ngaoundéré', name: 'Centre Ville', address: 'Centre, Ngaoundéré' },
   ],
@@ -162,8 +162,6 @@ async function main() {
           cityId,
           name: `${comp.name} — ${ag.city} ${ag.name}`,
           address: ag.address,
-          lat: ag.lat,
-          lng: ag.lng,
         },
       })
 
