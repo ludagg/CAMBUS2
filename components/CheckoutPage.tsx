@@ -276,10 +276,10 @@ const CheckoutPage: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-            <button className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-full bg-primary hover:bg-primary-600 text-text-main font-semibold tracking-tight shadow-subtle hover:shadow-card transition-all">
+            <a href={`/admin/ticket/${paymentGroupId}/print`} target="_blank" rel="noopener noreferrer" className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-full bg-primary hover:bg-primary-600 text-text-main font-semibold tracking-tight shadow-subtle hover:shadow-card transition-all">
                <span className="material-symbols-outlined text-[18px]">download</span>
-               {t('checkout.success.download')}
-            </button>
+               {t('checkout.success.download')}</a>
+
             <button
               onClick={() => navigateTo('home')}
               className="w-full py-2.5 text-text-muted hover:text-text-main dark:hover:text-white font-medium tracking-tight text-sm transition-all"
